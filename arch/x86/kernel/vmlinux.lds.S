@@ -77,6 +77,8 @@ const_cpu_current_top_of_stack = cpu_current_top_of_stack;
  * decrypted to avoid exposing more than we wish.
  */
 #define BSS_DECRYPTED						\
+	. = ALIGN(PAGE_SIZE);					\
+	__start_bss_decrypted_gap = .;				\
 	. = ALIGN(PMD_SIZE);					\
 	__start_bss_decrypted = .;				\
 	__pi___start_bss_decrypted = .;				\
