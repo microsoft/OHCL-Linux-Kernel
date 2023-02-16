@@ -1373,6 +1373,8 @@ void mark_rodata_ro(void)
 	unsigned long end = (unsigned long)__end_rodata_hpage_align;
 	unsigned long text_end = PFN_ALIGN(_etext);
 	unsigned long rodata_end = PFN_ALIGN(__end_rodata);
+	unsigned long bss_decrypted_gap_start = PFN_ALIGN(__start_bss_decrypted_gap);
+	unsigned long bss_decrypted_gap_stop = PFN_ALIGN(__start_bss_decrypted);
 	unsigned long all_end;
 
 	printk(KERN_INFO "Write protecting the kernel read-only data: %luk\n",
@@ -1410,6 +1412,8 @@ void mark_rodata_ro(void)
 				(void *)text_end, (void *)rodata_start);
 	free_kernel_image_pages("unused kernel image (rodata/data gap)",
 				(void *)rodata_end, (void *)_sdata);
+	free_kernel_image_pages("unused kernel image (bss_decrypted gap)",
+				(void *)bss_decrypted_gap_start, (void *)bss_decrypted_gap_stop);
 }
 
 /*
