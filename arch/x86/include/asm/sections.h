@@ -7,6 +7,7 @@
 
 extern char __brk_base[], __brk_limit[];
 extern char __end_rodata_aligned[];
+extern char __start_bss_decrypted_gap[];
 
 #if defined(CONFIG_X86_64)
 extern char __end_rodata_hpage_align[];
