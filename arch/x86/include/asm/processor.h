@@ -727,6 +727,10 @@ bool xen_set_default_idle(void);
 #define xen_set_default_idle 0
 #endif
 
+#ifdef CONFIG_MSHV_VTL
+void mshv_vtl_set_idle(void (*idle)(void));
+#endif
+
 void __noreturn stop_this_cpu(void *dummy);
 void microcode_check(struct cpuinfo_x86 *prev_info);
 void store_cpu_caps(struct cpuinfo_x86 *info);
