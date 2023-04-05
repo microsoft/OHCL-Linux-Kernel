@@ -55,4 +55,53 @@ config HYPERV_BALLOON
 	help
 	  Select this option to enable Hyper-V Balloon driver.
 
+config MSHV
+	tristate "Microsoft Hypervisor root partition interfaces: /dev/mshv"
+	depends on X86_64 && HYPERV
+	select EVENTFD
+	select MSHV_XFER_TO_GUEST_WORK
+	help
+	  Select this option to enable core functionality for managing guest
+	  virtual machines running under the Microsoft Hypervisor.
+
+	  The interfaces are provided via a device named /dev/mshv.
+
+	  To compile this as a module, choose M here.
+
+	  If unsure, say N.
+
+config MSHV_ROOT
+	tristate "Microsoft Hyper-V root partition APIs driver"
+	depends on MSHV
+	help
+	  Select this option to provide /dev/mshv interfaces specific to
+	  running as the root partition on Microsoft Hypervisor.
+
+	  To compile this as a module, choose M here.
+
+	  If unsure, say N.
+
+config MSHV_VTL
+	tristate "Microsoft Hyper-V VTL driver"
+	depends on MSHV
+	select HYPERV_VTL_MODE
+	help
+	  Select this option to enable Hyper-V VTL driver.
+	  Virtual Secure Mode (VSM) is a set of hypervisor capabilities and
+	  enlightenments offered to host and guest partitions which enables
+	  the creation and management of new security boundaries within
+	  operating system software.
+
+	  VSM achieves and maintains isolation through Virtual Trust Levels
+	  (VTLs). Virtual Trust Levels are hierarchical, with higher levels
+	  being more privileged than lower levels. VTL0 is the least privileged
+	  level, and currently only other level supported is VTL2.
+
+	  To compile this as a module, choose M here.
+
+	  If unsure, say N.
+
+config MSHV_XFER_TO_GUEST_WORK
+	bool
+
 endmenu
