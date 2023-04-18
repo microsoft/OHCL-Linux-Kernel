@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PIPELINES_DIR=$(realpath "${SCRIPT_DIR}"/..)
+
+MYTMP=$(mktemp)
+find "${SCRIPT_DIR}" "${PIPELINES_DIR}" | while read -r FILE; do
+	if [ ! -f "${FILE}" ]; then
+		continue
+	fi
+	if head -1 "${FILE}" | grep python >/dev/null; then
+		echo "${FILE}" >> "${MYTMP}"
+	fi
+done 
+SCRIPT_LIST=$(cat "${MYTMP}")
+
+flake8_check() {
+	local pth="${1}"
+	flake8 "${pth}" --count --select=E9,F63,F7,F82 --show-source --statistics
+	flake8 "${pth}" --count --max-complexity=10 --max-line-length=127 --statistics
+}
+
+set -e
+
+echo "${SCRIPT_LIST}" | while read -r FILE; do
+	flake8_check "${FILE}"
+done
+
+for D in "${SCRIPT_DIR}" "${PIPELINES_DIR}"; do
+	flake8_check "${D}"
+done

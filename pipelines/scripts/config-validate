@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -x
+set -e
+
+SOURCE_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+cd "${SOURCE_ROOT}"
+
+make mrproper
+
+cp arch/x86/configs/mshv_defconfig .config
+make LC_ALL= ARCH=x86_64 olddefconfig
+
+diff -u arch/x86/configs/mshv_defconfig .config
+
