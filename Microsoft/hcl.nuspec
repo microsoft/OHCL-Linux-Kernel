@@ -1,0 +1,19 @@
+<package>
+    <metadata>
+        <id>Microsoft.HyperV.Internal.HCL.x64</id>
+        <title>Host Compatibility Layer</title>
+        <authors>Modern VM Team</authors>
+        <owners>Modern VM Team</owners>
+        <description>
+            Host Compatibility Layer used in Trusted VMs
+            Source: https://msazure.visualstudio.com/DefaultCollection/LSG-linux/_git/linux-dom0-hyperv
+        </description>
+        <summary>Host Compatibility Layer used in Trusted VMs</summary>
+        <licenseUrl>http://microsoft-internal-use-only</licenseUrl>
+        <copyright>Copyright (c) Microsoft Corporation</copyright>
+        <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    </metadata>
+    <files>
+        <file exclude="*.nupkg"/>
+    </files>
+</package>
