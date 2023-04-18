@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+
+__copyright__ = "Copyright (c) Microsoft Corporation."
+
+import os
+import sys
+import subprocess
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
+
+from lsgtools import log
+from lsgtools import cli
+from lsgtools import ado
+from lsgtools import git
+
+parser = cli.create_arg_parser(prog="kernel-checkpatch",
+                               description="Wrapper to scripts/checkpatch.pl")
+parser.add_argument("--ado-org", help="Name of the Azure DevOps organization", required=True)
+parser.add_argument("--ado-project", help="Name of the Azure DevOps project", required=True)
+parser.add_argument("--ado-access-token", help="Azure DevOps access token", required=True)
+parser.add_argument("--token-type", help="Token type: PAT or OAUTH", default="OAUTH")
+parser.add_argument("--repo-id", help="Repository ID", required=True)
+parser.add_argument("--pr-id", help="Pull Request ID", required=True)
+parser.add_argument("--source-branch", help="Source branch of the pull request", required=True)
+args = parser.parse_args()
+log.set_verbosity(args.verbose)
+ado.init_defaults(args.ado_org, args.ado_project, args.repo_id, args.pr_id,
+                  args.token_type, args.ado_access_token)
+
+# View with checkpatch.pl --list-types
+ignore_types = [
+    "UNKNOWN_COMMIT_ID"
+]
+
+
+def separator():
+    log.info('-' * 100)
+
+
+def main():
+    commits_json = ado.pr_get_commits()
+    commits = [commit for commit in commits_json["value"]]
+
+    separator()
+    log.msg(f"The PR has {len(commits)} commits")
+    separator()
+
+    # The pipeline does a shallow fetch. Deepen it a bit to find the PR's
+    # commits.
+    if not git.deepen(args.source_branch, len(commits) + 1):
+        sys.exit(1)
+
+    issues = 0
+    for commit in commits:
+        commit_id = commit["commitId"]
+        comment = commit["comment"]
+        log.info(f"{commit_id}: {comment}")
+
+        if git.is_merge_commit(commit_id):
+            log.info("Is a merge commit. Skipping.")
+            separator()
+            continue
+
+        log.info("Running scripts/checkpatch.pl")
+        result = subprocess.run(
+            ["./scripts/checkpatch.pl", "-g", commit_id, "--ignore", ",".join(ignore_types)],
+            capture_output=True,
+        )
+
+        output = result.stdout.decode("ascii")
+        log.info(output)
+        log.info(f"Exit code: {result.returncode}")
+
+        if result.returncode != 0:
+            issues = issues + 1
+            log.err(result.stderr.decode("ascii"))
+            log.info("Commenting on PR")
+            html_output = output.replace("\n", "<br/>")
+            comment = f"checkpatch.pl found issues:<pre>{html_output}</pre>"
+            ado.pr_add_comment(comment)
+
+        separator()
+
+    if issues > 0:
+        sys.exit(1)
+
+
+main()
