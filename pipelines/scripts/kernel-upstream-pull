@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import subprocess
+import re
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
+
+from lsgtools import cli
+from lsgtools import log
+
+arg_parser = cli.create_arg_parser(prog="kernel-upstream-pull",
+                                   description="Pull latest LSG-linux-rolling tag and create a feature branch")
+arg_parser.add_argument("--target-branch", help="Target branch to base the merge on", required=False)
+arg_parser.add_argument("--out-file", help="Write the name of the new tag into a file", required=False)
+arg_parser.add_argument("--in-pipeline", help="Set if it's a pipeline run", action="store_true", required=False)
+args = arg_parser.parse_args()
+log.set_verbosity(args.verbose)
+
+if args.target_branch is not None:
+    target_branch = args.target_branch
+else:
+    # Read the current branch name
+    cmd = "git rev-parse --abbrev-ref HEAD"
+    log.info(cmd)
+    target_branch = os.popen(cmd).read().strip()
+
+cmds = [
+    ["git", "fetch", "--progress", "--verbose", "--tags", "lsg-linux-rolling"]
+]
+if not args.in_pipeline:
+    # When run locally, ensure the base branch is on the latest rev.
+    cmds.insert(0, ["git", "fetch"])
+    if args.target_branch is None:
+        # Using the currently checked out ref
+        cmds.insert(1, ["git", "pull", "--rebase"])
+
+for cmd in cmds:
+    log.info("{}".format(" ".join(cmd)))
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, )
+    log.debug(res.stdout.decode("utf-8"))
+    if 0 != res.returncode:
+        log.fatal(res.stderr.decode("utf-8"))
+        exit(1)
+
+
+def tag_get_latest(reg=None):
+    # Read the latest tag matching the pattern
+    cmd = ["git", "tag", "--list"]
+    if reg is not None:
+        cmd.append(reg)
+    log.debug("{}".format(" ".join(cmd)))
+    res = subprocess.run(cmd, stdout=subprocess.PIPE)
+    tags = res.stdout.decode("utf-8").strip(" \n").splitlines()
+    return tags[len(tags)-1]
+
+
+def version_mshv_old():
+    # Read in and save the oldextra ver index from the Makefile.
+    # The background here is, that dom0 kernel could have multiple
+    # versions upon the same upstream tag, thus incrementing the X
+    # in the `mshvX` part multiple times. At the same time, the upstream
+    # might have incremented the extraver, too. If that's the case, the
+    # X in mshvX on the dom0 extraver needs to be incremented, not the
+    # extraver from the upstream be taken.
+    with open("Makefile", "r") as f:
+        mfc = f.read()
+    f.close()
+    version = int(re.findall(r"VERSION = (\d+)\n", mfc)[0])
+    patchlevel = int(re.findall(r"PATCHLEVEL = (\d+)\n", mfc)[0])
+    sublevel = int(re.findall(r"SUBLEVEL = (\d+)\n", mfc)[0])
+    extraver = re.findall(r"EXTRAVERSION =\.(mshv\d+)\n", mfc)[0]
+
+    return "{}.{}.{}.{}".format(version, patchlevel, sublevel, extraver)
+
+
+def version_upstream_from_tag(tag):
+    # Upstream tag like rolling-lts/wsl/5.10.16.1
+    return tag.split("/")[2]
+
+
+def version_mshv_from_upstream(version_upstream):
+    # Input looks like a regular version 5.15.87.1
+    segs_upstream = version_upstream.split(".")
+    extraver_idx_upstream = segs_upstream[3]
+    segs = segs_upstream
+
+    segs_cur = version_mshv_old().split(".")
+    extraver_idx_cur = re.findall(r"mshv(\d+)", segs_cur[3])[0]
+
+    if segs_cur[0] == segs_upstream[0] and segs_cur[1] == segs_upstream[1] and segs_cur[2] == segs_upstream[2]:
+        # We're at the same version at upstream, apparently some new extra version has been released. However,
+        # dom0 could have incremented multiple times. Thus, increment the current extraver for mshv.
+        segs[3] = "mshv{}".format(int(extraver_idx_cur) + 1)
+    else:
+        # This is the case where the upstream sublevel number went up, so take its extraversion as is.
+        segs[3] = "mshv{}".format(extraver_idx_upstream)
+
+    return ".".join(segs)
+
+
+upstream_tag = tag_get_latest("rolling-lts/mariner-2/*")
+log.msg("Latest tag is '{}'".format(upstream_tag))
+
+# Check if the upstream tag is already merged into the target branch
+cmd = ["git", "name-rev", "--name-only", "--no-undefined", "--refs", target_branch,  upstream_tag]
+log.debug("{}".format(" ".join(cmd)))
+# Don't capture stderr. In case the tag is not yet merged, it'll output something like
+# fatal: cannot describe '34cfcc0e2d81234e9d1b720233db44243369fb7c'
+res = subprocess.run(cmd, stdout=subprocess.PIPE)
+if 0 == res.returncode:
+    # NOTE might include other logic so not die at once if there's no upstream tag
+    log.info("Tag '{}' is already in '{}', nothing to do".format(upstream_tag, target_branch))
+    exit(0)
+
+if args.out_file is not None:
+    with open(args.out_file, "w") as f:
+        f.write(upstream_tag)
+    f.close()
+
+version_upstream = version_upstream_from_tag(upstream_tag)
+version_mshv = version_mshv_from_upstream(version_upstream)
+feature_branch = "autoupdate/rolling-{}".format(version_mshv)
+
+
+# Create a feature branch and merge the upstream tag.
+# Discard any conflicts regarding the makefile, as in most case those just version related.
+cmds = [
+    ["git", "checkout", "-b", feature_branch, target_branch],
+    ["git", "merge", "--no-ff", "--log", "--allow-unrelated-histories", upstream_tag],
+    ["git", "checkout", "--theirs", "Makefile"],
+    ["git", "add", "Makefile"],
+    ["git", "commit", "--no-edit"]
+]
+
+for cmd in cmds:
+    log.info("{}".format(" ".join(cmd)))
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, )
+    log.info(res.stdout.decode("utf-8"))
+    if 0 != res.returncode:
+        log.fatal(res.stderr.decode("utf-8"))
+        # Pass here, merge will likely fail due to the Makefile conflict.
+        # Instead, check status afterwards on the last command
+if 0 != res.returncode:
+    cmd = ["git", "status"]
+    log.info("{}".format(" ".join(cmd)))
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, )
+    log.info(res.stdout.decode("utf-8"))
+    if 0 != res.returncode:
+        log.fatal(res.stderr.decode("utf-8"))
+        exit(1)
+
+# TODO This piece can be shared later
+# Update Makefile and defconfigs
+with open("Makefile", "r") as f:
+    mfc = f.read()
+f.close()
+with open("Makefile", "w") as f:
+    mfc = re.sub(r"EXTRAVERSION =\..*\d+\n", "EXTRAVERSION =.{}\\n".format(version_mshv.split(".")[3]), mfc)
+    f.write(mfc)
+f.close()
+
+arch_map = {
+        "x86": "x86_64",
+        "arm64": "arm64"
+        }
+for k in arch_map:
+    cfg = "arch/{}/configs/mshv_defconfig".format(k)
+    with open(cfg, "r") as f:
+        c = f.read()
+    f.close()
+    with open(cfg, "w") as f:
+        c = re.sub("Linux/.*Kernel Configuration", "Linux/{} {} Kernel Configuration".format(arch_map[k], version_mshv), c)
+        f.write(c)
+    f.close()
+
+cmd = ["git", "commit", "-a", "-m", "'makefile: config: Set MSHV version'"]
+log.info("{}".format(" ".join(cmd)))
+res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, )
+log.info(res.stdout.decode("utf-8"))
+if 0 != res.returncode:
+    log.fatal(res.stderr.decode("utf-8"))
+    exit(1)

@@ -1,0 +1,79 @@
+parameters:
+  - name: azure_vm_size
+    type: string
+    default: "Standard_D16ds_v5"
+  - name: run_functional_tests
+    type: boolean
+    default: True
+    displayName: Run Guest Functional Tests
+  - name: run_network_perf_tests
+    type: boolean
+    default: False
+    displayName: Run Guest Network Perf Tests
+  - name: run_generic_fio_tests
+    type: boolean
+    default: False
+    displayName: Run Guest FIO Test
+  - name: run_stress_ng_tests
+    type: boolean
+    default: False
+    displayName: Run Stressng on Guests
+  - name: run_ch_community_tests
+    type: boolean
+    default: False
+    displayName: Run CH community tests on Dom0
+  - name: run_mshv_tests
+    type: boolean
+    default: True
+    displayName: Run MSHV tests
+
+trigger: none
+
+resources:
+  repositories:
+    - repository: lisa
+      type: git
+      name: LSG/lsg-lisa
+  pipelines:
+    - pipeline: dom0-build-pipeline
+      project: LSG
+      source: lsg-virt-mariner
+      branch: main
+      tags:
+        - LATEST
+
+stages:
+  - stage: Linux_DOM0_PR_Pipeline
+    displayName: Linux Dom0 PR branch validation
+    pool:
+      name: LSG_Virt_1ES_Pool
+    variables:
+      - group: azure_subscription_testonly
+      - group: lis_database
+      - group: mail
+      - group: virtstackvalidation_variables
+      - name: test_project
+        value: "Linux Dom0 Test"
+      - name: enable_publish
+        value: False
+      - name: linux_dom0_url
+        value: https://microsoft.visualstudio.com/DefaultCollection/LSG/_git/linux-dom0
+      - name: linux_dom0_branch
+        value: $(System.PullRequest.SourceBranch)
+      - name: kernel_config_file
+        value: arch/x86/configs/mshv_defconfig
+
+    jobs:
+      - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
+        parameters:
+          checkout_repo: "lisa"
+          build_source: "dom0-build-pipeline"
+          azure_vm_size: ${{ parameters.azure_vm_size }}
+          run_functional_tests: ${{ parameters.run_functional_tests }}
+          run_network_perf_tests: ${{ parameters.run_network_perf_tests }}
+          run_generic_fio_tests: ${{ parameters.run_generic_fio_tests }}
+          run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
+          run_ch_community_tests: ${{ parameters.run_ch_community_tests }}
+          run_mshv_tests: ${{ parameters.run_mshv_tests }}
+          kernel_change_needed: True
+          kernel_params: '{\"auth_token\":\"$(System.AccessToken)\",\"kernel_repo_url\":\"$(linux_dom0_url)\",\"kernel_repo_branch\":\"$(linux_dom0_branch)\",\"kernel_config_file\":\"$(kernel_config_file)\"}'

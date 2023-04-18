@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+SCRIPT_LIST=
+for FILE in "${SCRIPT_DIR}"/* "${SCRIPT_DIR}/mshv"/*; do
+	if [ ! -f "${FILE}" ]; then
+		continue
+	fi
+	if head -1 "${FILE}" | grep bash >/dev/null; then
+		SCRIPT_LIST="${SCRIPT_LIST} ${FILE}"
+	fi
+done
+
+shellcheck -x -e SC2153,SC2156,SC2164,SC2181,SC2013,SC2001,SC2129,SC2102,SC2086,SC2103,SC2029,SC2035 ${SCRIPT_LIST}
+exit $?
+
