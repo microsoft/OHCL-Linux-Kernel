@@ -1,0 +1,16 @@
+# Template task to prepare the build environment. Things might be not needed
+# if an image has these baked in.
+
+steps:
+  - bash: |
+      set -e
+      set -x
+
+      export DEBIAN_FRONTEND=noninteractive
+
+      sudo apt-get update
+
+      sudo apt install -y \
+        docker.io containerd runc
+
+    displayName: 'Prepare Ubuntu'

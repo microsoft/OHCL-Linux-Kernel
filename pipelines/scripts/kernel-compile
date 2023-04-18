@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -x
+set -e
+
+SOURCE_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+cd "${SOURCE_ROOT}"
+
+make mrproper
+make LC_ALL= ARCH=x86_64 mshv_defconfig
+
+make -j$(nproc) W=1 ARCH=x86_64
+make -j$(nproc) W=1 ARCH=x86_64 modules
+
+make -j$(nproc) -C tools/perf PYTHON=python3 all
+make -j$(nproc) -C tools/bpf/bpftool

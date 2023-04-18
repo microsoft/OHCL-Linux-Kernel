@@ -1,0 +1,59 @@
+
+variables:
+  CONTAINER_IMAGE: mcr.microsoft.com/cbl-mariner/base/core:2.0
+  CONTAINER_NAME: dom0kerneltest
+  CONTAINER_VOL: /linux-dom0
+  CONTAINER_RT: docker
+
+trigger:
+  batch: false
+  branches:
+    include:
+      - msft/mshv-stable
+      - msft/mshv-rolling
+  tags:
+    include:
+      - msft/mshv-rolling/*
+
+pr:
+  autoCancel: false
+  drafts: false
+  branches:
+    include:
+      - msft/mshv-stable
+      - msft/mshv-rolling
+
+jobs:
+- job: KERNEL
+  timeoutInMinutes: 30
+  pool:
+    name: 'lsg-virt-amd64-1es-agent-pool-2'
+
+  steps:
+  - template: templates/ubuntu-20.04-build.yml
+  - bash: |
+      set -e
+      set -x
+      sudo systemctl enable --now docker
+      $(CONTAINER_RT) pull $(CONTAINER_IMAGE)
+      $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) $(CONTAINER_IMAGE)
+      $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/mariner-prepare
+    displayName: 'Prepare Container'
+
+  - bash: |
+      set -e
+      set -x
+      $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/config-validate
+    displayName: 'Validate Config'
+
+  - bash: |
+      set -e
+      set -x
+      $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/kernel-compile
+    displayName: 'Compile Kernel'
+
+  - bash: |
+      set -e
+      set -x
+      $(CONTAINER_RT) rm -f $(CONTAINER_IMAGE)
+    displayName: 'Cleanup container'

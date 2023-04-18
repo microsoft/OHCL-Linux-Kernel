@@ -1,0 +1,75 @@
+
+variables:
+  TAG_FLAG_FILE: /tmp/upstream-latest.txt
+  TARGET_BRANCH: main
+
+trigger: none
+
+schedules:
+- cron: "42 0 * * Tue,Thu"
+  displayName: Daily automated SPEC update
+  branches:
+    include:
+    - main
+  always: true
+
+jobs:
+- job: UPSTREAM_PULL
+  timeoutInMinutes: 120
+  pool:
+    name: 'lsg-virt-amd64-1es-agent-pool-2'
+
+  steps:
+  - checkout: self
+    persistCredentials: true
+    clean: true
+    fetchDepth: 0
+    fetchTags: false
+  - template: templates/ubuntu-20.04-build.yml
+
+  - bash: |
+      set -e
+      set -x
+      git config --global user.email "$(Build.RequestedForEmail)"
+      git config --global user.name "$(Build.RequestedFor)"
+    displayName: 'Prepare update environment'
+
+  - bash: |
+      set -e
+      set -x
+      git remote add lsg-linux-rolling "https://$(PAT_MSAZURE)@msazure.visualstudio.com/DefaultCollection/LSG-linux/_git/LSG-linux-rolling"
+      git fetch --progress --verbose --tags lsg-linux-rolling
+    displayName: 'Add LSG-linux-rolling remote'
+
+  - bash: |
+      set -e
+      set -x
+      ./pipelines/scripts/kernel-upstream-pull --out-file=$(TAG_FLAG_FILE) -vv --in-pipeline --target-branch=$(TARGET_BRANCH)
+    displayName: 'Pull Upstream'
+
+  - bash: |
+      if [ -f "$(TAG_FLAG_FILE)" ]; then
+        echo "##vso[task.setVariable variable=UPSTREAM_UPDATE_AVAILABLE]true"
+      fi
+
+  - bash: |
+      set -e
+      set -x
+      AUTOREF="$(git branch --show-current)"
+      REPO_ID="0a1e496c-f1cc-47c6-8d8b-54ad262955ea"
+      #REPO_ID=$(az repos list --organization https://dev.azure.com/microsoft --project LSG --query "[?name == 'linux-dom0'].id" --output tsv)
+      # This push will fail if the branch already exists. Still giving
+      # the build service force push permissions is out of question.
+      git push --verbose origin "${AUTOREF}"
+      ./pipelines/scripts/kernel-upstream-pull-pr \
+        --ado-org microsoft \
+        --ado-project LSG \
+        --ado-access-token "$(System.AccessToken)" \
+        --repo-id "${REPO_ID}" \
+        --source-branch "${AUTOREF}" \
+        --tag "$(cat $(TAG_FLAG_FILE))" \
+        --build-requestedfor-id "$(Build.RequestedForId)" \
+        -v
+    condition: eq(variables.UPSTREAM_UPDATE_AVAILABLE, 'true')
+    displayName: 'Push and File PR'
+
