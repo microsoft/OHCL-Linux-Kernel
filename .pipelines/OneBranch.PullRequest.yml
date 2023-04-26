@@ -88,6 +88,14 @@ extends:
               verbosityPack: 'Detailed'
 
           - task: NuGetCommand@2
+            displayName: 'NuGet Pack'
+            inputs:
+              command: 'pack'
+              packagesToPack: '$(Build.SourcesDirectory)/hcl-next.nuspec'
+              packDestination: '$(System.ArtifactsDirectory)'
+              verbosityPack: 'Detailed'
+
+          - task: NuGetCommand@2
             displayName: 'NuGet Push'
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
