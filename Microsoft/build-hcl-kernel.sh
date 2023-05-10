@@ -75,11 +75,16 @@ build_kernel() {
 	cp $LINUX_SRC/Microsoft/hcl.config $OUT_DIR
 	objcopy --only-keep-debug --compress-debug-sections $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux.dbg
 	objcopy --strip-all --add-gnu-debuglink=$BUILD_DIR/vmlinux.dbg $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+
 	find $BUILD_DIR -name '*.ko' | while read -r mod; do
-		outmod="$OUT_DIR/$(basename $mod)"
+		relative_path="${mod#$BUILD_DIR/linux}"
+		dest_dir="$OUT_DIR/$MOD_DIR/$(dirname "$relative_path")"
+		mkdir -p "$dest_dir"
+		outmod="$dest_dir/$(basename $mod)"
 		objcopy --only-keep-debug --compress-debug-sections "$mod" "$outmod.dbg"
 		objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod" "$outmod"
 	done
+
 	cp $BUILD_DIR/vmlinux $OUT_DIR
 	cp $BUILD_DIR/vmlinux.dbg $OUT_DIR
 	cp $LINUX_SRC/Microsoft/hcl.config $OUT_DIR
@@ -88,6 +93,7 @@ build_kernel() {
 LINUX_SRC=$SRC_DIR
 BUILD_DIR=`realpath $LINUX_SRC/../build`
 OUT_DIR=`realpath $LINUX_SRC/out`
+MOD_DIR='/build/native/bin/x64/modules/kernel/'
 
 export KBUILD_OUTPUT=$BUILD_DIR/linux
 
