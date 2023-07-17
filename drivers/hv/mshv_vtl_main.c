@@ -701,7 +701,7 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		if (smp_load_acquire(&in_idle_is_enabled)) {
 			/* Enters VTL0 in idle */
 
-			set_current_state(TASK_IDLE);
+			set_current_state(TASK_INTERRUPTIBLE);
 			this_cpu_write(mshv_vtl_thread, current);
 			local_irq_restore(irq_flags);
 
