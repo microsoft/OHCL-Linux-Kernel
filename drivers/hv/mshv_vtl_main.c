@@ -628,6 +628,13 @@ static void mshv_vtl_idle(void)
 	p = this_cpu_read(mshv_vtl_thread);
 
 	if (p) {
+		/* Return early if we got cancelled. */
+		if (READ_ONCE(mshv_vtl_this_run()->cancel)) {
+			wake_up_process(p);
+			raw_local_irq_enable();
+			return;
+		}
+
 		mshv_vtl_switch_to_vtl0_irqoff();
 
 		/* We are not the vtl thread, it means we need to wake it up */
