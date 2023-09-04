@@ -87,6 +87,7 @@ build_kernel() {
 
 	cp $BUILD_DIR/vmlinux $OUT_DIR
 	cp $BUILD_DIR/vmlinux.dbg $OUT_DIR
+	echo '{}' > $OUT_DIR/build/native/bin/kernel_build_metadata.json
 	cp $LINUX_SRC/Microsoft/hcl.config $OUT_DIR
 }
 
