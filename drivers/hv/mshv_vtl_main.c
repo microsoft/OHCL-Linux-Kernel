@@ -1444,6 +1444,98 @@ static struct miscdevice mshv_vtl_hvcall = {
 	.minor = MISC_DYNAMIC_MINOR,
 };
 
+static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
+{
+	pid_t pid = task_pid_vnr(current);
+	uid_t uid = current_uid().val;
+	int ret = 0;
+
+	pr_debug("%s: Opening VTL low, task group %d, uid %d\n", __func__, pid, uid);
+
+	if (capable(CAP_SYS_ADMIN)) {
+		filp->private_data = inodep;
+	} else {
+		pr_err("%s: VTL low open failed: CAP_SYS_ADMIN required. task group %d, uid %d",
+		       __func__, pid, uid);
+		ret = -EPERM;
+	}
+
+	return ret;
+}
+
+static bool can_fault(struct vm_fault *vmf, unsigned long size, pfn_t *pfn)
+{
+	unsigned long mask = size - 1;
+	unsigned long start = vmf->address & ~mask;
+	unsigned long end = start + size;
+	bool valid;
+
+	valid = (vmf->address & mask) == ((vmf->pgoff << PAGE_SHIFT) & mask) &&
+		start >= vmf->vma->vm_start &&
+		end <= vmf->vma->vm_end;
+
+	if (valid)
+		*pfn = __pfn_to_pfn_t(vmf->pgoff & ~(mask >> PAGE_SHIFT), PFN_DEV | PFN_MAP);
+
+	return valid;
+}
+
+static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int order)
+{
+	pfn_t pfn;
+	int ret = VM_FAULT_FALLBACK;
+
+	switch (order) {
+	case 0:
+		pfn = __pfn_to_pfn_t(vmf->pgoff, PFN_DEV | PFN_MAP);
+		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
+
+	case PMD_ORDER:
+		if (can_fault(vmf, PMD_SIZE, &pfn))
+			ret = vmf_insert_pfn_pmd(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
+		return ret;
+
+	case PUD_ORDER:
+		if (can_fault(vmf, PUD_SIZE, &pfn))
+			ret = vmf_insert_pfn_pud(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
+		return ret;
+
+	default:
+		return VM_FAULT_SIGBUS;
+	}
+}
+
+static vm_fault_t mshv_vtl_low_fault(struct vm_fault *vmf)
+{
+	return mshv_vtl_low_huge_fault(vmf, 0);
+}
+
+static const struct vm_operations_struct mshv_vtl_low_vm_ops = {
+	.fault = mshv_vtl_low_fault,
+	.huge_fault = mshv_vtl_low_huge_fault,
+};
+
+static int mshv_vtl_low_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	vma->vm_ops = &mshv_vtl_low_vm_ops;
+	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP);
+	return 0;
+}
+
+static const struct file_operations mshv_vtl_low_file_ops = {
+	.owner		= THIS_MODULE,
+	.open		= mshv_vtl_low_open,
+	.mmap		= mshv_vtl_low_mmap,
+};
+
+static struct miscdevice mshv_vtl_low = {
+	.name = "mshv_vtl_low",
+	.nodename = "mshv_vtl_low",
+	.fops = &mshv_vtl_low_file_ops,
+	.mode = 0600,
+	.minor = MISC_DYNAMIC_MINOR,
+};
+
 static int __init mshv_vtl_init(void)
 {
 	int ret;
@@ -1481,10 +1573,14 @@ static int __init mshv_vtl_init(void)
 	if (ret)
 		goto free_sint;
 
+	ret = misc_register(&mshv_vtl_low);
+	if (ret)
+		goto free_hvcall;
+
 	mem_dev = kzalloc(sizeof(*mem_dev), GFP_KERNEL);
 	if (!mem_dev) {
 		ret = -ENOMEM;
-		goto free_hvcall;
+		goto free_low;
 	}
 
 	mutex_init(&mshv_vtl_poll_file_lock);
@@ -1501,6 +1597,8 @@ static int __init mshv_vtl_init(void)
 
 free_mem:
 	kfree(mem_dev);
+free_low:
+	misc_deregister(&mshv_vtl_low);
 free_hvcall:
 	misc_deregister(&mshv_vtl_hvcall);
 free_sint:
@@ -1515,6 +1613,7 @@ static void __exit mshv_vtl_exit(void)
 	mshv_setup_vtl_func(NULL, NULL, NULL);
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
+	misc_deregister(&mshv_vtl_low);
 	device_del(mem_dev);
 	kfree(mem_dev);
 }
