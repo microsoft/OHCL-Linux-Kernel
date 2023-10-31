@@ -84,6 +84,7 @@ config MSHV_ROOT
 config MSHV_VTL
 	tristate "Microsoft Hyper-V VTL driver"
 	depends on MSHV
+	depends on TRANSPARENT_HUGEPAGE
 	select HYPERV_VTL_MODE
 	help
 	  Select this option to enable Hyper-V VTL driver.
