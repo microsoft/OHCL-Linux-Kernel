@@ -4,6 +4,9 @@ apt-get install -y build-essential flex bison libelf-dev bc rsync
 apt-get install -y libklibc-dev musl-tools execstack
 apt-get install -y xmlstarlet
 
+# Cross-compiling
+apt-get install -y gcc-aarch64-linux-gnu
+
 # Install for building perf
 apt-get install -y libdw-dev libbz2-dev libunwind-dev libbfd-dev libiberty-dev libzstd-dev
 apt-get install -y python3
