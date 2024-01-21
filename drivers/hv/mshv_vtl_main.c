@@ -23,7 +23,7 @@
 #include <uapi/asm/mtrr.h>
 #include <uapi/linux/mshv.h>
 
-#include "../../../kernel/fpu/legacy.h"
+#include "../../kernel/fpu/legacy.h"
 #include "mshv.h"
 #include "mshv_vtl.h"
 #include "hyperv_vmbus.h"
