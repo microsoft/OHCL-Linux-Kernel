@@ -88,6 +88,8 @@ config MSHV_VTL
 	depends on OF
 	select CPUMASK_OFFSTACK
 	select HYPERV_VTL_MODE
+	# MTRRs are not per-VTL and are controlled by VTL0, so don't look at or mutate them.
+	depends on !MTRR
 	help
 	  Select this option to enable Hyper-V VTL driver.
 	  Virtual Secure Mode (VSM) is a set of hypervisor capabilities and
