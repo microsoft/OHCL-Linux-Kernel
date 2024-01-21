@@ -85,6 +85,7 @@ config MSHV_VTL
 	tristate "Microsoft Hyper-V VTL driver"
 	depends on MSHV
 	depends on TRANSPARENT_HUGEPAGE
+	select CPUMASK_OFFSTACK
 	select HYPERV_VTL_MODE
 	help
 	  Select this option to enable Hyper-V VTL driver.
