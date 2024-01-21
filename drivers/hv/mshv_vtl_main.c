@@ -210,6 +210,7 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 	struct hv_register_assoc reg_assoc = {};
 	union hv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
+	int ret;
 
 	reg_page = alloc_page(GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL);
 	if (!reg_page) {
@@ -222,15 +223,44 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 	reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_uint64;
 
-	if (hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				     1, input_vtl_zero, &reg_assoc)) {
-		WARN(1, "failed to setup register page\n");
+	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+				       1, input_vtl_zero, &reg_assoc);
+	if (ret) {
 		__free_page(reg_page);
-		return;
+		if (ret == -EINVAL) {
+			/*
+			 * TODO: replace `ret == -EINVAL` with
+			 *       `ret == HV_STATUS_INVALID_PARAMETER'.
+			 *
+			 * The older hypervisors might not support the register page.
+			 * This feature is a performance optimization enabling the user
+			 * mode not to use hypercalls for setting general purpose registers.
+			 * The register page not being present or not being used isn't a bug.
+			 *
+			 * If the register page is not supported, the hypervisor returns
+			 * `HV_STATUS_INVALID_PARAMETER`. That cannot be detected here as the
+			 * `hv_call_set_vp_registers` above calls `hv_status_to_errno` whereby
+			 * the original `HV_STATUS` is lost having been converted to `errno`.
+			 *
+			 * The best approximation is `ret == -EINVAL`. It is imprecise because of
+			 * `HV_STATUS` to `errno` conversion, and due to that this is a necessary
+			 * condition but not a sufficient one.
+			 *
+			 * The situation could be rectified by refactoring the code of
+			 * `hv_call_set_vp_registers`by pulling out the hypercall-related part
+			 * into some `hv_call_set_vp_registers_raw` function. Then here we could
+			 * call `hv_call_set_vp_registers_raw` to be able to be precise when detecting
+			 * whether the register page is available or not.
+			 */
+			pr_info("not using the register page");
+		} else {
+			pr_emerg("error when setting up the register page: %d\n", ret);
+			BUG();
+		}
+	} else {
+		per_cpu->reg_page = reg_page;
+		mshv_has_reg_page = true;
 	}
-
-	per_cpu->reg_page = reg_page;
-	mshv_has_reg_page = true;
 }
 
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
