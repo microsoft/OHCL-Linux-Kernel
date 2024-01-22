@@ -35,7 +35,10 @@ struct mshv_vtl_cpu_context {
 struct mshv_vtl_run {
 	u32 cancel;
 	u32 vtl_ret_action_size;
-	u32 pad[2];
+	__u32 flags;
+	__u8 scan_proxy_irr;
+	__u8 pad[2];
+	__u8 enter_mode;
 	char exit_message[MAX_RUN_MSG_SIZE];
 	union {
 		struct mshv_vtl_cpu_context cpu_context;
