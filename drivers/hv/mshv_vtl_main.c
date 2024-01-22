@@ -15,6 +15,7 @@
 #include <linux/cpuhotplug.h>
 #include <linux/count_zeros.h>
 #include <linux/entry-virt.h>
+#include <linux/context_tracking.h>
 #include <linux/eventfd.h>
 #include <linux/poll.h>
 #include <linux/file.h>
@@ -601,14 +602,10 @@ static bool mshv_vtl_process_intercept(void)
 	return false;
 }
 
-static bool in_idle;
 static bool in_idle_is_enabled;
-module_param(in_idle, bool, 0);
-MODULE_PARM_DESC(in_idle, "Enter VTL0 in idle threads");
-
 DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 
-void mshv_vtl_switch_to_vtl0_irqoff(void)
+static void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
 	struct hv_vp_assist_page *hvp;
 	struct mshv_vtl_cpu_context *cpu_ctx = &mshv_vtl_this_run()->cpu_context;
@@ -648,66 +645,46 @@ static void mshv_vtl_idle(void)
 	}
 }
 
-static bool mshv_vtl_is_play_idle(void)
-{
-	/*
-	 * Use play idle strategy, if nohz_full is not enabled and in-idle mode
-	 * is not enabled.
-	 */
-	return !tick_nohz_full_enabled() && !READ_ONCE(in_idle_is_enabled);
-}
+/* 0 is fast, 1 is play idle, 2 is idle2vtl0 */
+#define MODE_MASK 0xf
+#define REENTER_SHIFT 4
 
-static void mshv_vtl_vtl0_enter(void)
-{
-	preempt_disable();
-
-	if (mshv_vtl_is_play_idle()) {
-		current->flags |= PF_IDLE;
-		/* Enter idle */
-		tick_nohz_idle_enter();
-	}
-}
-
-static void mshv_vtl_vtl0_exit(void)
-{
-	BUG_ON(!mshv_vtl_is_play_idle() && current->flags & PF_IDLE);
-
-	if (mshv_vtl_is_play_idle()) {
-		/* Exit idle and resume ticks */
-		tick_nohz_idle_exit();
-
-		current->flags &= ~PF_IDLE;
-	}
-
-	preempt_enable();
-}
+#define enter_mode(mode) ((mode) & MODE_MASK)
+#define reenter_mode(mode) (((mode) >> REENTER_SHIFT) & MODE_MASK)
 
 static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 {
-	mshv_vtl_vtl0_enter();
+	u32 mode, enter, reenter;
+
+	preempt_disable();
+	mode = READ_ONCE(mshv_vtl_this_run()->enter_mode);
+	enter = enter_mode(mode);
+	reenter = reenter_mode(mode);
+
 	for (;;) {
 		unsigned long irq_flags;
 		struct hv_vp_assist_page *hvp;
 		int ret;
 
 		if (__xfer_to_guest_mode_work_pending()) {
-			mshv_vtl_vtl0_exit();
+			preempt_enable();
 			ret = xfer_to_guest_mode_handle_work();
 			if (ret)
 				return ret;
-			mshv_vtl_vtl0_enter();
+			preempt_disable();
 		}
 
 		local_irq_save(irq_flags);
 		if (READ_ONCE(mshv_vtl_this_run()->cancel)) {
 			local_irq_restore(irq_flags);
-			mshv_vtl_vtl0_exit();
+			preempt_enable();
 			return -EINTR;
 		}
 
-		if (smp_load_acquire(&in_idle_is_enabled)) {
-			/* Enters VTL0 in idle */
-
+		if (tick_nohz_full_enabled() || nr_cpu_ids == 1 || !enter) {
+			mshv_vtl_switch_to_vtl0_irqoff();
+			local_irq_restore(irq_flags);
+		} else if (enter == 2 && smp_load_acquire(&in_idle_is_enabled)) {
 			set_current_state(TASK_INTERRUPTIBLE);
 			this_cpu_write(mshv_vtl_thread, current);
 			local_irq_restore(irq_flags);
@@ -718,13 +695,21 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 				this_cpu_write(mshv_vtl_thread, NULL);
 				continue;
 			}
-		} else {
-			/* Stop ticks if play idle */
-			if (mshv_vtl_is_play_idle())
-				tick_nohz_idle_stop_tick();
+		} else { /* play idle */
+			current->flags |= PF_IDLE;
+			/* Enter idle */
+			tick_nohz_idle_enter();
+			/* Stop ticks */
+			tick_nohz_idle_stop_tick();
 
+			ct_idle_enter();
 			mshv_vtl_switch_to_vtl0_irqoff();
+			ct_idle_exit();
 			local_irq_restore(irq_flags);
+
+			tick_nohz_idle_exit();
+
+			current->flags &= ~PF_IDLE;
 		}
 
 		hvp = hv_vp_assist_page[smp_processor_id()];
@@ -734,6 +719,12 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 			if (!mshv_vsm_capabilities.intercept_page_available &&
 			    likely(!mshv_vtl_process_intercept()))
 				goto done;
+
+			/*
+			 * Woken up with nothing to do, switch to the reenter
+			 * mode
+			 */
+			enter = reenter;
 			break;
 
 		case MSHV_ENTRY_REASON_INTERCEPT:
@@ -748,7 +739,7 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 	}
 
 done:
-	mshv_vtl_vtl0_exit();
+	preempt_enable();
 
 	return 0;
 }
@@ -1575,7 +1566,7 @@ static int __init mshv_vtl_init(void)
 	 * The idle routine has been set up, we can now mark in-idle mode as
 	 * enabled if in_idle is set.
 	*/
-	smp_store_release(&in_idle_is_enabled, in_idle);
+	smp_store_release(&in_idle_is_enabled, true);
 
 	return 0;
 
