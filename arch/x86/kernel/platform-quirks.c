@@ -15,6 +15,14 @@ void __init x86_early_init_platform_quirks(void)
 	x86_platform.legacy.devices.pnpbios = 1;
 
 	switch (boot_params.hdr.hardware_subarch) {
+	/*
+	 * HACK: uh boot sets this to stop reading VTL0 mem
+	 * Setting it in hv_vtl2_init_platform is too late - we still see
+	 * the memory reads from reserve_bios_regions and probe_roms.
+	 */
+	case X86_SUBARCH_LGUEST:
+		x86_init.resources.probe_roms = x86_init_noop;
+		break;
 	case X86_SUBARCH_PC:
 		x86_platform.legacy.reserve_bios_regions = 1;
 		break;
