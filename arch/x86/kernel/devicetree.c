@@ -166,6 +166,12 @@ static void __init dtb_lapic_setup(void)
 	} else {
 		register_lapic_address(lapic_addr);
 	}
+
+	/* Ensure the x2apic ops have been set before trying to access
+	the apic. */
+	if (x2apic_enabled())
+		default_acpi_madt_oem_check("", "");
+
 	smp_found_config = 1;
 	pic_mode = !of_property_read_bool(dn, "intel,virtual-wire-mode");
 	pr_info("%s compatibility mode.\n", pic_mode ? "IMCR and PIC" : "Virtual Wire");
