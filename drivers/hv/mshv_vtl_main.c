@@ -19,6 +19,9 @@
 #include <linux/vmalloc.h>
 #include <asm/boot.h>
 #include <asm/debugreg.h>
+#include <asm/mshyperv.h>
+#include <asm/trace/hyperv.h>
+#include <linux/tick.h>
 #include <asm/pgalloc.h>
 #include <asm/mshyperv.h>
 #include <trace/events/ipi.h>
@@ -955,9 +958,83 @@ static bool mshv_vtl_process_intercept(void)
 	return false;
 }
 
-static int mshv_vtl_ioctl_return_to_lower_vtl(void)
+static bool in_idle;
+static bool in_idle_is_enabled;
+module_param(in_idle, bool, 0);
+MODULE_PARM_DESC(in_idle, "Enter VTL0 in idle threads");
+
+DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
+
+void mshv_vtl_switch_to_vtl0_irqoff(void)
+{
+	struct hv_vp_assist_page *hvp;
+	struct mshv_vtl_cpu_context *cpu_ctx = &mshv_vtl_this_run()->cpu_context;
+
+	trace_mshv_vtl_enter_vtl0(cpu_ctx);
+
+	mshv_vtl_return(cpu_ctx);
+	hvp = hv_vp_assist_page[smp_processor_id()];
+
+	trace_mshv_vtl_exit_vtl0(hvp->vtl_entry_reason, cpu_ctx);
+}
+
+static void mshv_vtl_idle(void)
+{
+	struct task_struct *p;
+
+	p = this_cpu_read(mshv_vtl_thread);
+
+	if (p) {
+		mshv_vtl_switch_to_vtl0_irqoff();
+
+		/* We are not the vtl thread, it means we need to wake it up */
+		if (current != p) {
+			this_cpu_write(mshv_vtl_thread, NULL);
+			wake_up_process(p);
+		}
+		raw_local_irq_enable();
+	} else {
+		native_safe_halt();
+	}
+}
+
+static bool mshv_vtl_is_play_idle(void)
+{
+	/*
+	 * Use play idle strategy, if nohz_full is not enabled and in-idle mode
+	 * is not enabled.
+	 */
+	return !tick_nohz_full_enabled() && !READ_ONCE(in_idle_is_enabled);
+}
+
+static void mshv_vtl_vtl0_enter(void)
 {
 	preempt_disable();
+
+	if (mshv_vtl_is_play_idle()) {
+		current->flags |= PF_IDLE;
+		/* Enter idle */
+		tick_nohz_idle_enter();
+	}
+}
+
+static void mshv_vtl_vtl0_exit(void)
+{
+	BUG_ON(!mshv_vtl_is_play_idle() && current->flags & PF_IDLE);
+
+	if (mshv_vtl_is_play_idle()) {
+		/* Exit idle and resume ticks */
+		tick_nohz_idle_exit();
+
+		current->flags &= ~PF_IDLE;
+	}
+
+	preempt_enable();
+}
+
+static int mshv_vtl_ioctl_return_to_lower_vtl(void)
+{
+	mshv_vtl_vtl0_enter();
 	for (;;) {
 		const unsigned long VTL0_WORK = _TIF_SIGPENDING | _TIF_NEED_RESCHED |
 						_TIF_NOTIFY_RESUME | _TIF_NOTIFY_SIGNAL;
@@ -972,18 +1049,37 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		cancel = READ_ONCE(mshv_vtl_this_run()->cancel);
 		if (unlikely((ti_work & VTL0_WORK) || cancel)) {
 			local_irq_restore(irq_flags);
-			preempt_enable();
+			mshv_vtl_vtl0_exit();
 			if (cancel)
 				ti_work |= _TIF_SIGPENDING;
 			ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
 			if (ret)
 				return ret;
-			preempt_disable();
+			mshv_vtl_vtl0_enter();
 			continue;
 		}
 
-		mshv_vtl_return(&mshv_vtl_this_run()->cpu_context);
-		local_irq_restore(irq_flags);
+		if (smp_load_acquire(&in_idle_is_enabled)) {
+			/* Enters VTL0 in idle */
+
+			set_current_state(TASK_IDLE);
+			this_cpu_write(mshv_vtl_thread, current);
+			local_irq_restore(irq_flags);
+
+			schedule_preempt_disabled();
+
+			if (this_cpu_read(mshv_vtl_thread)) {
+				this_cpu_write(mshv_vtl_thread, NULL);
+				continue;
+			}
+		} else {
+			/* Stop ticks if play idle */
+			if (mshv_vtl_is_play_idle())
+				tick_nohz_idle_stop_tick();
+
+			mshv_vtl_switch_to_vtl0_irqoff();
+			local_irq_restore(irq_flags);
+		}
 
 		hvp = hv_vp_assist_page[smp_processor_id()];
 		this_cpu_inc(num_vtl0_transitions);
@@ -1006,7 +1102,7 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 	}
 
 done:
-	preempt_enable();
+	mshv_vtl_vtl0_exit();
 	return 0;
 }
 
@@ -1745,6 +1841,13 @@ static int __init mshv_vtl_init(void)
 	}
 
 	mshv_vtl_init_memory();
+	mshv_vtl_set_idle(mshv_vtl_idle);
+
+	/*
+	 * The idle routine has been set up, we can now mark in-idle mode as
+	 * enabled if in_idle is set.
+	*/
+	smp_store_release(&in_idle_is_enabled, in_idle);
 
 	return 0;
 
