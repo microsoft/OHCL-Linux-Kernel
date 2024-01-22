@@ -1302,6 +1302,26 @@ static int mshv_vtl_low_mmap(struct file *filp, struct vm_area_struct *vma)
 	return 0;
 }
 
+static ssize_t mshv_vtl_transitions_show(struct device *dev, struct device_attribute *attr, char *buff)
+{
+	int length = 0, cpu;
+
+	length += sysfs_emit_at(buff, length, "cpu#x vtl-transitions\n");
+
+	for_each_online_cpu(cpu)
+		length += sysfs_emit_at(buff, length, "cpu%d %llu\n", cpu, per_cpu(num_vtl0_transitions, cpu));
+
+	return length;
+}
+
+static DEVICE_ATTR_RO(mshv_vtl_transitions);
+
+static struct attribute *mshv_hvcall_client_attrs[] = {
+	&dev_attr_mshv_vtl_transitions.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(mshv_hvcall_client);
+
 static const struct file_operations mshv_vtl_low_file_ops = {
 	.owner		= THIS_MODULE,
 	.open		= mshv_vtl_low_open,
@@ -1309,6 +1329,7 @@ static const struct file_operations mshv_vtl_low_file_ops = {
 };
 
 static struct miscdevice mshv_vtl_low = {
+	.groups = mshv_hvcall_client_groups,
 	.name = "mshv_vtl_low",
 	.nodename = "mshv_vtl_low",
 	.fops = &mshv_vtl_low_file_ops,
