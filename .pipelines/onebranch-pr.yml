@@ -1,0 +1,41 @@
+#################################################################################
+#                               OneBranch Pipelines                             #
+# This pipeline was created by EasyStart from a sample located at:              #
+#   https://aka.ms/obpipelines/easystart/samples                                #
+# Documentation:  https://aka.ms/obpipelines                                    #
+# Yaml Schema:    https://aka.ms/obpipelines/yaml/schema                        #
+# Retail Tasks:   https://aka.ms/obpipelines/tasks                              #
+# Support:        https://aka.ms/onebranchsup                                   #
+#################################################################################
+
+variables:
+  LinuxContainerImage: 'mcr.microsoft.com/onebranch/cbl-mariner/build:2.0' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
+  DEBIAN_FRONTEND: noninteractive
+  PipelineShortName: 'prbuild'
+
+trigger: none
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: OneBranch.Pipelines/GovernedTemplates
+      ref: refs/heads/main
+    - repository: msft-lkt
+      type: git
+      name: LSG-linux/msft-lkt
+      ref: refs/heads/main
+
+extends:
+  template: v2/OneBranch.NonOfficial.CrossPlat.yml@templates # https://aka.ms/obpipelines/templates
+  parameters:
+    featureFlags:
+      runHostSDL: true
+      linuxHostSourceScan: true
+    globalSdl: # https://aka.ms/obpipelines/sdl
+      credscan:
+        enabled: false
+      policheck:
+        break: true # always break the build on policheck issues. You can disable it by setting to 'false'
+    stages:
+      - template: ../pipelines/templates/stages-pr.yml
