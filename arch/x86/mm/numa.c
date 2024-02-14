@@ -163,6 +163,23 @@ static void __init numa_init_array(void)
 	}
 }
 
+static void __init of_parse_and_init_cpus(void)
+{
+	struct device_node *dn;
+	int cpuid = 0;
+	int nid;
+
+	for_each_of_cpu_node(dn) {
+		if (cpuid >= NR_CPUS) {
+			pr_warn("NR_CPUS too small for %d cpuid\n", cpuid);
+			return;
+		}
+		nid = of_node_to_nid(dn);
+		numa_set_node(cpuid, nid);
+		cpuid++;
+	}
+}
+
 static int __init numa_init(int (*init_func)(void))
 {
 	int i;
@@ -178,6 +195,9 @@ static int __init numa_init(int (*init_func)(void))
 	ret = numa_register_nodes();
 	if (ret < 0)
 		return ret;
+
+	if (acpi_disabled)
+		of_parse_and_init_cpus();
 
 	for (i = 0; i < nr_cpu_ids; i++) {
 		int nid = early_cpu_to_node(i);
