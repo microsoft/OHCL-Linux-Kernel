@@ -369,7 +369,7 @@ void __init hv_apic_init(void)
 		 * Avoid overwriting it.
 		 */
 		if (!cc_platform_has(CC_ATTR_GUEST_SEV_SNP) || !sev_restricted_injection_enabled())
-			apic_set_eoi_write(hv_apic_eoi_write);
+			apic_update_callback(eoi, hv_apic_eoi_write);
 
 		if (!x2apic_enabled()) {
 			apic_update_callback(read, hv_apic_read);

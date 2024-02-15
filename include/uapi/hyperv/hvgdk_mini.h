@@ -307,7 +307,7 @@ enum hv_interrupt_type {
 #if defined(__aarch64__)
 	HV_ARM64_INTERRUPT_TYPE_FIXED		= 0x0000,
 	HV_ARM64_INTERRUPT_TYPE_MAXIMUM		= 0x0008,
-#else
+#elif defined(__x86_64__)
 	HV_X64_INTERRUPT_TYPE_FIXED		= 0x0000,
 	HV_X64_INTERRUPT_TYPE_LOWESTPRIORITY	= 0x0001,
 	HV_X64_INTERRUPT_TYPE_SMI		= 0x0002,
@@ -319,6 +319,7 @@ enum hv_interrupt_type {
 	HV_X64_INTERRUPT_TYPE_LOCALINT0		= 0x0008,
 	HV_X64_INTERRUPT_TYPE_LOCALINT1		= 0x0009,
 	HV_X64_INTERRUPT_TYPE_MAXIMUM		= 0x000A,
+#endif	
 };
 
 /* Define synthetic interrupt source. */
@@ -654,6 +655,7 @@ struct hv_vp_assist_page {
 } __packed;
 
 enum hv_register_name {
+#if defined(__x86_64__)
 	/* Suspend Registers */
 	HV_REGISTER_EXPLICIT_SUSPEND		= 0x00000000,
 	HV_REGISTER_INTERCEPT_SUSPEND		= 0x00000001,
@@ -1066,6 +1068,7 @@ union hv_arm64_pending_interruption_register {
 #endif /* defined(__aarch64__) */
 
 union hv_register_value {
+#if defined(__x86_64__)
 	struct hv_u128 reg128;
 	__u64 reg64;
 	__u32 reg32;
@@ -1120,6 +1123,7 @@ struct hv_input_set_vp_registers {
 } __packed;
 
 union hv_msi_entry {
+#if defined(__x86_64__)
 	u64 as_uint64;
 	struct {
 		u32 address;

@@ -390,7 +390,7 @@ static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 		}
 
 		proxy = (struct hv_x64_proxy_interrupt_message_payload *)msg->u.payload;
-		run = mshv_this_run();
+		run = mshv_vtl_this_run();
 		if (proxy->assert_multiple) {
 			for (int i = 0; i < 8; i++)
 				run->proxy_irr[i] |= READ_ONCE(proxy->u.asserted_irr[i]);

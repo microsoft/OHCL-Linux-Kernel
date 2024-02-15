@@ -70,7 +70,6 @@ struct ms_hyperv_info {
 		};
 	};
 	u64 shared_gpa_boundary;
-	u8 vtl;
 };
 extern struct ms_hyperv_info ms_hyperv;
 extern bool hv_nested;
@@ -368,13 +367,5 @@ static inline enum hv_isolation_type hv_get_isolation_type(void)
 	return HV_ISOLATION_TYPE_NONE;
 }
 #endif /* CONFIG_HYPERV */
-
-static inline struct hv_vp_assist_page *hv_get_vp_assist_page(unsigned int cpu)
-{
-	if (!hv_vp_assist_page)
-		return NULL;
-
-	return hv_vp_assist_page[cpu];
-}
 
 #endif
