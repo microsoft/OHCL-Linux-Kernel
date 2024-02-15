@@ -352,7 +352,7 @@ struct vmcb_save_area {
 	 * SEV-ES guests when referenced through the GHCB or for
 	 * saving to the host save area.
 	 */
-	u8 reserved_7[72];
+	u8 reserved_0x298[72];
 	u32 spec_ctrl;		/* Guest version of SPEC_CTRL at 0x2E0 */
 	u8 reserved_7b[4];
 	u32 pkru;

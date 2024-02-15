@@ -517,20 +517,6 @@ static __init void hv_snp_get_rtc_noop(struct timespec64 *now) { }
 
 static u32 processor_count;
 
-static __init void hv_snp_get_smp_config(unsigned int early)
-{
-	if (!early) {
-		while (num_processors < processor_count) {
-			early_per_cpu(x86_cpu_to_apicid, num_processors) = num_processors;
-			early_per_cpu(x86_bios_cpu_apicid, num_processors) = num_processors;
-			physid_set(num_processors, phys_cpu_present_map);
-			set_cpu_possible(num_processors, true);
-			set_cpu_present(num_processors, true);
-			num_processors++;
-		}
-	}
-}
-
 struct memory_map_entry {
 	u64 starting_gpn;
 	u64 numpages;
@@ -648,7 +634,7 @@ static void __init ms_hyperv_init_platform(void)
 
 
 		if (cc_platform_has(CC_ATTR_GUEST_SEV_SNP)) {
-			static_branch_enable(&isolation_type_en_snp);
+			static_branch_enable(&isolation_type_snp);
 		} else if (hv_get_isolation_type() == HV_ISOLATION_TYPE_SNP) {
 			static_branch_enable(&isolation_type_snp);
 #ifdef CONFIG_SWIOTLB
@@ -811,7 +797,7 @@ static void __init ms_hyperv_init_platform(void)
 		x86_init.resources.probe_roms = x86_init_noop;
 		x86_init.resources.reserve_resources = x86_init_noop;
 		x86_init.mpparse.find_smp_config = x86_init_noop;
-		x86_init.mpparse.get_smp_config = hv_snp_get_smp_config;
+		x86_init.mpparse.get_smp_config = x86_init_uint_noop;
 
 		/*
 		 * Hyper-V SEV-SNP enlightened guest doesn't support ioapic

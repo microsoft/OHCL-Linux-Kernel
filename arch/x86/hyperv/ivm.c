@@ -288,7 +288,7 @@ static void snp_cleanup_vmsa(struct sev_es_save_area *vmsa)
 		free_page((unsigned long)vmsa);
 }
 
-int hv_snp_boot_ap(int cpu, unsigned long start_ip)
+int ivm_hv_snp_boot_ap(int cpu, unsigned long start_ip)
 {
 	struct sev_es_save_area *vmsa = (struct sev_es_save_area *)
 		__get_free_page(GFP_KERNEL | __GFP_ZERO);
@@ -640,16 +640,6 @@ bool hv_is_isolation_supported(void)
 }
 
 DEFINE_STATIC_KEY_FALSE(isolation_type_snp);
-DEFINE_STATIC_KEY_FALSE(isolation_type_en_snp);
-
-/*
- * hv_isolation_type_en_snp - Check system runs in the AMD SEV-SNP based
- * isolation enlightened VM.
- */
-bool hv_isolation_type_en_snp(void)
-{
-	return static_branch_unlikely(&isolation_type_en_snp);
-}
 
 /*
  * hv_isolation_type_snp - Check system runs in the AMD SEV-SNP based

@@ -27,6 +27,7 @@
 #define HV_VP_REGISTER_PAGE_VERSION_1	1u
 
 struct hv_vp_register_page {
+#if defined(__x86_64__)
 	__u16 version;
 	__u8 isvalid;
 	__u8 rsvdz;
@@ -113,6 +114,7 @@ struct hv_vp_register_page {
 #define HV_PARTITION_PROCESSOR_FEATURES_BANKS 1
 #else
 #define HV_PARTITION_PROCESSOR_FEATURES_BANKS 2
+#endif
 
 union hv_partition_processor_features {
 	__u64 as_uint64[HV_PARTITION_PROCESSOR_FEATURES_BANKS];
@@ -167,8 +169,7 @@ union hv_partition_processor_features {
 		__u64 dzpermitted : 1;
 		__u64 reserved : 17;
 	} __packed;
-#endif
-#if defined(__x86_64__)
+#elif defined(__x86_64__)
 	struct {
 		__u64 sse3_support:1;
 		__u64 lahf_sahf_support:1;
@@ -264,6 +265,7 @@ union hv_partition_processor_features {
 		__u64 fsrep_cmpsb:1;
 		__u64 reserved_bank1:42;
 	} __packed;
+#endif	
 };
 
 union hv_partition_processor_xsave_features {

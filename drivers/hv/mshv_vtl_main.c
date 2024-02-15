@@ -2229,6 +2229,8 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 	default:
 		return VM_FAULT_SIGBUS;
 	}
+
+	return ret;
 }
 
 static vm_fault_t mshv_vtl_low_fault(struct vm_fault *vmf)
