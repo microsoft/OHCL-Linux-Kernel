@@ -15,7 +15,7 @@ early_hvcall_pg(void)
 }
 
 static u8 early_hvcall_pg_input[4096]  __attribute__((aligned(4096)));
-static u8 early_hvcall_pg_output[4096] __attribute__((aligned(4096)));
+static u8 __maybe_unused early_hvcall_pg_output[4096] __attribute__((aligned(4096)));
 
 static void early_connect_to_hv(void)
 {

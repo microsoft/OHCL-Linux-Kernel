@@ -359,7 +359,7 @@ void vmbus_disconnect(void)
 			set_memory_encrypted((unsigned long)
 				vmbus_connection.int_page, 1);
 
-		hv_free_hyperv_page((unsigned long)vmbus_connection.int_page);
+		hv_free_hyperv_page(vmbus_connection.int_page);
 		vmbus_connection.int_page = NULL;
 	}
 
