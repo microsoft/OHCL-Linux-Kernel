@@ -14,6 +14,13 @@
 #include <linux/time64.h>
 
 /*
+ * Virtual Trust Levels.
+ */
+#define HV_VTL_NORMAL 0x0
+#define HV_VTL_SECURE 0x1
+#define HV_VTL_MGMT   0x2
+
+/*
  * While not explicitly listed in the TLFS, Hyper-V always runs with a page size
  * of 4096. These definitions are used when communicating with Hyper-V using
  * guest physical pages and guest physical page addresses, since the guest page
@@ -93,6 +100,23 @@
 #define HV_ISOLATION				BIT(22)
 
 /*
+ * VP assist page register layout.
+ */
+union hv_vp_assist_reg_contents {
+	u64 as_uint64;
+	struct {
+		u64 enable:1;
+		u64 reserved:11;
+		u64 pfn:52;
+	} __packed;
+};
+
+#define HV_VP_ASSIST_PAGE_ENABLE	0x00000001
+#define HV_VP_ASSIST_PAGE_ADDRESS_SHIFT	12
+#define HV_VP_ASSIST_PAGE_ADDRESS_MASK	\
+		(~((1ull << HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_SHIFT) - 1))
+
+/*
  * TSC page layout.
  */
 struct ms_hyperv_tsc_page {
@@ -149,6 +173,7 @@ union hv_reference_tsc_msr {
 #define HVCALL_ENABLE_VP_VTL			0x000f
 #define HVCALL_NOTIFY_LONG_SPIN_WAIT		0x0008
 #define HVCALL_SEND_IPI				0x000b
+#define HVCALL_ENABLE_VP_VTL			0x000f
 #define HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE_EX	0x0013
 #define HVCALL_FLUSH_VIRTUAL_ADDRESS_LIST_EX	0x0014
 #define HVCALL_SEND_IPI_EX			0x0015
@@ -168,6 +193,7 @@ union hv_reference_tsc_msr {
 #define HVCALL_RETARGET_INTERRUPT		0x007e
 #define HVCALL_START_VP				0x0099
 #define HVCALL_GET_VP_ID_FROM_APIC_ID		0x009a
+#define HVCALL_START_VIRTUAL_PROCESSOR		0x0099
 #define HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_SPACE 0x00af
 #define HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_LIST 0x00b0
 #define HVCALL_MODIFY_SPARSE_GPA_PAGE_HOST_VISIBILITY 0x00db
@@ -246,6 +272,18 @@ enum HV_GENERIC_SET_FORMAT {
 enum hv_status {
 	__HV_STATUS_DEF(__HV_MAKE_HV_STATUS_ENUM)
 };
+#define HV_STATUS_SUCCESS			0
+#define HV_STATUS_INVALID_HYPERCALL_CODE	2
+#define HV_STATUS_INVALID_HYPERCALL_INPUT	3
+#define HV_STATUS_INVALID_ALIGNMENT		4
+#define HV_STATUS_INVALID_PARAMETER		5
+#define HV_STATUS_ACCESS_DENIED			6
+#define HV_STATUS_OPERATION_DENIED		8
+#define HV_STATUS_INSUFFICIENT_MEMORY		11
+#define HV_STATUS_INVALID_PORT_ID		17
+#define HV_STATUS_INVALID_CONNECTION_ID		18
+#define HV_STATUS_INSUFFICIENT_BUFFERS		19
+#define HV_STATUS_TIME_OUT			0x78
 
 /*
  * The Hyper-V TimeRefCount register and the TSC
@@ -801,6 +839,22 @@ struct hv_input_unmap_device_interrupt {
 	struct hv_interrupt_entry interrupt_entry;
 } __packed;
 
+struct hv_enable_vp_vtl_input {
+	u64 partitionid;
+	u32 vpindex;
+	u8 targetvtl;
+	u8 padding[3];
+	u8 context[0xe0];
+} __packed;
+
+struct hv_start_virtual_processor_input {
+	u64 partitionid;
+	u32 vpindex;
+	u8 targetvtl;
+	u8 padding[3];
+	u8 context[0xe0];
+} __packed;
+
 #define HV_SOURCE_SHADOW_NONE               0x0
 #define HV_SOURCE_SHADOW_BRIDGE_BUS_RANGE   0x1
 
@@ -872,4 +926,21 @@ union hv_connection_id {
 	} u;
 };
 
+union hv_input_vtl {
+	u8 as_uint8;
+	struct {
+		u8 target_vtl: 4;
+		u8 use_target_vtl: 1;
+		u8 reserved_z: 3;
+	};
+} __packed;
+
+struct hv_enable_vp_vtl {
+	u64				partition_id;
+	u32				vp_index;
+	union hv_input_vtl		target_vtl;
+	u8				mbz0;
+	u16				mbz1;
+	struct hv_init_vp_context	vp_context;
+} __packed;
 #endif

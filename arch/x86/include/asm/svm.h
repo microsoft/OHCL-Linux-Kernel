@@ -346,8 +346,61 @@ struct vmcb_save_area {
 	u64 br_to;
 	u64 last_excp_from;
 	u64 last_excp_to;
-	u8 reserved_0x298[72];
-	u64 spec_ctrl;		/* Guest version of SPEC_CTRL at 0x2E0 */
+
+	/*
+	 * The following part of the save area is valid only for
+	 * SEV-ES guests when referenced through the GHCB or for
+	 * saving to the host save area.
+	 */
+	u8 reserved_7[72];
+	u32 spec_ctrl;		/* Guest version of SPEC_CTRL at 0x2E0 */
+	u8 reserved_7b[4];
+	u32 pkru;
+	u8 reserved_7a[20];
+	u64 reserved_8;		/* rax already available at 0x01f8 */
+	u64 rcx;
+	u64 rdx;
+	u64 rbx;
+	u64 reserved_9;		/* rsp already available at 0x01d8 */
+	u64 rbp;
+	u64 rsi;
+	u64 rdi;
+	u64 r8;
+	u64 r9;
+	u64 r10;
+	u64 r11;
+	u64 r12;
+	u64 r13;
+	u64 r14;
+	u64 r15;
+	u8 reserved_10[16];
+	u64 sw_exit_code;
+	u64 sw_exit_info_1;
+	u64 sw_exit_info_2;
+	u64 sw_scratch;
+	union {
+		u64 sev_features;
+		struct {
+			u64 sev_feature_snp			: 1;
+			u64 sev_feature_vtom			: 1;
+			u64 sev_feature_reflectvc		: 1;
+			u64 sev_feature_restrict_injection	: 1;
+			u64 sev_feature_alternate_injection	: 1;
+			u64 sev_feature_full_debug		: 1;
+			u64 sev_feature_reserved1		: 1;
+			u64 sev_feature_snpbtb_isolation	: 1;
+			u64 sev_feature_resrved2		: 56;
+		};
+	};
+	u64 vintr_ctrl;
+	u64 guest_error_code;
+	u64 virtual_tom;
+	u64 tlb_id;
+	u64 pcpu_id;
+	u64 event_inject;
+	u64 xcr0;
+	u8 valid_bitmap[16];
+	u64 x87_state_gpa;
 } __packed;
 
 /* Save area definition for SEV-ES and SEV-SNP guests */

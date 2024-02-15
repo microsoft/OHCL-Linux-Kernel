@@ -112,8 +112,10 @@ static void __init __sme_early_enc_dec(resource_size_t paddr,
 		 * Create mappings for the current and desired format of
 		 * the memory. Use a write-protected mapping for the source.
 		 */
-		src = enc ? early_memremap_decrypted_wp(paddr, len) :
-			    early_memremap_encrypted_wp(paddr, len);
+//		src = enc ? early_memremap_decrypted_wp(paddr, len) :
+//			    early_memremap_encrypted_wp(paddr, len);
+		src = enc ? early_memremap_decrypted(paddr, len) :		
+			    early_memremap_encrypted(paddr, len);
 
 		dst = enc ? early_memremap_encrypted(paddr, len) :
 			    early_memremap_decrypted(paddr, len);

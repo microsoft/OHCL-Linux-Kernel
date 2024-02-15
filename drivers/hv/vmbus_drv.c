@@ -21,6 +21,7 @@
 #include <linux/hyperv.h>
 #include <linux/kernel_stat.h>
 #include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/clockchips.h>
 #include <linux/cpu.h>
 #include <linux/sched/isolation.h>
@@ -2323,6 +2324,8 @@ static int vmbus_device_add(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	int ret;
 
+	pr_info("VMBus is present in DeviceTree\n");
+
 	hv_dev = &pdev->dev;
 
 	ret = of_range_parser_init(&parser, np);
@@ -2346,6 +2349,17 @@ static int vmbus_device_add(struct platform_device *pdev)
 		*cur_res = res;
 		cur_res = &res->sibling;
 	}
+
+#ifndef HYPERVISOR_CALLBACK_VECTOR
+	vmbus_irq = of_irq_get(np, 0);
+	if (vmbus_irq > 0) {
+		vmbus_interrupt = irq_to_desc(vmbus_irq)->irq_data.hwirq;
+		pr_info("VMBus virq %d, hwirq %d\n", vmbus_irq, vmbus_interrupt);
+	} else {
+		pr_err("VMBus interrupt data can't be read from DeviceTree, error %d\n", vmbus_irq);
+		ret = vmbus_irq;
+	}
+#endif
 
 	return ret;
 }

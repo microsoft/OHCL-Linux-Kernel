@@ -18,6 +18,7 @@
 #include <linux/bitfield.h>
 #include <linux/cpumask.h>
 #include <linux/sched/task_stack.h>
+#include <linux/io.h>
 #include <linux/panic_notifier.h>
 #include <linux/ptrace.h>
 #include <linux/kdebug.h>
@@ -83,6 +84,12 @@ static struct ctl_table_header *hv_ctl_table_hdr;
  */
 u8 __percpu **hv_synic_eventring_tail;
 EXPORT_SYMBOL_GPL(hv_synic_eventring_tail);
+
+u64 hv_current_partition_id = ~0ull;
+EXPORT_SYMBOL_GPL(hv_current_partition_id);
+
+struct hv_vp_assist_page **hv_vp_assist_page;
+EXPORT_SYMBOL_GPL(hv_vp_assist_page);
 
 /*
  * Hyper-V specific initialization and shutdown code that is
@@ -374,6 +381,16 @@ int __init hv_common_init(void)
 	for (i = 0; i < num_possible_cpus(); i++)
 		hv_vp_index[i] = VP_INVAL;
 
+	/*
+	 * The VP assist page is useless to a TDX guest: the only use we
+	 * would have for it is lazy EOI, which can not be used with TDX.
+	 */
+	if (hv_isolation_type_tdx())
+		hv_vp_assist_page = NULL;
+	else
+		hv_vp_assist_page = kcalloc(num_possible_cpus(),
+						sizeof(*hv_vp_assist_page), GFP_KERNEL);
+
 	return 0;
 }
 
@@ -385,6 +402,9 @@ int __init hv_common_init(void)
 
 int hv_common_cpu_init(unsigned int cpu)
 {
+	union hv_vp_assist_reg_contents vp_assist_reg = { 0 };
+	struct hv_vp_assist_page **hvp = &hv_vp_assist_page[cpu];
+	
 	void **inputarg, **outputarg;
 	u8 **synic_eventring_tail;
 	u64 msr_vp_index;
@@ -410,6 +430,15 @@ int hv_common_cpu_init(unsigned int cpu)
 		if (hv_output_arg_exists()) {
 			outputarg = (void **)this_cpu_ptr(hyperv_pcpu_output_arg);
 			*outputarg = (char *)mem + HV_HYP_PAGE_SIZE;
+			if (hv_isolation_type_en_snp()) {
+				ret = set_memory_decrypted((unsigned long)*inputarg, 2);
+				if (ret) {
+					kfree(*inputarg);
+					return ret;
+				}
+
+				memset(*inputarg, 0x00, 2*PAGE_SIZE);
+			}
 		}
 
 		if (hv_root_partition) {
@@ -458,6 +487,44 @@ int hv_common_cpu_init(unsigned int cpu)
 	if (msr_vp_index > hv_max_vp_index)
 		hv_max_vp_index = msr_vp_index;
 
+	if (hv_root_partition) {
+		/*
+		 * For root partition we get the hypervisor provided VP assist
+		 * page, instead of allocating a new page.
+		 */
+		vp_assist_reg.as_uint64 = hv_get_register(HV_SYN_REG_VP_ASSIST_PAGE);
+		*hvp = memremap(vp_assist_reg.pfn << HV_VP_ASSIST_PAGE_ADDRESS_SHIFT,
+				PAGE_SIZE, MEMREMAP_WB);
+	} else {
+		/*
+		 * The VP assist page is an "overlay" page (see Hyper-V TLFS's
+		 * Section 5.2.1 "GPA Overlay Pages"). Here it must be zeroed
+		 * out to make sure we always write the EOI MSR in
+		 * hv_apic_eoi_write() *after* the EOI optimization is disabled
+		 * in hv_cpu_die(), otherwise a CPU may not be stopped in the
+		 * case of CPU offlining and the VM will hang.
+		 */
+		if (!*hvp) {
+			*hvp = __vmalloc(PAGE_SIZE, GFP_KERNEL | __GFP_ZERO);
+			if (*hvp)
+				vp_assist_reg.pfn = vmalloc_to_pfn(*hvp);
+		}
+
+		WARN_ON(!(*hvp));
+		if (*hvp) {
+			if (hv_isolation_type_en_snp()) {
+				WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1) != 0);
+				memset(*hvp, 0, PAGE_SIZE);
+			}
+
+			vp_assist_reg.enable = 1;
+			hv_set_register(HV_SYN_REG_VP_ASSIST_PAGE, vp_assist_reg.as_uint64);
+		}
+	}
+	
+	if (!hv_vp_assist_page)
+		return 0;
+
 	return 0;
 }
 
@@ -474,6 +541,55 @@ int hv_common_cpu_die(unsigned int cpu)
 	 * If a previously offlined CPU is brought back online again, the
 	 * originally allocated memory is reused in hv_common_cpu_init().
 	 */
+	unsigned long flags;
+	void **inputarg, **outputarg;
+	u8 **synic_eventring_tail;
+	void *mem;
+
+	local_irq_save(flags);
+
+	inputarg = (void **)this_cpu_ptr(hyperv_pcpu_input_arg);
+	mem = *inputarg;
+	*inputarg = NULL;
+
+	outputarg = (void **)this_cpu_ptr(hyperv_pcpu_output_arg);
+	*outputarg = NULL;
+
+	if (hv_root_partition) {
+		synic_eventring_tail = (u8 **)this_cpu_ptr(hv_synic_eventring_tail);
+		kfree(*synic_eventring_tail);
+		*synic_eventring_tail = NULL;
+	}
+
+	local_irq_restore(flags);
+
+	if (hv_isolation_type_en_snp())
+		set_memory_encrypted((unsigned long)mem, 1);
+
+	kfree(mem);
+
+	if (hv_vp_assist_page && hv_vp_assist_page[cpu]) {
+		union hv_vp_assist_reg_contents vp_assist_reg = { 0 };
+
+		if (hv_isolation_type_en_snp())
+			WARN_ON_ONCE(set_memory_encrypted(
+				    (unsigned long)hv_vp_assist_page[cpu],
+				    1) != 0);
+
+		if (hv_root_partition) {
+			/*
+			 * For root partition the VP assist page is mapped to
+			 * hypervisor provided page, and thus we unmap the
+			 * page here and nullify it, so that in future we have
+			 * correct page address mapped in hv_cpu_init.
+			 */
+			memunmap(hv_vp_assist_page[cpu]);
+			hv_vp_assist_page[cpu] = NULL;
+			vp_assist_reg.as_uint64 = hv_get_register(HV_SYN_REG_VP_ASSIST_PAGE);
+			vp_assist_reg.enable = 0;
+		}
+		hv_set_register(HV_SYN_REG_VP_ASSIST_PAGE, vp_assist_reg.as_uint64);
+	}
 
 	return 0;
 }
@@ -578,6 +694,12 @@ bool __weak hv_isolation_type_tdx(void)
 	return false;
 }
 EXPORT_SYMBOL_GPL(hv_isolation_type_tdx);
+
+bool __weak hv_isolation_type_en_snp(void)
+{
+	return false;
+}
+EXPORT_SYMBOL_GPL(hv_isolation_type_en_snp);
 
 void __weak hv_setup_vmbus_handler(void (*handler)(void))
 {

@@ -193,6 +193,29 @@ int hv_synic_alloc(void)
 			memset(hv_cpu->synic_message_page, 0, PAGE_SIZE);
 			memset(hv_cpu->synic_event_page, 0, PAGE_SIZE);
 		}
+
+		if (hv_isolation_type_en_snp()) {
+			ret = set_memory_decrypted((unsigned long)
+				hv_cpu->synic_message_page, 1);
+			ret |= set_memory_decrypted((unsigned long)
+				hv_cpu->synic_event_page, 1);
+			ret |= set_memory_decrypted((unsigned long)
+				hv_cpu->post_msg_page, 1);
+
+			if (ret) {
+				set_memory_encrypted((unsigned long)
+					hv_cpu->synic_message_page, 1);
+				set_memory_encrypted((unsigned long)
+					hv_cpu->synic_event_page, 1);
+				set_memory_encrypted((unsigned long)
+					hv_cpu->post_msg_page, 1);
+				goto err;
+			}
+
+			memset(hv_cpu->synic_message_page, 0, PAGE_SIZE);
+			memset(hv_cpu->synic_event_page, 0, PAGE_SIZE);
+			memset(hv_cpu->post_msg_page, 0, PAGE_SIZE);
+		}
 	}
 
 	return 0;
@@ -248,6 +271,12 @@ void hv_synic_free(void)
 		}
 
 		free_page((unsigned long)hv_cpu->post_msg_page);
+		if (hv_isolation_type_en_snp()) {
+			set_memory_encrypted((unsigned long)hv_cpu->synic_message_page, 1);
+			set_memory_encrypted((unsigned long)hv_cpu->synic_event_page, 1);
+			set_memory_encrypted((unsigned long)hv_cpu->post_msg_page, 1);
+		}
+
 		free_page((unsigned long)hv_cpu->synic_event_page);
 		free_page((unsigned long)hv_cpu->synic_message_page);
 	}

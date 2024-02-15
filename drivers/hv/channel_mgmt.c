@@ -140,6 +140,83 @@ const struct vmbus_device vmbus_devs[] = {
 	  .allowed_in_isolated = false,
 	},
 
+	/* GED */
+	{ .dev_type = HV_GED,
+	  HV_GED_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* GET */
+	{ .dev_type = HV_GET,
+	  HV_GET_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* GEL */
+	{ .dev_type = HV_GEL,
+	  HV_GEL_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* UART */
+	{ .dev_type = HV_UART,
+	  HV_UART_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* COM1 */
+	{ .dev_type = HV_COM1,
+	  HV_COM1_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* COM2 */
+	{ .dev_type = HV_COM2,
+	  HV_COM2_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* COM3 */
+	{ .dev_type = HV_COM3,
+	  HV_COM3_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* COM4 */
+	{ .dev_type = HV_COM4,
+	  HV_COM4_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* CRASHDUMP */
+	{ .dev_type = HV_CRASHDUMP,
+	  HV_CRASHDUMP_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* CRASHDUMP VTL0 */
+	{ .dev_type = HV_CRASHDUMP_VTL0,
+	  HV_CRASHDUMP_VTL0_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* CRASHDUMP VTL2 */
+	{ .dev_type = HV_CRASHDUMP_VTL2,
+	  HV_CRASHDUMP_VTL2_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
 	/* Unknown GUID */
 	{ .dev_type = HV_UNKNOWN,
 	  .perf_device = false,
@@ -990,16 +1067,28 @@ static bool vmbus_is_valid_offer(const struct vmbus_channel_offer_channel *offer
 	const guid_t *guid = &offer->offer.if_type;
 	u16 i;
 
-	if (!hv_is_isolation_supported())
-		return true;
+	pr_info("%s: entered\n", __func__);
 
-	if (is_hvsock_offer(offer))
+	if (!hv_is_isolation_supported()) {
+		pr_info("%s: true, !hv_is_isolation_supported\n", __func__);
 		return true;
+	}
+
+	if (is_hvsock_offer(offer)) {
+		pr_info("%s: true, is_hvsock_offer\n", __func__);
+		return true;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(vmbus_devs); i++) {
-		if (guid_equal(guid, &vmbus_devs[i].guid))
-			return vmbus_devs[i].allowed_in_isolated;
+		if (guid_equal(guid, &vmbus_devs[i].guid)) {
+			bool allowed_in_isolated = vmbus_devs[i].allowed_in_isolated;
+
+			pr_info("%s: %pUl allowed_in_isolation: %s\n", __func__, guid, allowed_in_isolated ? "true" : "false");
+			return allowed_in_isolated;
+		}
 	}
+
+	pr_info("%s: false\n", __func__);
 	return false;
 }
 
@@ -1020,8 +1109,9 @@ static void vmbus_onoffer(struct vmbus_channel_message_header *hdr)
 	if (!vmbus_is_valid_offer(offer)) {
 		pr_err_ratelimited("Invalid offer %d from the host supporting isolation\n",
 				   offer->child_relid);
-		atomic_dec(&vmbus_connection.offer_in_progress);
-		return;
+		pr_info("***** HEY, DID YOU FORGET TO ENABLE VMBUS OFFER FILTERING BEFORE RELEASE??? ****\n");
+		// atomic_dec(&vmbus_connection.offer_in_progress);
+		// return;
 	}
 
 	oldchannel = find_primary_channel_by_offer(offer);

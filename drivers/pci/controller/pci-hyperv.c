@@ -913,9 +913,20 @@ static int hv_pci_irqchip_init(void)
 	 * way to ensure that all the corresponding devices are also gone and
 	 * no interrupts will be generated.
 	 */
-	hv_msi_gic_irq_domain = acpi_irq_create_hierarchy(0, HV_PCI_MSI_SPI_NR,
-							  fn, &hv_pci_domain_ops,
-							  chip_data);
+	if (!acpi_disabled)
+#ifdef CONFIG_ACPI	
+		hv_msi_gic_irq_domain = acpi_irq_create_hierarchy(0, HV_PCI_MSI_SPI_NR,
+								fn, &hv_pci_domain_ops,
+								chip_data);
+#else
+		BUG();
+#endif								
+	else
+		hv_msi_gic_irq_domain = irq_domain_create_hierarchy(
+			irq_find_matching_fwnode(fn, DOMAIN_BUS_ANY),
+			0, HV_PCI_MSI_SPI_NR,
+			fn, &hv_pci_domain_ops,
+			chip_data);
 
 	if (!hv_msi_gic_irq_domain) {
 		pr_err("Failed to create Hyper-V arm64 vPCI MSI IRQ domain\n");

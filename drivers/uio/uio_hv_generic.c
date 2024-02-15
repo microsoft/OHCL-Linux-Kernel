@@ -283,6 +283,8 @@ hv_uio_probe(struct hv_device *dev,
 	pdata->info.irqcontrol = hv_uio_irqcontrol;
 	pdata->info.open = hv_uio_open;
 	pdata->info.release = hv_uio_release;
+	pr_emerg("TODO: implement hv_uio_mmap instead of hacking up uio.c\n");
+	//pdata->info.mmap = TODO;
 	pdata->info.irq = UIO_IRQ_CUSTOM;
 	atomic_set(&pdata->refcnt, 0);
 

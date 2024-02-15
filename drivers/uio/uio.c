@@ -742,6 +742,9 @@ static int uio_mmap_physical(struct vm_area_struct *vma)
 	vma->vm_ops = &uio_physical_vm_ops;
 	if (idev->info->mem[mi].memtype == UIO_MEM_PHYS)
 		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	// HACK, REMOVE by implementing hv_uio_mmap
+	if (idev->info->mem[mi].memtype == UIO_MEM_IOVA)
+		vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
 
 	/*
 	 * We cannot use the vm_iomap_memory() helper here,

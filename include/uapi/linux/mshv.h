@@ -239,6 +239,36 @@ struct mshv_sint_mask {
 	__u8 reserved[7];
 };
 
+struct mshv_pvalidate {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u8 validate;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[1];
+} __packed;
+
+struct mshv_rmpadjust {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u64 value;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[6];
+} __packed;
+
+struct mshv_host_visibility {
+	__u64 start_user_va;
+	__u64 end_user_va;
+	__u8 visible;
+	__u8 padding[7];
+} __packed;
+
+struct mshv_host_visibility_v {
+	__u64 visibility_count;
+	struct mshv_host_visibility **visibility;
+} __packed;
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -288,6 +318,11 @@ struct mshv_sint_mask {
 #define MSHV_VTL_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_vtl_ram_disposition)
 #define MSHV_VTL_SET_POLL_FILE		_IOW(MSHV_IOCTL, 0x25, struct mshv_vtl_set_poll_file)
 #define MSHV_VTL_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
+#define MSHV_VTL_PVALIDATE	_IOW(MSHV_IOCTL, 0x28, struct mshv_pvalidate)
+#define MSHV_VTL_RMPADJUST	_IOW(MSHV_IOCTL, 0x29, struct mshv_rmpadjust)
+#define MSHV_VTL_HOST_VISIBILITY	_IOW(MSHV_IOCTL, 0x30, struct mshv_host_visibility)
+#define MSHV_VTL_HOST_VISIBILITY_V	_IOW(MSHV_IOCTL, 0x31, struct mshv_host_visibility_v)
+
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)

@@ -20,6 +20,10 @@
 #include <linux/usb/xhci-dbgp.h>
 #include <asm/pci_x86.h>
 
+// #ifdef CONFIG_HV_HCL
+#include "early_mshvdbg_con.c"
+// #endif
+
 /* Simple VGA output */
 #define VGABASE		(__ISA_IO_base + 0xb8000)
 
@@ -389,6 +393,12 @@ static int __init setup_early_printk(char *buf)
 		if (!strncmp(buf, "xdbc", 4))
 			early_xdbc_parse_parameter(buf + 4, keep);
 #endif
+// #ifdef CONFIG_HV_HCL
+		if (!strncmp(buf, "mshvdbg_snp", 11))
+			early_console_register(&mshvdbg_console_snp, keep);
+		else if (!strncmp(buf, "mshvdbg", 7))
+			early_console_register(&mshvdbg_console, keep);
+// #endif
 
 		buf++;
 	}

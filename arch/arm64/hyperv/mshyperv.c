@@ -36,15 +36,18 @@ static int __init hyperv_init(void)
 	int	ret;
 
 	/*
-	 * Allow for a kernel built with CONFIG_HYPERV to be running in
-	 * a non-Hyper-V environment, including on DT instead of ACPI.
-	 * In such cases, do nothing and return success.
+	 * Not setting `hyperv_initialized` to `true` prevents
+	 * VMBus from initializing.
+	 * 
+	 * TODO: Add a property to our DT to check if hyper-v is running.
+	 * Or check through the TLFS interface.
+	 * 
 	 */
-	if (acpi_disabled)
-		return 0;
 
-	if (strncmp((char *)&acpi_gbl_FADT.hypervisor_id, "MsHyperV", 8))
-		return 0;
+#ifdef CONFIG_ACPI
+	 if (strncmp((char *)&acpi_gbl_FADT.hypervisor_id, "MsHyperV", 8))
+	 	return 0;
+#endif
 
 	/* Setup the guest ID */
 	guest_id = hv_generate_guest_id(LINUX_VERSION_CODE);
@@ -80,6 +83,8 @@ static int __init hyperv_init(void)
 		hv_common_free();
 		return ret;
 	}
+
+	hv_vtl_init_platform();
 
 	hyperv_initialized = true;
 	return 0;

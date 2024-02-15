@@ -5,7 +5,7 @@ menu "Microsoft Hyper-V guest support"
 config HYPERV
 	tristate "Microsoft Hyper-V client drivers"
 	depends on (X86 && X86_LOCAL_APIC && HYPERVISOR_GUEST) \
-		|| (ACPI && ARM64 && !CPU_BIG_ENDIAN)
+		|| (ARM64 && !CPU_BIG_ENDIAN)
 	select PARAVIRT
 	select X86_HV_CALLBACK_VECTOR if X86
 	select OF_EARLY_FLATTREE if OF
@@ -15,7 +15,7 @@ config HYPERV
 
 config HYPERV_VTL_MODE
 	bool "Enable Linux to boot in VTL context"
-	depends on X86_64 && HYPERV
+	depends on HYPERV
 	default n
 	help
 	  Virtual Secure Mode (VSM) is a set of hypervisor capabilities and
@@ -85,10 +85,10 @@ config MSHV_VTL
 	depends on MSHV
 	depends on TRANSPARENT_HUGEPAGE
 	depends on OF
-	select CPUMASK_OFFSTACK
-	select HYPERV_VTL_MODE
-	# MTRRs are not per-VTL and are controlled by VTL0, so don't look at or mutate them.
+	# On X86, the MTRRs are not per-VTL and are controlled by VTL0, so don't look at or mutate them.
 	depends on !MTRR
+	select HYPERV_VTL_MODE
+	select CPUMASK_OFFSTACK
 	help
 	  Select this option to enable Hyper-V VTL driver.
 	  Virtual Secure Mode (VSM) is a set of hypervisor capabilities and

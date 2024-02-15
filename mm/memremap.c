@@ -338,6 +338,8 @@ void *memremap_pages(struct dev_pagemap *pgmap, int nid)
 		params.pgprot = pgprot_decrypted(params.pgprot);
 		break;
 	case MEMORY_DEVICE_GENERIC:
+		if (pgmap->flags & PGMAP_DECRYPTED)
+			params.pgprot = pgprot_decrypted(params.pgprot);
 		break;
 	case MEMORY_DEVICE_PCI_P2PDMA:
 		params.pgprot = pgprot_noncached(params.pgprot);

@@ -234,6 +234,15 @@ int vmbus_connect(void)
 		(void *)((unsigned long)vmbus_connection.int_page +
 			(HV_HYP_PAGE_SIZE >> 1));
 
+	if (hv_isolation_type_snp() || hv_isolation_type_en_snp()) {
+		ret = set_memory_decrypted((unsigned long)
+				vmbus_connection.int_page, 1);
+		if (ret)
+			goto cleanup;
+
+		memset(vmbus_connection.int_page, 0, PAGE_SIZE);
+	}
+
 	/*
 	 * Setup the monitor notification facility. The 1st page for
 	 * parent->child and the 2nd page for child->parent
@@ -346,7 +355,11 @@ void vmbus_disconnect(void)
 		destroy_workqueue(vmbus_connection.work_queue);
 
 	if (vmbus_connection.int_page) {
-		hv_free_hyperv_page(vmbus_connection.int_page);
+		if (hv_isolation_type_en_snp())
+			set_memory_encrypted((unsigned long)
+				vmbus_connection.int_page, 1);
+
+		hv_free_hyperv_page((unsigned long)vmbus_connection.int_page);
 		vmbus_connection.int_page = NULL;
 	}
 

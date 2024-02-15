@@ -29,6 +29,7 @@
 #include <asm/hypervisor.h>
 #include <asm/mshyperv.h>
 #include <asm/apic.h>
+#include <asm/sev.h>
 
 #include <asm/trace/hyperv.h>
 
@@ -66,9 +67,15 @@ static u32 hv_apic_read(u32 reg)
 		rdmsr(HV_X64_MSR_TPR, reg_val, hi);
 		(void)hi;
 		return reg_val;
-
+	case APIC_ID:
+		if (hv_isolation_type_en_snp())
+			return smp_processor_id();
+		fallthrough;
 	default:
-		return native_apic_mem_read(reg);
+		if (!hv_isolation_type_en_snp())
+			return native_apic_mem_read(reg);
+		else
+			return 0;
 	}
 }
 
@@ -82,7 +89,8 @@ static void hv_apic_write(u32 reg, u32 val)
 		wrmsr(HV_X64_MSR_TPR, val, 0);
 		break;
 	default:
-		native_apic_mem_write(reg, val);
+		if (!hv_isolation_type_en_snp())
+			native_apic_mem_write(reg, val);
 	}
 }
 
@@ -110,6 +118,7 @@ static bool __send_ipi_mask_ex(const struct cpumask *mask, int vector,
 	struct hv_send_ipi_ex *ipi_arg;
 	unsigned long flags;
 	int nr_bank = 0;
+	int retry = 5;
 	u64 status = HV_STATUS_INVALID_PARAMETER;
 
 	if (!(ms_hyperv.hints & HV_X64_EX_PROCESSOR_MASKS_RECOMMENDED))
@@ -146,8 +155,10 @@ static bool __send_ipi_mask_ex(const struct cpumask *mask, int vector,
 		ipi_arg->vp_set.format = HV_GENERIC_SET_ALL;
 	}
 
-	status = hv_do_rep_hypercall(HVCALL_SEND_IPI_EX, 0, nr_bank,
+	do {
+		status = hv_do_rep_hypercall(HVCALL_SEND_IPI_EX, 0, nr_bank,
 			      ipi_arg, NULL);
+	} while (status == HV_STATUS_TIME_OUT && retry--);
 
 ipi_mask_ex_done:
 	local_irq_restore(flags);
@@ -161,6 +172,7 @@ static bool __send_ipi_mask(const struct cpumask *mask, int vector,
 	struct hv_send_ipi ipi_arg;
 	u64 status;
 	unsigned int weight;
+	int retry = 5;
 
 	trace_hyperv_send_ipi_mask(mask, vector);
 
@@ -217,8 +229,11 @@ static bool __send_ipi_mask(const struct cpumask *mask, int vector,
 		__set_bit(vcpu, (unsigned long *)&ipi_arg.cpu_mask);
 	}
 
-	status = hv_do_fast_hypercall16(HVCALL_SEND_IPI, ipi_arg.vector,
-				     ipi_arg.cpu_mask);
+	do {
+		status = hv_do_fast_hypercall16(HVCALL_SEND_IPI, ipi_arg.vector,
+						ipi_arg.cpu_mask);
+	} while (status == HV_STATUS_TIME_OUT && retry--);
+
 	return hv_result_success(status);
 
 do_ex_hypercall:
@@ -229,6 +244,7 @@ static bool __send_ipi_one(int cpu, int vector)
 {
 	int vp = hv_cpu_number_to_vp_number(cpu);
 	u64 status;
+	int retry = 5;
 
 	trace_hyperv_send_ipi_one(cpu, vector);
 
@@ -247,26 +263,48 @@ static bool __send_ipi_one(int cpu, int vector)
 	if (vp >= 64)
 		return __send_ipi_mask_ex(cpumask_of(cpu), vector, false);
 
-	status = hv_do_fast_hypercall16(HVCALL_SEND_IPI, vector, BIT_ULL(vp));
+	do {
+		status = hv_do_fast_hypercall16(HVCALL_SEND_IPI, vector, BIT_ULL(vp));
+	} while (status == HV_STATUS_TIME_OUT || retry--);
+
 	return hv_result_success(status);
 }
 
 static void hv_send_ipi(int cpu, int vector)
 {
-	if (!__send_ipi_one(cpu, vector))
-		orig_apic.send_IPI(cpu, vector);
+	if (!__send_ipi_one(cpu, vector)) {
+		if (!hv_isolation_type_en_snp())
+			orig_apic.send_IPI(cpu, vector);
+		else
+			WARN_ON_ONCE(1);
+	}
 }
 
 static void hv_send_ipi_mask(const struct cpumask *mask, int vector)
 {
-	if (!__send_ipi_mask(mask, vector, false))
-		orig_apic.send_IPI_mask(mask, vector);
+	if (!__send_ipi_mask(mask, vector, false)) {
+		if (!hv_isolation_type_en_snp())
+			orig_apic.send_IPI_mask(mask, vector);
+		else
+			WARN_ON_ONCE(1);
+	}
 }
 
 static void hv_send_ipi_mask_allbutself(const struct cpumask *mask, int vector)
 {
-	if (!__send_ipi_mask(mask, vector, true))
-		orig_apic.send_IPI_mask_allbutself(mask, vector);
+	unsigned int this_cpu = smp_processor_id();
+	struct cpumask new_mask;
+	const struct cpumask *local_mask;
+
+	cpumask_copy(&new_mask, mask);
+	cpumask_clear_cpu(this_cpu, &new_mask);
+	local_mask = &new_mask;
+	if (!__send_ipi_mask(local_mask, vector, true)) {
+		if (!hv_isolation_type_en_snp())
+			orig_apic.send_IPI_mask_allbutself(mask, vector);
+		else
+			WARN_ON_ONCE(1);
+	}
 }
 
 static void hv_send_ipi_allbutself(int vector)
@@ -276,14 +314,22 @@ static void hv_send_ipi_allbutself(int vector)
 
 static void hv_send_ipi_all(int vector)
 {
-	if (!__send_ipi_mask(cpu_online_mask, vector, false))
-		orig_apic.send_IPI_all(vector);
+	if (!__send_ipi_mask(cpu_online_mask, vector, false)) {
+		if (!hv_isolation_type_en_snp())
+			orig_apic.send_IPI_all(vector);
+		else
+			WARN_ON_ONCE(1);
+	}
 }
 
 static void hv_send_ipi_self(int vector)
 {
-	if (!__send_ipi_one(smp_processor_id(), vector))
-		orig_apic.send_IPI_self(vector);
+	if (!__send_ipi_one(smp_processor_id(), vector)) {
+		if (!hv_isolation_type_en_snp())
+			orig_apic.send_IPI_self(vector);
+		else
+			WARN_ON_ONCE(1);
+	}
 }
 
 void __init hv_apic_init(void)
@@ -316,8 +362,15 @@ void __init hv_apic_init(void)
 		 * exception is hv_apic_eoi_write, because it benefits from
 		 * lazy EOI when available, but the same accessor works for
 		 * both xapic and x2apic because the field layout is the same.
+		 *
+		 * hv_apic_eoi_write uses the VP assist page to faciliate lazy EOI.
+		 * When in SEV-SNP restricted injection mode, the doorbell page is used instead
+		 * and the appropriate EOI handler is set earlier in the boot process.
+		 * Avoid overwriting it.
 		 */
-		apic_update_callback(eoi, hv_apic_eoi_write);
+		if (!cc_platform_has(CC_ATTR_GUEST_SEV_SNP) || !sev_restricted_injection_enabled())
+			apic_set_eoi_write(hv_apic_eoi_write);
+
 		if (!x2apic_enabled()) {
 			apic_update_callback(read, hv_apic_read);
 			apic_update_callback(write, hv_apic_write);

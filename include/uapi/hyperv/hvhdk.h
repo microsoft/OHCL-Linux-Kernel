@@ -102,12 +102,73 @@ struct hv_vp_register_page {
 	union hv_x64_pending_interruption_register pending_interruption;
 	union hv_x64_interrupt_state_register interrupt_state;
 	__u64 instruction_emulation_hints;
+
+#elif defined(__aarch64__)
+	/* Not yet supported in ARM */
+#endif
+
 } __packed;
 
+#if defined(__aarch64__)
+#define HV_PARTITION_PROCESSOR_FEATURES_BANKS 1
+#else
 #define HV_PARTITION_PROCESSOR_FEATURES_BANKS 2
 
 union hv_partition_processor_features {
 	__u64 as_uint64[HV_PARTITION_PROCESSOR_FEATURES_BANKS];
+#if defined(__aarch64__)
+	struct {
+		__u64 asid16 : 1;
+		__u64 tgran16 : 1;
+		__u64 tgran64 : 1;
+		__u64 haf : 1;
+		__u64 hdbs : 1;
+		__u64 pan : 1;
+		__u64 ats1e1 : 1;
+		__u64 uao : 1;
+		__u64 el0aarch32 : 1;
+		__u64 fp : 1;
+		__u64 fphp : 1;
+		__u64 advsimd : 1;
+		__u64 advsimdhp : 1;
+		__u64 gicv3v4 : 1;
+		__u64 gicv41 : 1;
+		__u64 ras : 1;
+		__u64 pmuv3 : 1;
+		__u64 pmuv3armv81 : 1;
+		__u64 pmuv3armv84 : 1;
+		__u64 pmuv3armv85 : 1;
+		__u64 aes : 1;
+		__u64 polymul : 1;
+		__u64 sha1 : 1;
+		__u64 sha256 : 1;
+		__u64 sha512 : 1;
+		__u64 crc32 : 1;
+		__u64 atomic : 1;
+		__u64 rdm : 1;
+		__u64 sha3 : 1;
+		__u64 sm3 : 1;
+		__u64 sm4 : 1;
+		__u64 dp : 1;
+		__u64 fhm : 1;
+		__u64 dccvap : 1;
+		__u64 dccvadp : 1;
+		__u64 apabase : 1;
+		__u64 apaep : 1;
+		__u64 apaep2 : 1;
+		__u64 apaep2fp : 1;
+		__u64 apaep2fpc : 1;
+		__u64 jscvt : 1;
+		__u64 fcma : 1;
+		__u64 rcpcv83 : 1;
+		__u64 rcpcv84 : 1;
+		__u64 gpa : 1;
+		__u64 l1ippipt : 1;
+		__u64 dzpermitted : 1;
+		__u64 reserved : 17;
+	} __packed;
+#endif
+#if defined(__x86_64__)
 	struct {
 		__u64 sse3_support:1;
 		__u64 lahf_sahf_support:1;
@@ -749,7 +810,12 @@ union hv_interrupt_control {
 		__u32 interrupt_type; /* enum hv_interrupt_type */
 		__u32 level_triggered : 1;
 		__u32 logical_dest_mode : 1;
+#if defined(__aarch64__)
+		__u32 asserted : 1;
+		__u32 rsvd : 29;
+#else
 		__u32 rsvd : 30;
+#endif		
 	} __packed;
 };
 

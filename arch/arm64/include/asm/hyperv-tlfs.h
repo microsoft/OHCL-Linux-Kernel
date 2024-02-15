@@ -52,6 +52,7 @@
 
 #define HV_REGISTER_GUEST_OSID		0x00090002
 #define HV_REGISTER_VP_INDEX		0x00090003
+#define HV_REGISTER_VP_ASSIST_PAGE  0x00090013
 #define HV_REGISTER_TIME_REF_COUNT	0x00090004
 #define HV_REGISTER_REFERENCE_TSC	0x00090017
 
@@ -72,6 +73,7 @@
 #define HV_MSR_VP_INDEX		(HV_REGISTER_VP_INDEX)
 #define HV_MSR_TIME_REF_COUNT	(HV_REGISTER_TIME_REF_COUNT)
 #define HV_MSR_REFERENCE_TS	(HV_REGISTER_REFERENCE_TSC)
+#define HV_SYN_REG_VP_ASSIST_PAGE		(HV_REGISTER_VP_ASSIST_PAGE)
 
 #define HV_MSR_STIMER0_CONFIG	(HV_REGISTER_STIMER0_CONFIG)
 #define HV_MSR_STIMER0_COUNT	(HV_REGISTER_STIMER0_COUNT)
@@ -97,6 +99,24 @@ union hv_msi_entry {
 		u32 reserved;
 	} __packed;
 };
+
+#define HV_ARM64_HVC_SMCCC_IMM16        0
+#define HV_ARM64_HVC_IMM16              1
+#define HV_ARM64_HVC_VTLENTRY_IMM16     2
+#define HV_ARM64_HVC_VTLEXIT_IMM16      3
+#define HV_ARM64_HVC_LAUNCH_IMM16       4
+
+struct hv_init_vp_context {
+	u64 pc;
+	u64 sp_elh;
+	u64 spctlr_el1;
+	u64 mair_el1;
+	u64 tcr_el1;
+	u64 vbar_el1;
+	u64 ttbr0_el1;
+	u64 ttbr1_el1;
+	u64 x18;
+} __packed;
 
 #include <asm-generic/hyperv-tlfs.h>
 

@@ -765,6 +765,17 @@ enum vmbus_device_type {
 	HV_FCOPY,
 	HV_BACKUP,
 	HV_DM,
+	HV_GED,
+	HV_GET,
+	HV_GEL,
+	HV_UART,
+	HV_COM1,
+	HV_COM2,
+	HV_COM3,
+	HV_COM4,
+	HV_CRASHDUMP,
+	HV_CRASHDUMP_VTL0,
+	HV_CRASHDUMP_VTL2,
 	HV_UNKNOWN,
 };
 
@@ -1502,6 +1513,94 @@ void vmbus_free_mmio(resource_size_t start, resource_size_t size);
 #define HV_IMC_GUID \
 	.guid = GUID_INIT(0xc376c1c3, 0xd276, 0x48d2, 0x90, 0xa9, \
 			  0xc0, 0x47, 0x48, 0x07, 0x2c, 0x60)
+
+/*
+ * GED (Guest Emulation Device) GUID
+ * {8dedd1aa-9056-49e4-bfd6-1bf90dc38ef0}
+ */
+#define HV_GED_GUID \
+    .guid = GUID_INIT(0x8dedd1aa, 0x9056, 0x49e4, 0xbf, 0xd6, \
+			  0x1b, 0xf9, 0xd, 0xc3, 0x8e, 0xf0)
+
+/*
+ * GET (Guest Emulation Transport) GUID
+ * {d3e4454d-62af-44ec-b851-3170915e5f56}
+ */
+#define HV_GET_GUID \
+    .guid = GUID_INIT(0xd3e4454d, 0x62af, 0x44ec, 0xb8, 0x51, \
+			  0x31, 0x70, 0x91, 0x5e, 0x5f, 0x56)
+
+/*
+ * GEL (Guest Emulation Log) GUID
+ * {aa5de534-d149-487a-9053-05972ba20a7c}
+ */
+#define HV_GEL_GUID \
+    .guid = GUID_INIT(0xaa5de534, 0xd149, 0x487a, 0x90, 0x53, \
+			  0x05, 0x97, 0x2b, 0xa2, 0x0a, 0x7c)
+
+/*
+ * VMBUS-backed UART Interface Type GUID
+ * {8b60ccf6-709f-4c11-90b5-229c959a9e6a}
+ */
+#define HV_UART_GUID \
+    .guid = GUID_INIT(0x8b60ccf6, 0x709f, 0x4c11, 0x90, 0xb5, \
+			  0x22, 0x9c, 0x95, 0x9a, 0x9e, 0x6a)
+
+/*
+ * VMBUS-backed COM1
+ * {700df40e-b947-4776-b839-d1b0a35af034}
+ */
+#define HV_COM1_GUID \
+    .guid = GUID_INIT(0x700df40e, 0xb947, 0x4776, 0xb8, 0x39, \
+	           0xd1, 0xb0, 0xa3, 0x5a, 0xf0, 0x34)
+
+/*
+ * VMBUS-backed COM2
+ * {7e55f4b8-af84-4e98-9f1a-8e8d0bde3744}
+ */
+#define HV_COM2_GUID \
+    .guid = GUID_INIT(0x7e55f4b8, 0xaf84, 0x4e98, 0x9f, 0x1a, \
+	            0x8e, 0x8d, 0x0b, 0xde, 0x37, 0x44)
+
+/*
+ * VMBUS-backed COM3
+ * {3f158fa1-b0aa-45e9-ba54-9fc73f6c59ec}
+ */
+#define HV_COM3_GUID \
+    .guid = GUID_INIT(0x3f158fa1, 0xb0aa, 0x45e9, 0xba, 0x54, 0x9f, \
+	            0xc7, 0x3f, 0x6c, 0x59, 0xec)
+
+/*
+ * VMBUS-backed COM4
+ * {8688a06f-9b53-48ce-b408-7581626228c5}
+ */
+#define HV_COM4_GUID \
+    .guid = GUID_INIT(0x8688a06f, 0x9b53, 0x48ce, 0xb4, 0x08, 0x75, \
+				0x81, 0x62, 0x62, 0x28, 0xc5)
+
+/*
+ * Crashdump device
+ * {7050ebf0-1dbf-4528-838e-f7e10089fc4b}
+ */
+#define HV_CRASHDUMP_GUID \
+    .guid = GUID_INIT(0x7050ebf0, 0x1dbf, 0x4528, 0x83, 0x8e, 0xf7, \
+				0xe1, 0x00, 0x89, 0xfc, 0x4b)
+
+/*
+ * Crashdump VTL0 instance
+ * {427b03e7-4ceb-4286-b5fc-486f4a1dd439}
+ */
+#define HV_CRASHDUMP_VTL0_GUID \
+    .guid = GUID_INIT(0x427b03e7, 0x4ceb, 0x4286, 0xb5, 0xfc, 0x48, \
+	            0x6f, 0x4a, 0x1d, 0xd4, 0x39)
+
+/*
+ * Crashdump VTL2 instance
+ * {2a88c08d-55a9-4e1b-ac6e-0d086abf4e62}
+ */
+#define HV_CRASHDUMP_VTL2_GUID \
+    .guid = GUID_INIT(0x2a88c08d, 0x55a9, 0x4e1b, 0xac, 0x6e, 0x0d, \
+				0x08, 0x6a, 0xbf, 0x4e, 0x62)
 
 /*
  * Common header for Hyper-V ICs

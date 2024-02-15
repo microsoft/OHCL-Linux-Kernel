@@ -12,8 +12,10 @@
  */
 #include "misc.h"
 
+#include <asm/msr-index.h>
 #include <asm/pgtable_types.h>
 #include <asm/sev.h>
+#include <asm/svm.h>
 #include <asm/trapnr.h>
 #include <asm/trap_pf.h>
 #include <asm/msr-index.h>
@@ -21,6 +23,7 @@
 #include <asm/ptrace.h>
 #include <asm/svm.h>
 #include <asm/cpuid.h>
+#include <asm/e820/types.h>
 
 #include "error.h"
 #include "../msr.h"
@@ -125,7 +128,23 @@ static bool fault_in_kernel_space(unsigned long address)
 /* Include code for early handlers */
 #include "../../kernel/sev-shared.c"
 
-bool sev_snp_enabled(void)
+/* Check SEV-SNP via MSR */
+static bool sev_snp_runtime_check(void)
+{
+	unsigned long low, high;
+	u64 val;
+
+	asm volatile("rdmsr\n" : "=a" (low), "=d" (high) :
+			"c" (MSR_AMD64_SEV));
+
+	val = (high << 32) | low;
+	if (val & MSR_AMD64_SEV_SNP_ENABLED)
+		return true;
+
+	return false;
+}
+
+static inline bool sev_snp_enabled(void)
 {
 	return sev_status & MSR_AMD64_SEV_SNP_ENABLED;
 }
@@ -359,7 +378,6 @@ static void enforce_vmpl0(void)
  */
 #define SNP_FEATURES_IMPL_REQ	(MSR_AMD64_SNP_VTOM |			\
 				 MSR_AMD64_SNP_REFLECT_VC |		\
-				 MSR_AMD64_SNP_RESTRICTED_INJ |		\
 				 MSR_AMD64_SNP_ALT_INJ |		\
 				 MSR_AMD64_SNP_DEBUG_SWAP |		\
 				 MSR_AMD64_SNP_VMPL_SSS |		\
@@ -413,7 +431,30 @@ void snp_check_features(void)
  */
 static int sev_check_cpu_support(void)
 {
+	struct cc_blob_sev_info *cc_info;
 	unsigned int eax, ebx, ecx, edx;
+	struct msr m;
+	bool snp;
+
+	/*
+	 * bp->cc_blob_address should only be set by boot/compressed
+	 * kernel and hypervisor with direct boot mode. Initialize it
+	 * to 0 after checking in order to ensure that uninitialized
+	 * values from buggy bootloaders aren't propagated.
+	 */
+	if (bp) {
+		cc_info = (struct cc_blob_sev_info *)(unsigned long)
+			bp->cc_blob_address;
+
+		if (cc_info->magic != CC_BLOB_SEV_HDR_MAGIC)
+			bp->cc_blob_address = 0;
+	}
+
+	/*
+	 * Setup/preliminary detection of SNP. This will be sanity-checked
+	 * against CPUID/MSR values later.
+	 */
+	snp = snp_init(bp);
 
 	/* Check for the SME/SEV support leaf */
 	eax = 0x80000000;
@@ -557,6 +598,10 @@ static struct cc_blob_sev_info *find_cc_blob(struct boot_params *bp)
 {
 	struct cc_blob_sev_info *cc_info;
 
+	/* Boot kernel would have passed the CC blob via boot_params. */
+	if (bp->cc_blob_address)
+		return (struct cc_blob_sev_info *)(unsigned long)bp->cc_blob_address;
+
 	cc_info = find_cc_blob_efi(bp);
 	if (cc_info)
 		goto found_cc_info;
@@ -599,9 +644,11 @@ bool snp_init(struct boot_params *bp)
 	/*
 	 * Pass run-time kernel a pointer to CC info via boot_params so EFI
 	 * config table doesn't need to be searched again during early startup
-	 * phase.
+	 * phase. Hypervisor also may popualte cc_blob_address directyly
+	 * in direct boot mode.
 	 */
-	bp->cc_blob_address = (u32)(unsigned long)cc_info;
+	if (!bp->cc_blob_address)
+		bp->cc_blob_address = (u32)(unsigned long)cc_info;
 
 	return true;
 }
@@ -625,4 +672,69 @@ void sev_prep_identity_maps(unsigned long top_level_pgt)
 	}
 
 	sev_verify_cbit(top_level_pgt);
+}
+
+static void extend_e820_on_demand(struct boot_e820_entry *e820_entry,
+				  u64 needed_ram_end)
+{
+	u64 end, paddr;
+	unsigned long eflags;
+	int rc;
+
+	if (!e820_entry)
+		return;
+
+	/* Validated memory must be aligned by PAGE_SIZE. */
+	end = ALIGN(e820_entry->addr + e820_entry->size, PAGE_SIZE);
+	if (needed_ram_end > end && e820_entry->type == E820_TYPE_RAM) {
+		for (paddr = end; paddr < needed_ram_end; paddr += PAGE_SIZE) {
+			rc = pvalidate(paddr, RMP_PG_SIZE_4K, true);
+			if (rc) {
+				error("Failed to validate address.n");
+				return;
+			}
+		}
+		e820_entry->size = needed_ram_end - e820_entry->addr;
+	}
+}
+
+/*
+ * Explicitly pvalidate needed pages for decompressing the kernel.
+ * The E820_TYPE_RAM entry includes only validated memory. The kernel
+ * expects that the RAM entry's addr is fixed while the entry size is to be
+ * extended to cover addresses to the start of next entry.
+ * The function increases the RAM entry size to cover all possible memory
+ * addresses until init_size.
+ * For example,  init_end = 0x4000000,
+ * [RAM: 0x0 - 0x0],                       M[RAM: 0x0 - 0xa0000]
+ * [RSVD: 0xa0000 - 0x10000]                [RSVD: 0xa0000 - 0x10000]
+ * [ACPI: 0x10000 - 0x20000]      ==>       [ACPI: 0x10000 - 0x20000]
+ * [RSVD: 0x800000 - 0x900000]              [RSVD: 0x800000 - 0x900000]
+ * [RAM: 0x1000000 - 0x2000000]            M[RAM: 0x1000000 - 0x2001000]
+ * [RAM: 0x2001000 - 0x2007000]            M[RAM: 0x2001000 - 0x4000000]
+ * Other RAM memory after init_end is pvalidated by ms_hyperv_init_platform
+ */
+__visible void pvalidate_for_startup_64(struct boot_params *boot_params)
+{
+	struct boot_e820_entry *e820_entry;
+	u64 init_end =
+		boot_params->hdr.pref_address + boot_params->hdr.init_size;
+	u8 i, nr_entries = boot_params->e820_entries;
+	u64 needed_end;
+
+	if (!sev_snp_runtime_check())
+		return;
+
+	for (i = 0; i < nr_entries; ++i) {
+		/* Pvalidate memory holes in e820 RAM entries. */
+		e820_entry = &boot_params->e820_table[i];
+		if (i < nr_entries - 1) {
+			needed_end = boot_params->e820_table[i + 1].addr;
+			if (needed_end < e820_entry->addr)
+				error("e820 table is not sorted.\n");
+		} else {
+			needed_end = init_end;
+		}
+		extend_e820_on_demand(e820_entry, needed_end);
+	}
 }

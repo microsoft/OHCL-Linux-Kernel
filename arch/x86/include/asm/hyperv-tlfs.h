@@ -284,6 +284,7 @@ enum hv_isolation_type {
 #define HV_MSR_VP_INDEX		(HV_X64_MSR_VP_INDEX)
 #define HV_MSR_TIME_REF_COUNT	(HV_X64_MSR_TIME_REF_COUNT)
 #define HV_MSR_REFERENCE_TSC	(HV_X64_MSR_REFERENCE_TSC)
+#define HV_SYN_REG_VP_ASSIST_PAGE		(HV_X64_MSR_VP_ASSIST_PAGE)
 
 #define HV_MSR_STIMER0_CONFIG	(HV_X64_MSR_STIMER0_CONFIG)
 #define HV_MSR_STIMER0_COUNT	(HV_X64_MSR_STIMER0_COUNT)
@@ -773,23 +774,7 @@ struct hv_init_vp_context {
 	u64 msr_cr_pat;
 } __packed;
 
-union hv_input_vtl {
-	u8 as_uint8;
-	struct {
-		u8 target_vtl: 4;
-		u8 use_target_vtl: 1;
-		u8 reserved_z: 3;
-	};
-} __packed;
-
-struct hv_enable_vp_vtl {
-	u64				partition_id;
-	u32				vp_index;
-	union hv_input_vtl		target_vtl;
-	u8				mbz0;
-	u16				mbz1;
-	struct hv_init_vp_context	vp_context;
-} __packed;
+#include <asm-generic/hyperv-tlfs.h>
 
 struct hv_get_vp_from_apic_id_in {
 	u64 partition_id;
@@ -797,7 +782,5 @@ struct hv_get_vp_from_apic_id_in {
 	u8 res[7];
 	u32 apic_ids[];
 } __packed;
-
-#include <asm-generic/hyperv-tlfs.h>
 
 #endif

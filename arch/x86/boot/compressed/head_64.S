@@ -298,6 +298,14 @@ SYM_CODE_START(startup_64)
 	cld
 	cli
 
+#ifdef CONFIG_AMD_MEM_ENCRYPT
+	/* pvalidate memory on demand if SNP is enabled. */
+	pushq	%rsi
+	movq    %rsi, %rdi
+	call 	pvalidate_for_startup_64
+	popq	%rsi
+#endif
+
 	/* Setup data segments. */
 	xorl	%eax, %eax
 	movl	%eax, %ds
