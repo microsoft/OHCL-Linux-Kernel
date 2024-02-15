@@ -8,6 +8,9 @@ enum cc_vendor {
 	CC_VENDOR_NONE,
 	CC_VENDOR_AMD,
 	CC_VENDOR_INTEL,
+	// TODO: bad move most likely,
+	// check against Underhill.
+	CC_VENDOR_HYPERV
 };
 
 extern enum cc_vendor cc_vendor;

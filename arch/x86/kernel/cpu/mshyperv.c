@@ -762,7 +762,7 @@ static void __init ms_hyperv_init_platform(void)
 
 # ifdef CONFIG_SMP
 	smp_ops.smp_prepare_boot_cpu = hv_smp_prepare_boot_cpu;
-	if (hv_root_partition || hv_isolation_type_snp()))
+	if (hv_root_partition || hv_isolation_type_snp())
 		smp_ops.smp_prepare_cpus = hv_smp_prepare_cpus;
 	smp_ops.smp_prepare_cpus = hv_smp_prepare_cpus;
 # endif
