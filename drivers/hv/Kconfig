@@ -89,6 +89,7 @@ config MSHV_VTL
 	depends on !MTRR
 	select HYPERV_VTL_MODE
 	select CPUMASK_OFFSTACK
+	select VMAP_PFN
 	help
 	  Select this option to enable Hyper-V VTL driver.
 	  Virtual Secure Mode (VSM) is a set of hypervisor capabilities and
