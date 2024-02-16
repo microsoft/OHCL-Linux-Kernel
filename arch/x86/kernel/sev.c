@@ -221,7 +221,6 @@ static void hv_doorbell_apic_eoi_write(u32 reg, u32 val)
 static void do_exc_hv(struct pt_regs *regs)
 {
 	union hv_pending_events pending_events;
-	u8 vector;
 
 	this_cpu_read(snp_runtime_data)->hv_handling_events = true;
 
@@ -398,12 +397,9 @@ static void __init construct_sysvec_table(void)
 
 void __init sev_snp_init_hv_handling(void)
 {
-	struct sev_snp_runtime_data *snp_data;
 	struct ghcb_state state;
 	struct ghcb *ghcb;
 	unsigned long flags;
-	int cpu;
-	int err;
 
 	WARN_ON(!irqs_disabled());
 	if (!cc_platform_has(CC_ATTR_GUEST_SEV_SNP) || !sev_restricted_injection_enabled())

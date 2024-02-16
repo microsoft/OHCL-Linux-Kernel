@@ -515,8 +515,6 @@ EXPORT_SYMBOL_GPL(hv_get_hypervisor_version);
 static __init int hv_snp_set_rtc_noop(const struct timespec64 *now) { return -EINVAL; }
 static __init void hv_snp_get_rtc_noop(struct timespec64 *now) { }
 
-static u32 processor_count;
-
 struct memory_map_entry {
 	u64 starting_gpn;
 	u64 numpages;
@@ -529,15 +527,6 @@ static void __init ms_hyperv_init_platform(void)
 {
 	int hv_max_functions_eax;
 	union hv_hypervisor_version_info version;
-	int hv_host_info_eax;
-	int hv_host_info_ebx;
-	int hv_host_info_ecx;
-	int hv_host_info_edx;
-	struct memory_map_entry *entry;
-	struct e820_entry *e820_entry;
-	u64 e820_end;
-	u64 ram_end;
-	u64 page;
 
 #ifdef CONFIG_PARAVIRT
 	pv_info.name = "Hyper-V";
@@ -668,7 +657,7 @@ static void __init ms_hyperv_init_platform(void)
 		if (IS_ENABLED(CONFIG_AMD_MEM_ENCRYPT)) {
 			if (hv_get_isolation_type() != HV_ISOLATION_TYPE_NONE
 			    && !cc_platform_has(CC_ATTR_GUEST_SEV_SNP))
-				cc_set_vendor(CC_VENDOR_HYPERV);
+				cc_vendor = CC_VENDOR_HYPERV;
 		}
 	}
 
