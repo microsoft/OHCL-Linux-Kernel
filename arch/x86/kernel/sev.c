@@ -209,13 +209,15 @@ static u8 sev_hv_pending(void)
 	return sev_snp_current_doorbell_page()->pending_events.events;
 }
 
-static void hv_doorbell_apic_eoi_write(u32 reg, u32 val)
-{
-	if (xchg(&sev_snp_current_doorbell_page()->no_eoi_required, 0) & 0x1)
-		return;
+static void (*__old_apic_write)(u32 reg, u32 val);
 
-	BUG_ON(reg != APIC_EOI);
-	apic->write(reg, val);
+static void hv_doorbell_apic_write(u32 reg, u32 val)
+{
+	if (reg == APIC_EOI)
+		if (xchg(&sev_snp_current_doorbell_page()->no_eoi_required, 0) & 0x1)
+			return;
+
+	__old_apic_write(reg, val);
 }
 
 static void do_exc_hv(struct pt_regs *regs)
@@ -413,7 +415,8 @@ void __init sev_snp_init_hv_handling(void)
 
 	__sev_put_ghcb(&state);
 
-	apic_set_eoi_write(hv_doorbell_apic_eoi_write);
+	__old_apic_write = apic->write;
+	apic_update_callback(write, hv_doorbell_apic_write);
 
 	local_irq_restore(flags);
 
