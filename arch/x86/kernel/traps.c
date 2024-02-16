@@ -838,7 +838,7 @@ asmlinkage __visible noinstr struct pt_regs *hv_switch_off_ist(struct pt_regs *r
 	 * trust it and switch to the current kernel stack
 	 */
 	if (ip_within_syscall_gap(regs)) {
-		sp = this_cpu_read(cpu_current_top_of_stack);
+		sp = current_top_of_stack();
 		goto sync;
 	}
 

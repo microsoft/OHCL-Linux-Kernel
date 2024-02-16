@@ -227,7 +227,6 @@ int snp_issue_guest_request(u64 exit_code, struct snp_req_data *input, struct sn
 void snp_accept_memory(phys_addr_t start, phys_addr_t end);
 u64 snp_get_unsupported_features(u64 status);
 u64 sev_get_status(void);
-int snp_issue_guest_request(u64 exit_code, struct snp_req_data *input, unsigned long *fw_err);
 void snp_mshv_vtl_return(u8 input_vtl);
 #else
 static inline void sev_es_ist_enter(struct pt_regs *regs) { }

@@ -271,7 +271,6 @@ config EFI_COCO_SECRET
 
 config UNACCEPTED_MEMORY
 	bool
-	depends on EFI_STUB
 	help
 	   Some Virtual Machine platforms, such as Intel TDX, require
 	   some memory to be "accepted" by the guest before it can be used.

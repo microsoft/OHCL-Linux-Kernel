@@ -50,7 +50,7 @@ struct mshv_hvcall {
 	void *output_data;
 } __packed;
 
-struct mshv_cpu_context {
+struct mshv_vtl_cpu_context {
 #ifdef CONFIG_X86_64
 	union {
 		struct {

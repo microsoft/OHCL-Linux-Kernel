@@ -31,6 +31,7 @@
 #ifdef CONFIG_X86_64
 
 #include <asm/debugreg.h>
+#include <asm/sev.h>
 #include <asm/trace/hyperv.h>
 #include <uapi/asm/mtrr.h>
 #include <asm/sev.h>
@@ -303,7 +304,7 @@ static void mshv_synic_enable_regs(unsigned int cpu)
 	/* Enable intercepts, used when there is no intercept page, or
 	   for proxy interrupts for SNP. */
 	if (!mshv_vsm_capabilities.intercept_page_available || hv_isolation_type_en_snp())
-		hv_set_register(HV_SYN_REG_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
+		hv_set_register(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
 				sint.as_uint64);
 #else
 	#warning "Enable SINT7 on arm64"
@@ -462,7 +463,7 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 			return ret;
 #endif
 	} else if (mshv_vsm_capabilities.intercept_page_available)
-		mshv_configure_reg_page(per_cpu);
+		mshv_vtl_configure_reg_page(per_cpu);
 
 	mshv_vtl_synic_enable_regs(cpu);
 
@@ -508,7 +509,7 @@ static int vtl_set_vp_registers(u16 count,
 
 #define DECRYPTED_MASK (1ul << 51)
 
-static int mshv_vtl_ioctl_add_vtl0_mem(void __user *arg)
+static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 {
 	struct mshv_vtl_ram_disposition vtl0_mem;
 	struct dev_pagemap *pgmap;
@@ -1004,7 +1005,7 @@ hypercall:
 
 #ifdef CONFIG_ARM64
 
-static void arm64_mshv_vtl_return(struct mshv_cpu_context *vtl0)
+static void mshv_vtl_return(struct mshv_cpu_context *vtl0)
 {
 	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 	u64 register x18 asm("x18");
@@ -1127,10 +1128,9 @@ static void arm64_mshv_vtl_return(struct mshv_cpu_context *vtl0)
 		"q28", "q29", "q30", "q31");
 }
 
-#endif
+#elif CONFIG_X86_64
 
-#ifdef CONFIG_X86_64
-static void x86_mshv_vtl_return(struct mshv_cpu_context *vtl0)
+static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 {
 	struct hv_vp_assist_page *hvp;
 	u64 hypercall_addr;
@@ -1143,6 +1143,13 @@ static void x86_mshv_vtl_return(struct mshv_cpu_context *vtl0)
 	register u64 r13 asm("r13");
 	register u64 r14 asm("r14");
 	register u64 r15 asm("r15");
+
+	if (hv_isolation_type_en_snp())
+	{
+		u8 target_vtl = 0; /* hardcode for now */
+		snp_mshv_vtl_return(target_vtl);
+		return;
+	}
 
 	hvp = hv_vp_assist_page[smp_processor_id()];
 
@@ -1222,15 +1229,10 @@ static void x86_mshv_vtl_return(struct mshv_cpu_context *vtl0)
 	fxsave(&vtl0->fx_state);
 	kernel_fpu_end();
 }
-#endif
 
-#ifdef CONFIG_X86_64
+#else
 
-static void x86_mshv_vtl_return_sev_snp(void)
-{
-	u8 target_vtl = 0; /* hardcode for now */
-	snp_mshv_vtl_return(target_vtl);
-}
+#error "Unsupported architecture"
 
 #endif
 
@@ -1336,7 +1338,6 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 			if (ret)
 				return ret;
 			preempt_disable();
-			run = mshv_this_run();
 			continue;
 		}
 
@@ -1372,7 +1373,6 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		}
 
 		hvp = hv_vp_assist_page[smp_processor_id()];
-
 		this_cpu_inc(num_vtl0_transitions);
 		switch (hvp->vtl_entry_reason) {
 		case MSHV_ENTRY_REASON_INTERRUPT:
@@ -1746,7 +1746,7 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 	} else if (real_off == MSHV_REG_PAGE_OFFSET) {
 		if (!mshv_has_reg_page)
 			return VM_FAULT_SIGBUS;
-		page = mshv_cpu_reg_page(cpu);
+		page = mshv_vtl_cpu_reg_page(cpu);
 	} else if (real_off == MSHV_VMSA_PAGE_OFFSET) {
 		if (!hv_isolation_type_en_snp())
 			return VM_FAULT_SIGBUS;
@@ -2180,55 +2180,46 @@ static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 	return ret;
 }
 
-static bool can_fault(struct vm_fault *vmf, pgoff_t pgoff, unsigned long size, pfn_t *pfn)
+static bool can_fault(struct vm_fault *vmf, unsigned long size, pfn_t *pfn)
 {
 	unsigned long mask = size - 1;
 	unsigned long start = vmf->address & ~mask;
 	unsigned long end = start + size;
 	bool valid;
 
-	valid = (vmf->address & mask) == ((pgoff << PAGE_SHIFT) & mask) &&
+	valid = (vmf->address & mask) == ((vmf->pgoff << PAGE_SHIFT) & mask) &&
 		start >= vmf->vma->vm_start &&
 		end <= vmf->vma->vm_end;
 
 	if (valid)
-		*pfn = __pfn_to_pfn_t(pgoff & ~(mask >> PAGE_SHIFT), PFN_DEV | PFN_MAP);
+		*pfn = __pfn_to_pfn_t(vmf->pgoff & ~(mask >> PAGE_SHIFT), PFN_DEV | PFN_MAP);
 
 	return valid;
 }
 
 static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int order)
 {
-	pgoff_t pgoff;
 	pfn_t pfn;
 	int ret = VM_FAULT_FALLBACK;
 
-	pgoff = vmf->pgoff & ~DECRYPTED_MASK;
-
-	switch (pe_size) {
-	case PE_SIZE_PTE:
-		pfn = __pfn_to_pfn_t(pgoff, PFN_DEV | PFN_MAP);
+	switch (order) {
+	case 0:
+		pfn = __pfn_to_pfn_t(vmf->pgoff, PFN_DEV | PFN_MAP);
 		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
 
-	case PE_SIZE_PMD:
-		if (can_fault(vmf, pgoff, PMD_SIZE, &pfn))
+	case PMD_ORDER:
+		if (can_fault(vmf, PMD_SIZE, &pfn))
 			ret = vmf_insert_pfn_pmd(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
 		return ret;
 
-#ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
-	case PE_SIZE_PUD:
-		if (can_fault(vmf, pgoff, PUD_SIZE, &pfn))
+	case PUD_ORDER:
+		if (can_fault(vmf, PUD_SIZE, &pfn))
 			ret = vmf_insert_pfn_pud(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
 		return ret;
-#else
-	#warning "ARM64 supports the 1GB pages, but `vmf_insert_pfn_pud` gives linker errors. Figure out API to use"
-#endif
 
 	default:
 		return VM_FAULT_SIGBUS;
 	}
-
-	return ret;
 }
 
 static vm_fault_t mshv_vtl_low_fault(struct vm_fault *vmf)
@@ -2244,7 +2235,7 @@ static const struct vm_operations_struct mshv_vtl_low_vm_ops = {
 static int mshv_vtl_low_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	vma->vm_ops = &mshv_vtl_low_vm_ops;
-	vma->vm_flags |= VM_HUGEPAGE;
+	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP);
 	if (vma->vm_pgoff & DECRYPTED_MASK)
 		vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
 	else
