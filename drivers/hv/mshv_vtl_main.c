@@ -291,7 +291,7 @@ static int mshv_configure_vmsa_page(struct mshv_vtl_per_cpu *per_cpu)
 
 #endif
 
-static void mshv_synic_enable_regs(unsigned int cpu)
+static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 {
 	union hv_synic_sint sint;
 
