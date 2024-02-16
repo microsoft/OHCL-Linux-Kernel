@@ -23,11 +23,9 @@
 #include <trace/events/ipi.h>
 #include <asm/boot.h>
 #include <asm/mshyperv.h>
-#include <asm/trace/hyperv.h>
 #include <asm/pgalloc.h>
 #include <asm/pgalloc.h>
 #include <asm/set_memory.h>
-#include <uapi/asm/mtrr.h>
 #include <uapi/linux/mshv.h>
 
 #ifdef CONFIG_X86_64

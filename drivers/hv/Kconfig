@@ -56,7 +56,7 @@ config HYPERV_BALLOON
 
 config MSHV
 	tristate "Microsoft Hypervisor root partition interfaces: /dev/mshv"
-	depends on X86_64 && HYPERV
+	depends on HYPERV
 	select EVENTFD
 	select MSHV_XFER_TO_GUEST_WORK
 	help

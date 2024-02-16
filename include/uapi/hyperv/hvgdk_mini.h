@@ -1068,13 +1068,13 @@ union hv_arm64_pending_interruption_register {
 #endif /* defined(__aarch64__) */
 
 union hv_register_value {
-#if defined(__x86_64__)
 	struct hv_u128 reg128;
 	__u64 reg64;
 	__u32 reg32;
 	__u16 reg16;
 	__u8 reg8;
 
+#if defined(__x86_64__)
 	union hv_x64_fp_register fp;
 	union hv_x64_fp_control_status_register fp_control_status;
 	union hv_x64_xmm_control_status_register xmm_control_status;

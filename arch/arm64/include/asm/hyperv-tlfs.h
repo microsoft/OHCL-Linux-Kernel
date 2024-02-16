@@ -70,6 +70,7 @@
  * - On x86, HV_MSR_ indicates an MSR accessed via rdmsrl/wrmsrl
  * - On ARM, HV_MSR_ indicates a VP register accessed via hypercall
  */
+#define HV_MSR_GUEST_OS_ID	(HV_REGISTER_GUEST_OSID)
 #define HV_MSR_VP_INDEX		(HV_REGISTER_VP_INDEX)
 #define HV_MSR_TIME_REF_COUNT	(HV_REGISTER_TIME_REF_COUNT)
 #define HV_MSR_REFERENCE_TS	(HV_REGISTER_REFERENCE_TSC)

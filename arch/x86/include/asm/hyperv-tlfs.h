@@ -281,6 +281,7 @@ enum hv_isolation_type {
  * - On x86, HV_MSR_ indicates an MSR accessed via rdmsrl/wrmsrl
  * - On ARM, HV_MSR_ indicates a VP register accessed via hypercall
  */
+#define HV_MSR_GUEST_OS_ID	(HV_X64_MSR_GUEST_OS_ID)
 #define HV_MSR_VP_INDEX		(HV_X64_MSR_VP_INDEX)
 #define HV_MSR_TIME_REF_COUNT	(HV_X64_MSR_TIME_REF_COUNT)
 #define HV_MSR_REFERENCE_TSC	(HV_X64_MSR_REFERENCE_TSC)
