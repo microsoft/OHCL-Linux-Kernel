@@ -266,8 +266,6 @@ static void do_exc_hv(struct pt_regs *regs)
 		if (pending_events.vector < FIRST_EXTERNAL_VECTOR) {
 			/* Exception vectors */
 			WARN(1, "exception shouldn't happen\n");
-		} else if (pending_events.vector == FIRST_EXTERNAL_VECTOR) {
-			sysvec_irq_move_cleanup(regs);
 		} else if (pending_events.vector == IA32_SYSCALL_VECTOR) {
 			WARN(1, "syscall shouldn't happen\n");
 		} else if (pending_events.vector >= FIRST_SYSTEM_VECTOR) {
