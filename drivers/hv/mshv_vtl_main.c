@@ -26,13 +26,13 @@
 #include <asm/pgalloc.h>
 #include <asm/pgalloc.h>
 #include <asm/set_memory.h>
+#include <asm/trace/hyperv.h>
 #include <uapi/linux/mshv.h>
 
 #ifdef CONFIG_X86_64
 
 #include <asm/debugreg.h>
 #include <asm/sev.h>
-#include <asm/trace/hyperv.h>
 #include <uapi/asm/mtrr.h>
 #include <asm/sev.h>
 #include "../../kernel/fpu/legacy.h"
@@ -1005,7 +1005,7 @@ hypercall:
 
 #ifdef CONFIG_ARM64
 
-static void mshv_vtl_return(struct mshv_cpu_context *vtl0)
+static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 {
 	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 	u64 register x18 asm("x18");
@@ -1014,16 +1014,16 @@ static void mshv_vtl_return(struct mshv_cpu_context *vtl0)
 	 * Process signal event direct set in the run page, if any.
 	 */
 	if (mshv_vsm_capabilities.return_action_available) {
-		u32 offset = READ_ONCE(mshv_this_run()->vtl_ret_action_size);
+		u32 offset = READ_ONCE(mshv_vtl_this_run()->vtl_ret_action_size);
 
-		WRITE_ONCE(mshv_this_run()->vtl_ret_action_size, 0);
+		WRITE_ONCE(mshv_vtl_this_run()->vtl_ret_action_size, 0);
 
 		/*
 		 * Hypervisor will take care of clearing out the actions
 		 * set in the assist page.
 		 */
 		memcpy(hvp->vtl_ret_actions,
-		       mshv_this_run()->vtl_ret_actions,
+		       mshv_vtl_this_run()->vtl_ret_actions,
 		       min_t(u32, offset, sizeof(hvp->vtl_ret_actions)));
 	}
 
@@ -1297,7 +1297,13 @@ static void mshv_vtl_idle(void)
 		}
 		raw_local_irq_enable();
 	} else {
+#if defined(CONFIG_X86_64)		
 		native_safe_halt();
+#elif defined(CONFIG_ARM64)
+		cpu_do_idle();
+#else
+		BUILD_BUG("Unsupported architecture");
+#endif
 	}
 }
 
