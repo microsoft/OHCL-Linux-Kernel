@@ -100,3 +100,4 @@ int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 
 	return hv_status_to_errno(status);
 }
+
