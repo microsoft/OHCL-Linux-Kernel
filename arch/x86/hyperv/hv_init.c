@@ -354,14 +354,17 @@ static u8 __init get_vtl(void)
 	struct hv_get_vp_registers_output *output;
 	unsigned long flags;
 	u64 ret;
+
 	local_irq_save(flags);
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 	output = (struct hv_get_vp_registers_output *)input;
+
 	memset(input, 0, struct_size(input, element, 1));
 	input->header.partitionid = HV_PARTITION_ID_SELF;
 	input->header.vpindex = HV_VP_INDEX_SELF;
 	input->header.inputvtl = 0;
 	input->element[0].name0 = HV_X64_REGISTER_VSM_VP_STATUS;
+
 	ret = hv_do_hypercall(control, input, output);
 	if (hv_result_success(ret)) {
 		ret = output->as64.low & HV_X64_VTL_MASK;
@@ -369,6 +372,7 @@ static u8 __init get_vtl(void)
 		pr_err("Failed to get VTL(error: %lld) exiting...\n", ret);
 		BUG();
 	}
+
 	local_irq_restore(flags);
 	return ret;
 }
