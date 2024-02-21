@@ -623,10 +623,10 @@ static void __init ms_hyperv_init_platform(void)
 
 
 		if (cc_platform_has(CC_ATTR_GUEST_SEV_SNP)) {
-			static_branch_enable(&isolation_type_snp);
+			static_branch_enable(&isolation_type_en_snp);
 		} else if (hv_get_isolation_type() == HV_ISOLATION_TYPE_SNP) {
 			static_branch_enable(&isolation_type_snp);
-#ifdef CONFIG_SWIOTLB
+ifdef CONFIG_SWIOTLB
 			// TODO: API has changed significantly 
 			// swiotlb_unencrypted_base = ms_hyperv.shared_gpa_boundary;
 #endif
@@ -648,16 +648,6 @@ static void __init ms_hyperv_init_platform(void)
 
 				x86_init.acpi.reduced_hw_early_init = reduced_hw_init;
 			}
-		}
-
-		pr_info("Hyper-V: Isolation Config: Group A 0x%x, Group B 0x%x\n",
-			ms_hyperv.isolation_config_a, ms_hyperv.isolation_config_b);
-
-		/* Isolation VMs are unenlightened SEV-based VMs, thus this check: */
-		if (IS_ENABLED(CONFIG_AMD_MEM_ENCRYPT)) {
-			if (hv_get_isolation_type() != HV_ISOLATION_TYPE_NONE
-			    && !cc_platform_has(CC_ATTR_GUEST_SEV_SNP))
-				cc_vendor = CC_VENDOR_HYPERV;
 		}
 	}
 

@@ -24,6 +24,7 @@
 
 union hv_ghcb;
 
+DECLARE_STATIC_KEY_FALSE(isolation_type_en_snp);
 DECLARE_STATIC_KEY_FALSE(isolation_type_snp);
 DECLARE_STATIC_KEY_FALSE(isolation_type_tdx);
 
