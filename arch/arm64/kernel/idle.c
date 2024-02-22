@@ -42,7 +42,7 @@ void noinstr default_idle(void)
 	cpu_do_idle();
 }
 
-DEFINE_STATIC_CALL_NULL(arm64_idle, default_idle);
+DEFINE_STATIC_CALL(arm64_idle, default_idle);
 
 /*
  * This is our default idle handler.
