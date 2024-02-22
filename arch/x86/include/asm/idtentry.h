@@ -376,16 +376,6 @@ static __always_inline void __##func(struct pt_regs *regs)
 #define DEFINE_IDTENTRY_VC_USER(func)				\
 	DEFINE_IDTENTRY_RAW_ERRORCODE(user_##func)
 
-/**
- * DEFINE_IDTENTRY_HV_USER - Emit code for HV injection handler
- *			     when raised from user mode
- * @func:	Function name of the entry point
- *
- * Maps to DEFINE_IDTENTRY_RAW
- */
-#define DEFINE_IDTENTRY_HV_USER(func)					\
-	DEFINE_IDTENTRY_RAW(user_##func)
-
 #else	/* CONFIG_X86_64 */
 
 /**

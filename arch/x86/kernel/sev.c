@@ -106,12 +106,6 @@ struct sev_es_runtime_data {
 	 * is currently unsupported in SEV-ES guests.
 	 */
 	unsigned long dr7;
-	/*
-	 * SEV-SNP requires that the GHCB must be registered before using it.
-	 * The flag below will indicate whether the GHCB is registered, if its
-	 * not registered then sev_es_get_ghcb() will perform the registration.
-	 */
-	bool ghcb_registered;
 };
 
 struct ghcb_state {
@@ -139,163 +133,6 @@ struct sev_config {
 };
 
 static struct sev_config sev_cfg __read_mostly;
-
-static noinstr struct ghcb *__sev_get_ghcb(struct ghcb_state *state);
-static noinstr void __sev_put_ghcb(struct ghcb_state *state);
-
-union hv_pending_events {
-	u16 events;
-	struct {
-		u8 vector;
-		u8 nmi : 1;
-		u8 mc : 1;
-		u8 reserved1 : 5;
-		u8 no_further_signal : 1;
-	};
-};
-
-struct sev_hv_doorbell_page {
-	union hv_pending_events pending_events;
-	u8 no_eoi_required;
-	u8 reserved2[61];
-	u8 padding[4032];
-};
-
-struct sev_snp_runtime_data {
-	struct sev_hv_doorbell_page hv_doorbell_page;
-	/*
-	 * Indication that we are currently handling #HV events.
-	 */
-	bool hv_handling_events;
-};
-
-static DEFINE_PER_CPU(struct sev_snp_runtime_data*, snp_runtime_data);
-
-static void (*sysvec_table[NR_VECTORS - FIRST_SYSTEM_VECTOR])
-		(struct pt_regs *regs) __ro_after_init;
-
-struct sysvec_entry {
-	unsigned char vector;
-	void (*sysvec_func)(struct pt_regs *regs);
-} __packed;
-
-extern struct sysvec_entry __system_vectors[], __system_vectors_end[];
-
-static inline u64 sev_es_rd_ghcb_msr(void)
-{
-	return __rdmsr(MSR_AMD64_SEV_ES_GHCB);
-}
-
-static __always_inline void sev_es_wr_ghcb_msr(u64 val)
-{
-	u32 low, high;
-
-	low  = (u32)(val);
-	high = (u32)(val >> 32);
-
-	native_wrmsr(MSR_AMD64_SEV_ES_GHCB, low, high);
-}
-
-struct sev_hv_doorbell_page *sev_snp_current_doorbell_page(void)
-{
-	return &this_cpu_read(snp_runtime_data)->hv_doorbell_page;
-}
-
-static u8 sev_hv_pending(void)
-{
-	return sev_snp_current_doorbell_page()->pending_events.events;
-}
-
-static void do_exc_hv(struct pt_regs *regs)
-{
-	union hv_pending_events pending_events;
-
-	this_cpu_read(snp_runtime_data)->hv_handling_events = true;
-
-	while (sev_hv_pending()) {
-		asm volatile("cli" : : : "memory");
-
-		pending_events.events = xchg(
-			&sev_snp_current_doorbell_page()->pending_events.events,
-			0);
-
-		if (pending_events.mc) {
-			console_verbose();
-
-			pr_emerg("rip %#llx rsp %#llx rbp %#llx flags %#llx\n",
-				(u64)regs->ip, (u64)regs->sp, (u64)regs->bp, (u64)regs->flags);
-			pr_emerg("rsi %#llx rdi %#llx\n",
-				(u64)regs->si, (u64)regs->di);
-			pr_emerg("rax %#llx rcx %#llx rbx %#llx rdx %#llx\n",
-				(u64)regs->ax, (u64)regs->cx, (u64)regs->bx, (u64)regs->dx);
-			pr_emerg("r8 %#llx r9 %#llx r10 %#llx r11 %#llx\n",
-				(u64)regs->r8, (u64)regs->r9, (u64)regs->r10, (u64)regs->r11);
-			pr_emerg("r12 %#llx r13 %#llx r14 %#llx r15 %#llx\n",
-				(u64)regs->r12, (u64)regs->r13, (u64)regs->r14, (u64)regs->r15);
-
-			dump_stack();
-			show_ip(regs, "emerg");
-			panic("#HV MC is set");
-		}
-
-		if (pending_events.nmi)
-			exc_nmi(regs);
-
-#ifdef CONFIG_X86_MCE
-		if (pending_events.mc)
-			exc_machine_check(regs);
-#endif
-
-		if (!pending_events.vector)
-			return;
-
-		if (pending_events.vector < FIRST_EXTERNAL_VECTOR) {
-			/* Exception vectors */
-			WARN(1, "exception shouldn't happen\n");
-		} else if (pending_events.vector == IA32_SYSCALL_VECTOR) {
-			WARN(1, "syscall shouldn't happen\n");
-		} else if (pending_events.vector >= FIRST_SYSTEM_VECTOR) {
-			if (!(sysvec_table[pending_events.vector - FIRST_SYSTEM_VECTOR])) {
-				WARN(1, "system vector entry 0x%x is NULL\n",
-				     pending_events.vector);
-			} else {
-				(*sysvec_table[pending_events.vector - FIRST_SYSTEM_VECTOR])(regs);
-			}
-		} else {
-			common_interrupt(regs, pending_events.vector);
-		}
-
-		asm volatile("sti" : : : "memory");
-	}
-
-	this_cpu_read(snp_runtime_data)->hv_handling_events = false;
-}
-
-void check_hv_pending(struct pt_regs *regs)
-{
-	struct pt_regs local_regs;
-
-	if (!cc_platform_has(CC_ATTR_GUEST_SEV_SNP))
-		return;
-
-	if (regs) {
-		if ((regs->flags & X86_EFLAGS_IF) == 0 || !sev_hv_pending())
-			return;
-
-	} else {
-		if (!sev_hv_pending())
-			return;
-		memset(&local_regs, 0, sizeof(struct pt_regs));
-		regs = &local_regs;
-		asm volatile("movl %%cs, %%eax;" : "=a" (regs->cs));
-		asm volatile("movl %%ss, %%eax;" : "=a" (regs->ss));
-		regs->orig_ax = 0xffffffff;
-		regs->flags = native_save_fl();
-	}
-
-	do_exc_hv(regs);
-}
-EXPORT_SYMBOL_GPL(check_hv_pending);
 
 static __always_inline bool on_vc_stack(struct pt_regs *regs)
 {
@@ -366,6 +203,70 @@ void noinstr __sev_es_ist_exit(void)
 
 	/* Read back old IST entry and write it to the TSS */
 	this_cpu_write(cpu_tss_rw.x86_tss.ist[IST_INDEX_VC], *(unsigned long *)ist);
+}
+
+/*
+ * Nothing shall interrupt this code path while holding the per-CPU
+ * GHCB. The backup GHCB is only for NMIs interrupting this path.
+ *
+ * Callers must disable local interrupts around it.
+ */
+static noinstr struct ghcb *__sev_get_ghcb(struct ghcb_state *state)
+{
+	struct sev_es_runtime_data *data;
+	struct ghcb *ghcb;
+
+	WARN_ON(!irqs_disabled());
+
+	data = this_cpu_read(runtime_data);
+	ghcb = &data->ghcb_page;
+
+	if (unlikely(data->ghcb_active)) {
+		/* GHCB is already in use - save its contents */
+
+		if (unlikely(data->backup_ghcb_active)) {
+			/*
+			 * Backup-GHCB is also already in use. There is no way
+			 * to continue here so just kill the machine. To make
+			 * panic() work, mark GHCBs inactive so that messages
+			 * can be printed out.
+			 */
+			data->ghcb_active        = false;
+			data->backup_ghcb_active = false;
+
+			instrumentation_begin();
+			panic("Unable to handle #VC exception! GHCB and Backup GHCB are already in use");
+			instrumentation_end();
+		}
+
+		/* Mark backup_ghcb active before writing to it */
+		data->backup_ghcb_active = true;
+
+		state->ghcb = &data->backup_ghcb;
+
+		/* Backup GHCB content */
+		*state->ghcb = *ghcb;
+	} else {
+		state->ghcb = NULL;
+		data->ghcb_active = true;
+	}
+
+	return ghcb;
+}
+
+static inline u64 sev_es_rd_ghcb_msr(void)
+{
+	return __rdmsr(MSR_AMD64_SEV_ES_GHCB);
+}
+
+static __always_inline void sev_es_wr_ghcb_msr(u64 val)
+{
+	u32 low, high;
+
+	low  = (u32)(val);
+	high = (u32)(val >> 32);
+
+	native_wrmsr(MSR_AMD64_SEV_ES_GHCB, low, high);
 }
 
 static int vc_fetch_insn_kernel(struct es_em_ctxt *ctxt,
@@ -651,66 +552,7 @@ fault:
 }
 
 /* Include code shared with pre-decompression boot stage */
-#include "sev-shared.c"
-
-/*
- * Nothing shall interrupt this code path while holding the per-CPU
- * GHCB. The backup GHCB is only for NMIs interrupting this path.
- *
- * Callers must disable local interrupts around it.
- */
-static noinstr struct ghcb *__sev_get_ghcb(struct ghcb_state *state)
-{
-	struct sev_es_runtime_data *data;
-	struct ghcb *ghcb;
-
-	WARN_ON(!irqs_disabled());
-
-	data = this_cpu_read(runtime_data);
-	ghcb = &data->ghcb_page;
-
-	if (unlikely(data->ghcb_active)) {
-		/* GHCB is already in use - save its contents */
-
-		if (unlikely(data->backup_ghcb_active)) {
-			/*
-			 * Backup-GHCB is also already in use. There is no way
-			 * to continue here so just kill the machine. To make
-			 * panic() work, mark GHCBs inactive so that messages
-			 * can be printed out.
-			 */
-			data->ghcb_active        = false;
-			data->backup_ghcb_active = false;
-
-			instrumentation_begin();
-			panic("Unable to handle #VC exception! GHCB and Backup GHCB are already in use");
-			instrumentation_end();
-		}
-
-		/* Mark backup_ghcb active before writing to it */
-		data->backup_ghcb_active = true;
-
-		state->ghcb = &data->backup_ghcb;
-
-		/* Backup GHCB content */
-		*state->ghcb = *ghcb;
-	} else {
-		state->ghcb = NULL;
-		data->ghcb_active = true;
-	}
-
-	/* SEV-SNP guest requires that GHCB must be registered before using it. */
-	if (!data->ghcb_registered) {
-		if (cc_platform_has(CC_ATTR_GUEST_SEV_SNP)) {
-			snp_register_ghcb_early(__pa(ghcb));
-		} else {
-			sev_es_wr_ghcb_msr(__pa(ghcb));
-		}
-		data->ghcb_registered = true;
-	}
-
-	return ghcb;
-}
+#include "sev-shared.c"	
 
 static noinstr void __sev_put_ghcb(struct ghcb_state *state)
 {
@@ -1518,7 +1360,6 @@ static void __init alloc_runtime_data(int cpu)
 static void __init init_ghcb(int cpu)
 {
 	struct sev_es_runtime_data *data;
-	struct sev_snp_runtime_data *snp_data;
 	int err;
 
 	data = per_cpu(runtime_data, cpu);
@@ -1530,22 +1371,8 @@ static void __init init_ghcb(int cpu)
 
 	memset(&data->ghcb_page, 0, sizeof(data->ghcb_page));
 
-	snp_data = memblock_alloc(sizeof(*snp_data), PAGE_SIZE);
-	if (!snp_data)
-		panic("Can't allocate SEV-SNP runtime data");
-
-	err = early_set_memory_decrypted((unsigned long)&snp_data->hv_doorbell_page,
-					 sizeof(snp_data->hv_doorbell_page));
-	if (err)
-		panic("Can't map #HV doorbell pages unencrypted");
-
-	memset(&snp_data->hv_doorbell_page, 0, sizeof(snp_data->hv_doorbell_page));
-
-	per_cpu(snp_runtime_data, cpu) = snp_data;
-
 	data->ghcb_active = false;
 	data->backup_ghcb_active = false;
-	data->ghcb_registered = false;
 }
 
 void __init sev_es_init_vc_handling(void)

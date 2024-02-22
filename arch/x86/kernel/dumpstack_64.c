@@ -26,7 +26,6 @@ static const char * const exception_stack_names[] = {
 		[ ESTACK_MCE	]	= "#MC",
 		[ ESTACK_VC	]	= "#VC",
 		[ ESTACK_VC2	]	= "#VC2",
-		
 };
 
 const char *stack_type_name(enum stack_type type)
