@@ -368,7 +368,7 @@ void __init hv_apic_init(void)
 		 * and the appropriate EOI handler is set earlier in the boot process.
 		 * Avoid overwriting it.
 		 */
-		if (!cc_platform_has(CC_ATTR_GUEST_SEV_SNP) || !sev_restricted_injection_enabled())
+		if (!cc_platform_has(CC_ATTR_GUEST_SEV_SNP))
 			apic_update_callback(eoi, hv_apic_eoi_write);
 
 		if (!x2apic_enabled()) {

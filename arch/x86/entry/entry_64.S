@@ -416,12 +416,6 @@ SYM_CODE_START(\asmsym)
 
 _ASM_NOKPROBE(\asmsym)
 SYM_CODE_END(\asmsym)
-	.if \vector >= FIRST_SYSTEM_VECTOR && \vector < NR_VECTORS
-		.section .system_vectors, "aw"
-		.byte \vector
-		.quad \cfunc
-		.previous
-	.endif
 .endm
 
 /*
@@ -570,64 +564,6 @@ SYM_CODE_START(\asmsym)
 	jmp	paranoid_exit
 
 	/* Switch to the regular task stack */
-.Lfrom_usermode_switch_stack_\@:
-	idtentry_body user_\cfunc, has_error_code=1
-
-_ASM_NOKPROBE(\asmsym)
-SYM_CODE_END(\asmsym)
-.endm
-/*
- * idtentry_hv - Macro to generate entry stub for #HV
- * @vector:		Vector number
- * @asmsym:		ASM symbol for the entry point
- * @cfunc:		C function to be called
- *
- * The macro emits code to set up the kernel context for #HV. The #HV handler
- * runs on an IST stack and needs to be able to support nested #HV exceptions.
- *
- * To make this work the #HV entry code tries its best to pretend it doesn't use
- * an IST stack by switching to the task stack if coming from user-space (which
- * includes early SYSCALL entry path) or back to the stack in the IRET frame if
- * entered from kernel-mode.
- *
- * If entered from kernel-mode the return stack is validated first, and if it is
- * not safe to use (e.g. because it points to the entry stack) the #HV handler
- * will switch to a fall-back stack (HV2) and call a special handler function.
- *
- * The macro is only used for one vector, but it is planned to be extended in
- * the future for the #HV exception.
- */
-.macro idtentry_hv vector asmsym cfunc
-SYM_CODE_START(\asmsym)
-	UNWIND_HINT_IRET_REGS
-	ASM_CLAC
-	pushq	$-1			/* ORIG_RAX: no syscall to restart */
-
-	testb	$3, CS-ORIG_RAX(%rsp)
-	jnz	.Lfrom_usermode_switch_stack_\@
-
-	call	paranoid_entry
-
-	UNWIND_HINT_REGS
-
-	/*
-	 * Switch off the IST stack to make it free for nested exceptions.
-	 */
-	movq	%rsp, %rdi		/* pt_regs pointer */
-	call	hv_switch_off_ist
-	movq	%rax, %rsp		/* Switch to new stack */
-
-	UNWIND_HINT_REGS
-
-	/* Update pt_regs */
-	movq	ORIG_RAX(%rsp), %rsi	/* get error code into 2nd argument*/
-	movq	$-1, ORIG_RAX(%rsp)	/* no syscall to restart */
-
-	movq	%rsp, %rdi		/* pt_regs pointer */
-	call	kernel_\cfunc
-
-	jmp	paranoid_exit
-
 .Lfrom_usermode_switch_stack_\@:
 	idtentry_body user_\cfunc, has_error_code=1
 
@@ -1074,15 +1010,6 @@ SYM_CODE_END(paranoid_entry)
  * R15 - old SPEC_CTRL
  */
 SYM_CODE_START_LOCAL(paranoid_exit)
-#ifdef CONFIG_AMD_MEM_ENCRYPT
-	/*
-	 * If a #HV was delivered during execution and interrupts were
-	 * disabled, then check if it can be handled before the iret
-	 * (which may re-enable interrupts).
-	 */
-	mov     %rsp, %rdi
-	call    check_hv_pending
-#endif
 	UNWIND_HINT_REGS
 
 	/*
@@ -1207,15 +1134,6 @@ SYM_CODE_START(error_entry)
 SYM_CODE_END(error_entry)
 
 SYM_CODE_START_LOCAL(error_return)
-#ifdef CONFIG_AMD_MEM_ENCRYPT
-	/*
-	 * If a #HV was delivered during execution and interrupts were
-	 * disabled, then check if it can be handled before the iret
-	 * (which may re-enable interrupts).
-	 */
-	mov     %rsp, %rdi
-	call    check_hv_pending
-#endif
 	UNWIND_HINT_REGS
 	DEBUG_ENTRY_ASSERT_IRQS_OFF
 	testb	$3, CS(%rsp)

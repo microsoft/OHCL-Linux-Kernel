@@ -819,53 +819,6 @@ sync:
 
 	return regs_ret;
 }
-
-asmlinkage __visible noinstr struct pt_regs *hv_switch_off_ist(struct pt_regs *regs)
-{
-	unsigned long sp, *stack;
-	struct stack_info info;
-	struct pt_regs *regs_ret;
-
-	/*
-	 * A malicious hypervisor can inject 2 HVs in a row, which will corrupt
-	 * the trap frame on our IST stack.  We add a defensive check here to
-	 * catch such behavior.
-	 */
-	BUG_ON(regs->sp >= __this_cpu_ist_bottom_va(HV) && regs->sp < __this_cpu_ist_top_va(HV));
-
-	/*
-	 * In the SYSCALL entry path the RSP value comes from user-space - don't
-	 * trust it and switch to the current kernel stack
-	 */
-	if (ip_within_syscall_gap(regs)) {
-		sp = current_top_of_stack();
-		goto sync;
-	}
-
-	/*
-	 * From here on the RSP value is trusted. Now check whether entry
-	 * happened from a safe stack. Not safe are the entry or unknown stacks,
-	 * use the fall-back stack instead in this case.
-	 */
-	sp    = regs->sp;
-	stack = (unsigned long *)sp;
-
-	if (!get_stack_info_noinstr(stack, current, &info) || info.type == STACK_TYPE_ENTRY ||
-	    info.type > STACK_TYPE_EXCEPTION_LAST)
-		sp = __this_cpu_ist_top_va(HV2);
-sync:
-	/*
-	 * Found a safe stack - switch to it as if the entry didn't happen via
-	 * IST stack. The code below only copies pt_regs, the real switch happens
-	 * in assembly code.
-	 */
-	sp = ALIGN_DOWN(sp, 8) - sizeof(*regs_ret);
-
-	regs_ret = (struct pt_regs *)sp;
-	*regs_ret = *regs;
-
-	return regs_ret;
-}
 #endif
 
 asmlinkage __visible noinstr struct pt_regs *fixup_bad_iret(struct pt_regs *bad_regs)
@@ -1428,7 +1381,4 @@ void __init trap_init(void)
 	/* Setup traps as cpu_init() might #GP */
 	idt_setup_traps();
 	cpu_init();
-
-	/* Init #HV doorbell pages when running as an SEV-SNP guest */
-	sev_snp_init_hv_handling();
 }

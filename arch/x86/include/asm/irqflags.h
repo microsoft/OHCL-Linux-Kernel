@@ -11,9 +11,6 @@
 /*
  * Interrupt control:
  */
-#ifdef CONFIG_AMD_MEM_ENCRYPT
-void check_hv_pending(struct pt_regs *regs);
-#endif
 
 /* Declaration required for gcc < 4.9 to prevent -Werror=missing-prototypes */
 extern inline unsigned long native_save_fl(void);
@@ -35,19 +32,6 @@ extern __always_inline unsigned long native_save_fl(void)
 	return flags;
 }
 
-extern inline void native_restore_fl(unsigned long flags)
-{
-	asm volatile("push %0 ; popf"
-		     : /* no output */
-		     : "g" (flags)
-		     : "memory", "cc");
-#ifdef CONFIG_AMD_MEM_ENCRYPT
-	if ((flags & X86_EFLAGS_IF)) {
-		check_hv_pending(NULL);
-	}
-#endif
-}
-
 static __always_inline void native_irq_disable(void)
 {
 	asm volatile("cli": : :"memory");
@@ -56,19 +40,12 @@ static __always_inline void native_irq_disable(void)
 static __always_inline void native_irq_enable(void)
 {
 	asm volatile("sti": : :"memory");
-#ifdef CONFIG_AMD_MEM_ENCRYPT
-	check_hv_pending(NULL);
-#endif
 }
 
 static __always_inline void native_safe_halt(void)
 {
 	mds_idle_clear_cpu_buffers();
 	asm volatile("sti; hlt": : :"memory");
-#ifdef CONFIG_AMD_MEM_ENCRYPT
-	check_hv_pending(NULL);
-#endif
-
 }
 
 static __always_inline void native_halt(void)

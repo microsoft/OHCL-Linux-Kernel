@@ -142,8 +142,6 @@ static struct sev_config sev_cfg __read_mostly;
 
 static noinstr struct ghcb *__sev_get_ghcb(struct ghcb_state *state);
 static noinstr void __sev_put_ghcb(struct ghcb_state *state);
-static int vmgexit_hv_doorbell_page(struct ghcb *ghcb, u64 op, u64 pa);
-static void sev_snp_setup_hv_doorbell_page(struct ghcb *ghcb);
 
 union hv_pending_events {
 	u16 events;
@@ -206,17 +204,6 @@ struct sev_hv_doorbell_page *sev_snp_current_doorbell_page(void)
 static u8 sev_hv_pending(void)
 {
 	return sev_snp_current_doorbell_page()->pending_events.events;
-}
-
-static void (*__old_apic_write)(u32 reg, u32 val);
-
-static void hv_doorbell_apic_write(u32 reg, u32 val)
-{
-	if (reg == APIC_EOI)
-		if (xchg(&sev_snp_current_doorbell_page()->no_eoi_required, 0) & 0x1)
-			return;
-
-	__old_apic_write(reg, val);
 }
 
 static void do_exc_hv(struct pt_regs *regs)
@@ -379,45 +366,6 @@ void noinstr __sev_es_ist_exit(void)
 
 	/* Read back old IST entry and write it to the TSS */
 	this_cpu_write(cpu_tss_rw.x86_tss.ist[IST_INDEX_VC], *(unsigned long *)ist);
-}
-
-bool sev_restricted_injection_enabled(void)
-{
-	return sev_status & MSR_AMD64_SEV_RESTRICTED_INJECTION_ENABLED;
-}
-
-static void __init construct_sysvec_table(void)
-{
-	struct sysvec_entry *p;
-
-	for (p = __system_vectors; p < __system_vectors_end; p++)
-		sysvec_table[p->vector - FIRST_SYSTEM_VECTOR] = p->sysvec_func;
-}
-
-void __init sev_snp_init_hv_handling(void)
-{
-	struct ghcb_state state;
-	struct ghcb *ghcb;
-	unsigned long flags;
-
-	WARN_ON(!irqs_disabled());
-	if (!cc_platform_has(CC_ATTR_GUEST_SEV_SNP) || !sev_restricted_injection_enabled())
-		return;
-
-	local_irq_save(flags);
-
-	ghcb = __sev_get_ghcb(&state);
-
-	sev_snp_setup_hv_doorbell_page(ghcb);
-
-	__sev_put_ghcb(&state);
-
-	__old_apic_write = apic->write;
-	apic_update_callback(write, hv_doorbell_apic_write);
-
-	local_irq_restore(flags);
-
-	construct_sysvec_table();
 }
 
 static int vc_fetch_insn_kernel(struct es_em_ctxt *ctxt,
@@ -755,7 +703,6 @@ static noinstr struct ghcb *__sev_get_ghcb(struct ghcb_state *state)
 	if (!data->ghcb_registered) {
 		if (cc_platform_has(CC_ATTR_GUEST_SEV_SNP)) {
 			snp_register_ghcb_early(__pa(ghcb));
-			sev_snp_setup_hv_doorbell_page(ghcb);
 		} else {
 			sev_es_wr_ghcb_msr(__pa(ghcb));
 		}
@@ -763,19 +710,6 @@ static noinstr struct ghcb *__sev_get_ghcb(struct ghcb_state *state)
 	}
 
 	return ghcb;
-}
-
-static void sev_snp_setup_hv_doorbell_page(struct ghcb *ghcb)
-{
-	u64 pa;
-	enum es_result ret;
-
-	pa = __pa(sev_snp_current_doorbell_page());
-	vc_ghcb_invalidate(ghcb);
-	ret = vmgexit_hv_doorbell_page(ghcb,
-			SVM_VMGEXIT_SET_HV_DOORBELL_PAGE, pa);
-	if (ret != ES_OK)
-		panic("SEV-SNP: failed to set up #HV doorbell page");
 }
 
 static noinstr void __sev_put_ghcb(struct ghcb_state *state)
@@ -1509,11 +1443,6 @@ void setup_ghcb(void)
 	/* SNP guest requires that GHCB GPA must be registered. */
 	if (cc_platform_has(CC_ATTR_GUEST_SEV_SNP))
 		snp_register_ghcb_early(__pa(&boot_ghcb_page));
-}
-
-int vmgexit_hv_doorbell_page(struct ghcb *ghcb, u64 op, u64 pa)
-{
-	return sev_es_ghcb_hv_call(ghcb, NULL, SVM_VMGEXIT_HV_DOORBELL_PAGE, op, pa);
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
@@ -2257,59 +2186,6 @@ DEFINE_IDTENTRY_VC_USER(exc_vmm_communication)
 
 	instrumentation_end();
 	irqentry_exit_to_user_mode(regs);
-}
-
-static bool hv_raw_handle_exception(struct pt_regs *regs)
-{
-	return true;
-}
-
-static __always_inline bool on_hv_fallback_stack(struct pt_regs *regs)
-{
-	unsigned long sp = (unsigned long)regs;
-
-	return (sp >= __this_cpu_ist_bottom_va(HV2) && sp < __this_cpu_ist_top_va(HV2));
-}
-
-DEFINE_IDTENTRY_HV_USER(exc_hv_injection)
-{
-	irqentry_enter_from_user_mode(regs);
-	instrumentation_begin();
-
-	if (!hv_raw_handle_exception(regs)) {
-		/*
-		 * Do not kill the machine if user-space triggered the
-		 * exception. Send SIGBUS instead and let user-space deal
-		 * with it.
-		 */
-		force_sig_fault(SIGBUS, BUS_OBJERR, (void __user *)0);
-	}
-
-	instrumentation_end();
-	irqentry_exit_to_user_mode(regs);
-}
-
-DEFINE_IDTENTRY_HV_KERNEL(exc_hv_injection)
-{
-	irqentry_state_t irq_state;
-
-	irq_state = irqentry_enter(regs);
-	instrumentation_begin();
-
-	if (!hv_raw_handle_exception(regs)) {
-		pr_emerg("PANIC: Unhandled #HV exception in kernel space\n");
-
-		/* Show some debug info */
-		show_regs(regs);
-
-		/* Ask hypervisor to sev_es_terminate */
-		sev_es_terminate(SEV_TERM_SET_GEN, GHCB_SEV_ES_GEN_REQ);
-
-		panic("Returned from Terminate-Request to Hypervisor\n");
-	}
-
-	instrumentation_end();
-	irqentry_exit(regs, irq_state);
 }
 
 bool __init handle_vc_boot_ghcb(struct pt_regs *regs)

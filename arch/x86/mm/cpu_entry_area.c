@@ -160,8 +160,6 @@ static void __init percpu_setup_exception_stacks(unsigned int cpu)
 		if (cc_platform_has(CC_ATTR_GUEST_STATE_ENCRYPT)) {
 			cea_map_stack(VC);
 			cea_map_stack(VC2);
-			cea_map_stack(HV);
-			cea_map_stack(HV2);
 		}
 	}
 }
