@@ -110,7 +110,7 @@ void __init hv_vtl_init_platform(void)
 	pr_info("Linux runs in Hyper-V Virtual Trust Level\n");
 }
 
-static int __init hv_vtl_early_init(void)
+int __init hv_vtl_early_init(void)
 {
 	return 0;
 }

@@ -212,6 +212,13 @@ union hv_reference_tsc_msr {
 /* Extended capability bits */
 #define HV_EXT_CAPABILITY_MEMORY_COLD_DISCARD_HINT BIT(8)
 
+/*
+ * Registers are only accessible via HVCALL_GET_VP_REGISTERS hvcall and
+ * there is not associated MSR address.
+ */
+#define	HV_REGISTER_VSM_VP_STATUS	0x000D0003
+#define	HV_VTL_MASK			GENMASK(3, 0)
+
 enum HV_GENERIC_SET_FORMAT {
 	HV_GENERIC_SET_SPARSE_4K,
 	HV_GENERIC_SET_ALL,

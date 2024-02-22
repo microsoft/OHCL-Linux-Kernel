@@ -53,8 +53,12 @@ extern u64 hv_current_partition_id;
 
 #ifdef CONFIG_HYPERV_VTL_MODE
 void __init hv_vtl_init_platform(void);
+int __init hv_vtl_early_init(void);
+u8 get_vtl(void);
 #else
 static inline void __init hv_vtl_init_platform(void) {}
+static inline int __init hv_vtl_early_init(void) { return 0; }
+static inline u8 get_vtl(void) { return 0; }
 #endif
 
 #include <asm-generic/mshyperv.h>
