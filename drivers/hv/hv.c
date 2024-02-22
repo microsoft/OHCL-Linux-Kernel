@@ -79,7 +79,7 @@ int hv_post_message(union hv_connection_id connection_id,
 		if (hv_isolation_type_tdx())
 			status = hv_tdx_hypercall(HVCALL_POST_MESSAGE,
 						  virt_to_phys(aligned_msg), 0);
-		else if (hv_isolation_type_snp())
+		else if (hv_isolation_type_snp() || hv_isolation_type_en_snp())
 			status = hv_ghcb_hypercall(HVCALL_POST_MESSAGE,
 						   aligned_msg, NULL,
 						   sizeof(*aligned_msg));
@@ -166,7 +166,7 @@ int hv_synic_alloc(void)
 		}
 
 		if (!ms_hyperv.paravisor_present &&
-		    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
+		    (hv_isolation_type_snp() || hv_isolation_type_en_snp() || hv_isolation_type_tdx())) {
 			ret = set_memory_decrypted((unsigned long)
 				hv_cpu->synic_message_page, 1);
 			if (ret) {
@@ -250,7 +250,7 @@ void hv_synic_free(void)
 		}
 
 		if (!ms_hyperv.paravisor_present &&
-		    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
+		    (hv_isolation_type_snp() || hv_isolation_type_en_snp() || hv_isolation_type_tdx())) {
 			if (hv_cpu->synic_message_page) {
 				ret = set_memory_encrypted((unsigned long)
 					hv_cpu->synic_message_page, 1);

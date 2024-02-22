@@ -438,7 +438,7 @@ void hv_ivm_msr_write(u64 msr, u64 value)
 
 	if (hv_isolation_type_tdx())
 		hv_tdx_msr_write(msr, value);
-	else if (hv_isolation_type_snp())
+	else if (hv_isolation_type_snp() || hv_isolation_type_en_snp())
 		hv_ghcb_msr_write(msr, value);
 }
 
@@ -449,7 +449,7 @@ void hv_ivm_msr_read(u64 msr, u64 *value)
 
 	if (hv_isolation_type_tdx())
 		hv_tdx_msr_read(msr, value);
-	else if (hv_isolation_type_snp())
+	else if (hv_isolation_type_snp() || hv_isolation_type_en_snp())
 		hv_ghcb_msr_read(msr, value);
 }
 
