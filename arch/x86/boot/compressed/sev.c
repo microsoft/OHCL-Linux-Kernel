@@ -430,7 +430,7 @@ void snp_check_features(void)
  * Returns < 0 if SEV is not supported, otherwise the position of the
  * encryption bit in the page table descriptors.
  */
-static int sev_check_cpu_support(void)
+static int sev_check_cpu_support(struct boot_params *bp)
 {
 	struct cc_blob_sev_info *cc_info;
 	unsigned int eax, ebx, ecx, edx;
@@ -505,7 +505,7 @@ void sev_enable(struct boot_params *bp)
 	 * which is good enough.
 	 */
 
-	if (sev_check_cpu_support() < 0)
+	if (sev_check_cpu_support(bp) < 0)
 		return;
 
 	/*
@@ -516,7 +516,7 @@ void sev_enable(struct boot_params *bp)
 
 	/* Now repeat the checks with the SNP CPUID table. */
 
-	bitpos = sev_check_cpu_support();
+	bitpos = sev_check_cpu_support(bp);
 	if (bitpos < 0) {
 		if (snp)
 			error("SEV-SNP support indicated by CC blob, but not CPUID.");
@@ -562,7 +562,7 @@ u64 sev_get_status(void)
 {
 	struct msr m;
 
-	if (sev_check_cpu_support() < 0)
+	if (sev_check_cpu_support(boot_params) < 0)
 		return 0;
 
 	boot_rdmsr(MSR_AMD64_SEV, &m);

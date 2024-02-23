@@ -480,8 +480,12 @@ asmlinkage __visible void *extract_kernel(void *rmode, unsigned char *output)
 	debug_putstr("\nDecompressing Linux... ");
 
 	if (init_unaccepted_memory()) {
+#if defined(CONFIG_EFI)		
 		debug_putstr("Accepting memory... ");
 		accept_memory(__pa(output), __pa(output) + needed_size);
+#else
+		error("Memory acceptance not supported by the this boot loader");
+#endif
 	}
 
 	entry_offset = decompress_kernel(output, virt_addr, error);
