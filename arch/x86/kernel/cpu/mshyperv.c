@@ -313,7 +313,7 @@ static void __init hv_smp_prepare_boot_cpu(void)
 static u8 ap_start_input_arg[PAGE_SIZE] __bss_decrypted __aligned(PAGE_SIZE);
 static u8 ap_start_stack[PAGE_SIZE] __aligned(PAGE_SIZE);
 
-int hv_snp_boot_ap(int cpu, unsigned long start_ip)
+int hv_en_snp_boot_ap(int cpu, unsigned long start_ip)
 {
 	struct vmcb_save_area *vmsa = (struct vmcb_save_area *)
 		__get_free_page(GFP_KERNEL | __GFP_ZERO);
@@ -450,11 +450,15 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 	native_smp_prepare_cpus(max_cpus);
 
 	/*
-	 *  Override wakeup_secondary_cpu callback for SEV-SNP
+	 *  Override wakeup_secondary_cpu[_64] callback for SEV-SNP
 	 *  enlightened guest.
 	 */
-	if (hv_isolation_type_en_snp())
-		apic->wakeup_secondary_cpu = hv_snp_boot_ap;
+	if (hv_isolation_type_en_snp()) {
+		apic_update_callback(wakeup_secondary_cpu, hv_en_snp_boot_ap);
+	}
+	else if (!ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
+		apic_update_callback(wakeup_secondary_cpu_64, hv_snp_boot_ap);
+	}
 
 	if (!hv_root_partition)
 		return;
@@ -742,9 +746,9 @@ static void __init ms_hyperv_init_platform(void)
 
 # ifdef CONFIG_SMP
 	smp_ops.smp_prepare_boot_cpu = hv_smp_prepare_boot_cpu;
-	if (hv_root_partition || hv_isolation_type_snp())
+	if (hv_root_partition ||
+	    (!ms_hyperv.paravisor_present && hv_isolation_type_snp()) || hv_isolation_type_en_snp())
 		smp_ops.smp_prepare_cpus = hv_smp_prepare_cpus;
-	smp_ops.smp_prepare_cpus = hv_smp_prepare_cpus;
 # endif
 
 	/*

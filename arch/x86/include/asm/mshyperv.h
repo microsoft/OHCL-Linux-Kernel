@@ -283,6 +283,7 @@ int hv_set_mem_host_visibility(unsigned long addr, int numpages, bool visible);
 bool hv_ghcb_negotiate_protocol(void);
 void __noreturn hv_ghcb_terminate(unsigned int set, unsigned int reason);
 int hv_snp_boot_ap(int cpu, unsigned long start_ip);
+int hv_en_snp_boot_ap(int cpu, unsigned long start_ip);
 #else
 static inline bool hv_ghcb_negotiate_protocol(void) { return false; }
 static inline void hv_ghcb_terminate(unsigned int set, unsigned int reason) {}
