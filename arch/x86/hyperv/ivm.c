@@ -338,19 +338,33 @@ int hv_snp_boot_ap(int cpu, unsigned long start_ip)
 	vmsa->sev_features = sev_status >> 2;
 
 	ret = snp_set_vmsa(vmsa, true);
-	if (!ret) {
+	if (ret) {
 		pr_err("RMPADJUST(%llx) failed: %llx\n", (u64)vmsa, ret);
 		free_page((u64)vmsa);
 		return ret;
 	}
 
 	local_irq_save(flags);
+
 	start_vp_input = (struct hv_enable_vp_vtl *)ap_start_input_arg;
 	memset(start_vp_input, 0, sizeof(*start_vp_input));
 	start_vp_input->partition_id = -1;
 	start_vp_input->vp_index = cpu;
 	start_vp_input->target_vtl.target_vtl = ms_hyperv.vtl;
 	*(u64 *)&start_vp_input->vp_context = __pa(vmsa) | 1;
+
+	if (ms_hyperv.vtl != 0) {
+		do {
+			ret = hv_do_hypercall(HVCALL_ENABLE_VP_VTL,
+						start_vp_input, NULL);
+		} while (hv_result(ret) == HV_STATUS_TIME_OUT && retry--);
+
+		if (ret) {
+			pr_err("HvCallEnableVpVtl failed: %llx\n", ret);
+			return ret;
+		}
+		pr_info("HvCallEnableVpVtl succeeded\n");
+	}
 
 	do {
 		ret = hv_do_hypercall(HVCALL_START_VP,
@@ -364,6 +378,7 @@ int hv_snp_boot_ap(int cpu, unsigned long start_ip)
 		snp_cleanup_vmsa(vmsa);
 		vmsa = NULL;
 	}
+	pr_info("HvCallStartVirtualProcessor succeeded\n");
 
 	cur_vmsa = per_cpu(hv_sev_vmsa, cpu);
 	/* Free up any previous VMSA page */

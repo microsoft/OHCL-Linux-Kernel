@@ -310,136 +310,6 @@ static void __init hv_smp_prepare_boot_cpu(void)
 #endif
 }
 
-static u8 ap_start_input_arg[PAGE_SIZE] __bss_decrypted __aligned(PAGE_SIZE);
-static u8 ap_start_stack[PAGE_SIZE] __aligned(PAGE_SIZE);
-
-int hv_en_snp_boot_ap(int cpu, unsigned long start_ip)
-{
-	struct vmcb_save_area *vmsa = (struct vmcb_save_area *)
-		__get_free_page(GFP_KERNEL | __GFP_ZERO);
-	struct desc_ptr gdtr;
-	u64 ret, retry = 5;
-	struct hv_enable_vp_vtl_input *enable_vtl_input;
-	struct hv_start_virtual_processor_input *start_vp_input;
-	union sev_rmp_adjust rmp_adjust;
-	void **arg;
-	unsigned long flags;
-
-	*(void **)per_cpu_ptr(hyperv_pcpu_input_arg, cpu) = ap_start_input_arg;
-
-	hv_vp_index[cpu] = cpu;
-
-	/* Prevent APs from entering busy calibration loop */
-	preset_lpj = lpj_fine;
-
-	/* Replace the provided real-mode start_ip */
-	start_ip = (unsigned long)secondary_startup_64_no_verify;
-
-	native_store_gdt(&gdtr);
-
-	vmsa->gdtr.base = gdtr.address;
-	vmsa->gdtr.limit = gdtr.size;
-
-	asm volatile("movl %%es, %%eax;" : "=a" (vmsa->es.selector));
-	if (vmsa->es.selector) {
-		vmsa->es.base = 0;
-		vmsa->es.limit = HV_AP_SEGMENT_LIMIT;
-		vmsa->es.attrib = *(u16 *)(vmsa->gdtr.base + vmsa->es.selector + 5);
-		vmsa->es.attrib = (vmsa->es.attrib & 0xFF) | ((vmsa->es.attrib >> 4) & 0xF00);
-	}
-
-	asm volatile("movl %%cs, %%eax;" : "=a" (vmsa->cs.selector));
-	if (vmsa->cs.selector) {
-		vmsa->cs.base = 0;
-		vmsa->cs.limit = HV_AP_SEGMENT_LIMIT;
-		vmsa->cs.attrib = *(u16 *)(vmsa->gdtr.base + vmsa->cs.selector + 5);
-		vmsa->cs.attrib = (vmsa->cs.attrib & 0xFF) | ((vmsa->cs.attrib >> 4) & 0xF00);
-	}
-
-	asm volatile("movl %%ss, %%eax;" : "=a" (vmsa->ss.selector));
-	if (vmsa->ss.selector) {
-		vmsa->ss.base = 0;
-		vmsa->ss.limit = HV_AP_SEGMENT_LIMIT;
-		vmsa->ss.attrib = *(u16 *)(vmsa->gdtr.base + vmsa->ss.selector + 5);
-		vmsa->ss.attrib = (vmsa->ss.attrib & 0xFF) | ((vmsa->ss.attrib >> 4) & 0xF00);
-	}
-
-	asm volatile("movl %%ds, %%eax;" : "=a" (vmsa->ds.selector));
-	if (vmsa->ds.selector) {
-		vmsa->ds.base = 0;
-		vmsa->ds.limit = HV_AP_SEGMENT_LIMIT;
-		vmsa->ds.attrib = *(u16 *)(vmsa->gdtr.base + vmsa->ds.selector + 5);
-		vmsa->ds.attrib = (vmsa->ds.attrib & 0xFF) | ((vmsa->ds.attrib >> 4) & 0xF00);
-	}
-
-	vmsa->efer = native_read_msr(MSR_EFER);
-
-	asm volatile("movq %%cr4, %%rax;" : "=a" (vmsa->cr4));
-	asm volatile("movq %%cr3, %%rax;" : "=a" (vmsa->cr3));
-	asm volatile("movq %%cr0, %%rax;" : "=a" (vmsa->cr0));
-
-	vmsa->xcr0 = 1;
-	vmsa->g_pat = HV_AP_INIT_GPAT_DEFAULT;
-	vmsa->rip = (u64)start_ip;
-	vmsa->rsp = (u64)&ap_start_stack[PAGE_SIZE];
-
-	vmsa->sev_feature_snp = 1;
-	vmsa->sev_feature_restrict_injection = 1;
-
-	rmp_adjust.as_uint64 = 0;
-	rmp_adjust.target_vmpl = 1;
-	rmp_adjust.vmsa = 1;
-	ret = rmpadjust((unsigned long)vmsa, RMP_PG_SIZE_4K,
-			rmp_adjust.as_uint64);
-	if (ret != 0) {
-		pr_err("RMPADJUST(%llx) failed: %llx\n", (u64)vmsa, ret);
-		return ret;
-	}
-
-	local_irq_save(flags);
-	arg = (void **)this_cpu_ptr(hyperv_pcpu_input_arg);
-	if (unlikely(!*arg)) {
-		ret = -ENOMEM;
-		goto done;
-	}
-
-	if (ms_hyperv.vtl != 0) {
-		enable_vtl_input = (struct hv_enable_vp_vtl_input *)*arg;
-		memset(enable_vtl_input, 0, sizeof(*enable_vtl_input));
-		enable_vtl_input->partitionid = -1;
-		enable_vtl_input->vpindex = cpu;
-		enable_vtl_input->targetvtl = ms_hyperv.vtl;
-		*(u64 *)&enable_vtl_input->context[0] = __pa(vmsa) | 1;
-
-		ret = hv_do_hypercall(HVCALL_ENABLE_VP_VTL, enable_vtl_input, NULL);
-		if (ret != 0) {
-			pr_err("HvCallEnableVpVtl failed: %llx\n", ret);
-			goto done;
-		}
-	}
-
-	start_vp_input = (struct hv_start_virtual_processor_input *)*arg;
-	memset(start_vp_input, 0, sizeof(*start_vp_input));
-	start_vp_input->partitionid = -1;
-	start_vp_input->vpindex = cpu;
-	start_vp_input->targetvtl = ms_hyperv.vtl;
-	*(u64 *)&start_vp_input->context[0] = __pa(vmsa) | 1;
-
-	do {
-		ret = hv_do_hypercall(HVCALL_START_VIRTUAL_PROCESSOR,
-				      start_vp_input, NULL);
-	} while (ret == HV_STATUS_TIME_OUT && retry--);
-
-	if (ret != 0) {
-		pr_err("HvCallStartVirtualProcessor failed: %llx\n", ret);
-		goto done;
-	}
-
-done:
-	local_irq_restore(flags);
-	return ret;
-}
-
 static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 {
 #ifdef CONFIG_X86_64
@@ -450,13 +320,10 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 	native_smp_prepare_cpus(max_cpus);
 
 	/*
-	 *  Override wakeup_secondary_cpu[_64] callback for SEV-SNP
+	 *  Override wakeup_secondary_cpu_64 callback for SEV-SNP
 	 *  enlightened guest.
 	 */
-	if (hv_isolation_type_en_snp()) {
-		apic_update_callback(wakeup_secondary_cpu, hv_en_snp_boot_ap);
-	}
-	else if (!ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
+	if (hv_isolation_type_en_snp() || (!ms_hyperv.paravisor_present && hv_isolation_type_snp())) {
 		apic_update_callback(wakeup_secondary_cpu_64, hv_snp_boot_ap);
 	}
 
