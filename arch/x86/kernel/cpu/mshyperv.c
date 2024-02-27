@@ -319,6 +319,9 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 
 	native_smp_prepare_cpus(max_cpus);
 
+	/* Prevent APs from entering busy calibration loop */
+	preset_lpj = lpj_fine;
+
 	/*
 	 *  Override wakeup_secondary_cpu_64 callback for SEV-SNP
 	 *  enlightened guest.
