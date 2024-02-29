@@ -265,7 +265,7 @@ static bool __send_ipi_one(int cpu, int vector)
 
 	do {
 		status = hv_do_fast_hypercall16(HVCALL_SEND_IPI, vector, BIT_ULL(vp));
-	} while (status == HV_STATUS_TIME_OUT || retry--);
+	} while (status == HV_STATUS_TIME_OUT && retry--);
 
 	return hv_result_success(status);
 }
