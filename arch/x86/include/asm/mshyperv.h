@@ -149,7 +149,7 @@ static inline u64 _hv_do_fast_hypercall8(u64 control, u64 input1)
 	if (hv_isolation_type_tdx() && !hyperv_paravisor_present)
 		return hv_tdx_hypercall(control, input1, 0);
 
-	if (hv_isolation_type_snp() && !hyperv_paravisor_present) {
+	if (hv_isolation_type_en_snp() && !hyperv_paravisor_present) {
 		__asm__ __volatile__(
 				"vmmcall"
 				: "=a" (hv_status), ASM_CALL_CONSTRAINT,
@@ -203,7 +203,7 @@ static inline u64 _hv_do_fast_hypercall16(u64 control, u64 input1, u64 input2)
 	if (hv_isolation_type_tdx() && !hyperv_paravisor_present)
 		return hv_tdx_hypercall(control, input1, input2);
 
-	if (hv_isolation_type_snp() && !hyperv_paravisor_present) {
+	if (hv_isolation_type_en_snp() && !hyperv_paravisor_present) {
 		__asm__ __volatile__("mov %4, %%r8\n"
 				     "vmmcall"
 				     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
