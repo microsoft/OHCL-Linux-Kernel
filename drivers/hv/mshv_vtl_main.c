@@ -290,7 +290,7 @@ static int mshv_configure_vmsa_page(struct mshv_vtl_per_cpu *per_cpu)
 		BUG();
 	}
 
-	pr_info("set vmsa page");
+	pr_debug("set vmsa page");
 	per_cpu->vmsa_page = page;
 	return 0;
 }
