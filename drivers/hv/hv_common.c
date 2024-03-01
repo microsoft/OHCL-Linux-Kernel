@@ -342,7 +342,9 @@ u8 __init get_vtl(void)
 
 int __init hv_common_init(void)
 {
-	int i;
+	int cpu;
+	void **inputarg, **outputarg;
+	int ret = 0;
 
 	if (hv_is_isolation_supported())
 		sysctl_record_panic_msg = 0;
@@ -410,8 +412,24 @@ int __init hv_common_init(void)
 		return -ENOMEM;
 	}
 
-	for (i = 0; i < num_possible_cpus(); i++)
-		hv_vp_index[i] = VP_INVAL;
+	for_each_possible_cpu(cpu) {
+		hv_vp_index[cpu] = VP_INVAL;
+		inputarg = (void **)per_cpu_ptr(hyperv_pcpu_input_arg, cpu);
+		*inputarg = kmalloc(2 * HV_HYP_PAGE_SIZE, GFP_KERNEL);
+		if (!(*inputarg))
+			return -ENOMEM;
+		outputarg = (void **)per_cpu_ptr(hyperv_pcpu_output_arg, cpu);
+		*outputarg = (char *)(*inputarg) + HV_HYP_PAGE_SIZE;
+		if (hv_isolation_type_en_snp()) {
+			ret = set_memory_decrypted((unsigned long)*inputarg, 2);
+			if (ret) {
+				kfree(*inputarg);
+				hv_common_free();
+				return ret;
+			}
+			memset(*inputarg, 0x00, 2*PAGE_SIZE);
+		}
+	}
 
 	/*
 	 * The VP assist page is useless to a TDX guest: the only use we
@@ -419,11 +437,16 @@ int __init hv_common_init(void)
 	 */
 	if (hv_isolation_type_tdx())
 		hv_vp_assist_page = NULL;
-	else
+	else {
 		hv_vp_assist_page = kcalloc(num_possible_cpus(),
 						sizeof(*hv_vp_assist_page), GFP_KERNEL);
+		if (!hv_vp_assist_page) {
+			hv_common_free();
+			ret = -ENOMEM;
+		}
+	}
 
-	return 0;
+	return ret;
 }
 
 /*
