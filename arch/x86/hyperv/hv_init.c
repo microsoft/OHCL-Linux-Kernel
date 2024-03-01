@@ -373,7 +373,7 @@ void __init hyperv_init(void)
 			goto common_free;
 	}
 
-	if (hv_isolation_type_en_snp() || (ms_hyperv.paravisor_present && hv_isolation_type_snp())) {
+	if (ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
 		/* Negotiate GHCB Version. */
 		if (!hv_ghcb_negotiate_protocol())
 			hv_ghcb_terminate(SEV_TERM_SET_GEN,
