@@ -299,7 +299,6 @@ int hv_snp_boot_ap(int apic_id, unsigned long start_ip)
 	int vp_id;
 	unsigned long flags;
 
-	// Remove, for debugging.
 	int i = 0, cpu_id = -EINVAL;
 	for_each_possible_cpu(i) {
 		if (per_cpu(x86_cpu_to_apicid, i) == apic_id) {
@@ -307,7 +306,7 @@ int hv_snp_boot_ap(int apic_id, unsigned long start_ip)
 			break;
 		}
 	}
-	pr_info("%s: APIC ID %d, cpu %d\n", __func__, apic_id, cpu_id);
+	pr_debug("%s: APIC ID %d, cpu %d\n", __func__, apic_id, cpu_id);
 	if (cpu_id == -EINVAL)
 		panic("%s: no cpu found for APIC ID %d\n", __func__, apic_id);
 
@@ -317,10 +316,8 @@ int hv_snp_boot_ap(int apic_id, unsigned long start_ip)
 	vp_id = hv_apicid_to_vp_id(apic_id);
 	if (vp_id < 0)
 		panic("%s: error when getting VP id for APIC id %#x\n", __func__, apic_id);
-	pr_info("%s: APIC id %#x, VP id %#x\n", __func__, apic_id, vp_id);
+	pr_debug("%s: APIC id %#x, VP id %#x\n", __func__, apic_id, vp_id);
 
-	// Remove, for debugging.
-	// Read from a synth MSR when an AP goes through HP callbacks.
 	hv_vp_index[cpu_id] = vp_id;
 
 	native_store_gdt(&gdtr);
@@ -385,7 +382,6 @@ int hv_snp_boot_ap(int apic_id, unsigned long start_ip)
 			pr_err("HvCallEnableVpVtl failed: %llx\n", ret);
 			return ret;
 		}
-		pr_info("HvCallEnableVpVtl succeeded\n");
 	}
 
 	do {
@@ -400,7 +396,6 @@ int hv_snp_boot_ap(int apic_id, unsigned long start_ip)
 		snp_cleanup_vmsa(vmsa);
 		vmsa = NULL;
 	}
-	pr_info("HvCallStartVirtualProcessor succeeded\n");
 
 	cur_vmsa = per_cpu(hv_sev_vmsa, cpu_id);
 	/* Free up any previous VMSA page */
