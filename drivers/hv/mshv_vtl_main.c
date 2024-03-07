@@ -1011,7 +1011,7 @@ hypercall:
 
 #ifdef CONFIG_ARM64
 
-static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
+static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 /* flags */)
 {
 	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 	u64 register x18 asm("x18");
@@ -1136,7 +1136,7 @@ static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 
 #elif CONFIG_X86_64
 
-static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
+static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 flags)
 {
 	struct hv_vp_assist_page *hvp;
 	u64 hypercall_addr;
@@ -1152,8 +1152,12 @@ static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 
 	if (hv_isolation_type_en_snp())
 	{
-		u8 target_vtl = 0; /* hardcode for now */
-		snp_mshv_vtl_return(target_vtl);
+		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED))
+			native_safe_halt();
+		else {
+			u8 target_vtl = 0; /* hardcode for now */
+			snp_mshv_vtl_return(target_vtl);
+		}
 		return;
 	}
 
@@ -1270,11 +1274,13 @@ DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
 	struct hv_vp_assist_page *hvp;
-	struct mshv_vtl_cpu_context *cpu_ctx = &mshv_vtl_this_run()->cpu_context;
+	struct mshv_vtl_run *this_run = mshv_vtl_this_run();
+	struct mshv_vtl_cpu_context *cpu_ctx = &this_run->cpu_context;
+	u32 flags = READ_ONCE(this_run->flags);
 
 	trace_mshv_vtl_enter_vtl0_rcuidle(cpu_ctx);
 
-	mshv_vtl_return(cpu_ctx);
+	mshv_vtl_return(cpu_ctx, flags);
 	hvp = hv_vp_assist_page[smp_processor_id()];
 
 	trace_mshv_vtl_exit_vtl0_rcuidle(hvp->vtl_entry_reason, cpu_ctx);
