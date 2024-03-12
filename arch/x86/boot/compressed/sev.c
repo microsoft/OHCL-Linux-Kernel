@@ -144,7 +144,7 @@ static bool sev_snp_runtime_check(void)
 	return false;
 }
 
-static inline bool sev_snp_enabled(void)
+bool sev_snp_enabled(void)
 {
 	return sev_status & MSR_AMD64_SEV_SNP_ENABLED;
 }

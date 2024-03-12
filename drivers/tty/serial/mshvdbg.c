@@ -42,3 +42,4 @@ static int __init mshvdbg_console_setup(struct earlycon_device *device,
 OF_EARLYCON_DECLARE(mshvdbg, "arm,mshvdbg", mshvdbg_console_setup);
 
 #endif
+MODULE_LICENSE("GPL")
