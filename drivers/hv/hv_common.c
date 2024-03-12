@@ -420,7 +420,8 @@ int __init hv_common_init(void)
 			return -ENOMEM;
 		outputarg = (void **)per_cpu_ptr(hyperv_pcpu_output_arg, cpu);
 		*outputarg = (char *)(*inputarg) + HV_HYP_PAGE_SIZE;
-		if (hv_isolation_type_en_snp()) {
+		if (!ms_hyperv.paravisor_present &&
+		    (hv_isolation_type_en_snp() || hv_isolation_type_tdx())) {
 			ret = set_memory_decrypted((unsigned long)*inputarg, 2);
 			if (ret) {
 				kfree(*inputarg);
@@ -532,6 +533,9 @@ int hv_common_cpu_init(unsigned int cpu)
 
 	if (msr_vp_index > hv_max_vp_index)
 		hv_max_vp_index = msr_vp_index;
+	
+	if (!hv_vp_assist_page)
+		return 0;
 
 	if (hv_root_partition) {
 		/*
@@ -567,9 +571,6 @@ int hv_common_cpu_init(unsigned int cpu)
 			hv_set_register(HV_SYN_REG_VP_ASSIST_PAGE, vp_assist_reg.as_uint64);
 		}
 	}
-	
-	if (!hv_vp_assist_page)
-		return 0;
 
 	return 0;
 }
