@@ -306,15 +306,11 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 	sint.masked = false;
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
-#ifdef CONFIG_X86_64
 	/* Enable intercepts, used when there is no intercept page, or
 	   for proxy interrupts for SNP. */
 	if (!mshv_vsm_capabilities.intercept_page_available || hv_isolation_type_en_snp())
 		hv_set_register(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
 				sint.as_uint64);
-#else
-	#warning "Enable SINT7 on arm64"
-#endif
 	/* VTL2 Host VSP SINT is (un)masked when the user mode requests that */
 }
 
@@ -326,8 +322,12 @@ static int mshv_vtl_get_vsm_regs(void)
 
 	input_vtl.as_uint8 = 0;
 	registers[count++].name = HV_REGISTER_VSM_CAPABILITIES;
+
+	/* Code page offset register is not supported on ARM */
+#ifdef CONFIG_X86_64
 	if (!hv_isolation_type_en_snp())
 		registers[count++].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
+#endif
 
 	ret = hv_call_get_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 				       count, input_vtl, registers);
@@ -335,11 +335,13 @@ static int mshv_vtl_get_vsm_regs(void)
 		return ret;
 
 	mshv_vsm_capabilities.as_uint64 = registers[0].value.reg64;
+#ifdef CONFIG_X86_64
 	if (!hv_isolation_type_en_snp()) {
 		mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
 		pr_debug("%s: VSM code page offsets: %#016llx\n", __func__,
 			mshv_vsm_page_offsets.as_uint64);
 	}
+#endif
 
 	pr_info("%s: VSM capabilities: %#016llx\n", __func__,
 		mshv_vsm_capabilities.as_uint64);
@@ -2357,17 +2359,18 @@ static int __init mshv_vtl_init(void)
 	tasklet_init(&msg_dpc, mshv_vtl_sint_on_msg_dpc, 0);
 	init_waitqueue_head(&fd_wait_queue);
 
+	if (mshv_vtl_get_vsm_regs()) {
+		dev_emerg(dev, "Unable to get VSM capabilities !!\n");
+		ret = -ENODEV;
+		goto unset_func;
+	}
+
 #ifdef CONFIG_X86_64
 	if (boot_cpu_has(X86_FEATURE_SMAP))
 		pr_info("X86_FEATURE_SMAP is set");
 	else
 		pr_info("X86_FEATURE_SMAP is not set");
 
-	if (mshv_vtl_get_vsm_regs()) {
-		dev_emerg(dev, "Unable to get VSM capabilities !!\n");
-		ret = -ENODEV;
-		goto unset_func;
-	}
 	if (!hv_isolation_type_en_snp()) {
 		if (mshv_vtl_configure_vsm_partition(dev)) {
 			dev_emerg(dev, "VSM configuration failed !!\n");

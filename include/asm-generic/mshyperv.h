@@ -92,11 +92,14 @@ extern bool hv_isolation_type_en_snp(void);
  */
 static inline bool hv_recommend_using_aeoi(void)
 {
-#ifdef HV_DEPRECATING_AEOI_RECOMMENDED
+#ifdef CONFIG_ARM64
+	// No auto eoi support on ARM.
+	return false;
+#elif HV_DEPRECATING_AEOI_RECOMMENDED
 	return !(ms_hyperv.hints & HV_DEPRECATING_AEOI_RECOMMENDED);
 #else
 	return false;
-#endif
+#endif // CONFIG_ARM64
 }
 
 /* Helper functions that provide a consistent pattern for checking Hyper-V hypercall status. */
