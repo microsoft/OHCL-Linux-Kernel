@@ -1011,7 +1011,7 @@ hypercall:
 
 #ifdef CONFIG_ARM64
 
-static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 /* flags */)
+static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 flags)
 {
 	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 	u64 register x18 asm("x18");
