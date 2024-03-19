@@ -1312,12 +1312,6 @@ void vmbus_isr(void)
 }
 EXPORT_SYMBOL_GPL(vmbus_isr);
 
-static irqreturn_t vmbus_percpu_isr(int irq, void *dev_id)
-{
-	vmbus_isr();
-	return IRQ_HANDLED;
-}
-
 /*
  * vmbus_bus_init -Main vmbus driver initialization routine.
  *
@@ -1353,6 +1347,7 @@ static int vmbus_bus_init(void)
 		hv_setup_vmbus_handler(vmbus_isr);
 	} else {
 		vmbus_evt = alloc_percpu(long);
+		hv_setup_percpu_vmbus_handler(vmbus_isr);
 		ret = request_percpu_irq(vmbus_irq, vmbus_percpu_isr,
 				"Hyper-V VMbus", vmbus_evt);
 		if (ret) {

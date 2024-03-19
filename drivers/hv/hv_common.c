@@ -753,6 +753,17 @@ void __weak hv_setup_vmbus_handler(void (*handler)(void))
 }
 EXPORT_SYMBOL_GPL(hv_setup_vmbus_handler);
 
+irqreturn_t __weak vmbus_percpu_isr(int irq, void *dev_id)
+{
+	return IRQ_HANDLED;
+}
+EXPORT_SYMBOL_GPL(vmbus_percpu_isr);
+
+void __weak hv_setup_percpu_vmbus_handler(void (*handler)(void))
+{
+}
+EXPORT_SYMBOL_GPL(hv_setup_percpu_vmbus_handler);
+
 void __weak hv_remove_vmbus_handler(void)
 {
 }
