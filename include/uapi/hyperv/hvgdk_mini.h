@@ -191,8 +191,11 @@ union hv_hypervisor_version_info {
 
 /* HV_X64_ENLIGHTENMENT_INFORMATION */
 
+/* Auto EOI hints are not provided on architectures other than X64 */
+#if defined(__x86_64__)
 /* DeprecateAutoEoi */
 #define HV_DEPRECATING_AEOI_RECOMMENDED		BIT(9)
+#endif
 
 #define HV_MAXIMUM_PROCESSORS       2048
 
