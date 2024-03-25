@@ -2207,13 +2207,14 @@ static bool can_fault(struct vm_fault *vmf, unsigned long size, pfn_t *pfn)
 	unsigned long start = vmf->address & ~mask;
 	unsigned long end = start + size;
 	bool valid;
+	unsigned long pgoff = vmf->pgoff & ~DECRYPTED_MASK;
 
-	valid = (vmf->address & mask) == ((vmf->pgoff << PAGE_SHIFT) & mask) &&
+	valid = (vmf->address & mask) == ((pgoff << PAGE_SHIFT) & mask) &&
 		start >= vmf->vma->vm_start &&
 		end <= vmf->vma->vm_end;
 
 	if (valid)
-		*pfn = __pfn_to_pfn_t(vmf->pgoff & ~(mask >> PAGE_SHIFT), PFN_DEV | PFN_MAP);
+		*pfn = __pfn_to_pfn_t(pgoff & ~(mask >> PAGE_SHIFT), PFN_DEV | PFN_MAP);
 
 	return valid;
 }
@@ -2225,7 +2226,7 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 
 	switch (order) {
 	case 0:
-		pfn = __pfn_to_pfn_t(vmf->pgoff, PFN_DEV | PFN_MAP);
+		pfn = __pfn_to_pfn_t(vmf->pgoff & ~DECRYPTED_MASK, PFN_DEV | PFN_MAP);
 		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
 
 	case PMD_ORDER:
