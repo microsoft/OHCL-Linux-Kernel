@@ -239,6 +239,16 @@ struct mshv_sint_mask {
 	__u8 reserved[7];
 };
 
+struct mshv_tdcall {
+	__u64 rax;	/* Call code and returned status */
+	__u64 rcx;
+	__u64 rdx;
+	__u64 r8;
+	__u64 r9;
+	__u64 r10_out;	/* Only supported as output */
+	__u64 r11_out;	/* Only supported as output */
+} __packed;
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -288,6 +298,10 @@ struct mshv_sint_mask {
 #define MSHV_VTL_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_vtl_ram_disposition)
 #define MSHV_VTL_SET_POLL_FILE		_IOW(MSHV_IOCTL, 0x25, struct mshv_vtl_set_poll_file)
 #define MSHV_VTL_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
+
+/* For x86-64 TDX only */
+#define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
+#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
