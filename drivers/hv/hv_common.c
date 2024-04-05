@@ -327,6 +327,11 @@ u8 __init get_vtl(void)
 	input->header.inputvtl = 0;
 	input->element[0].name0 = HV_REGISTER_VSM_VP_STATUS;
 
+	// BUGBUG-ISOLATION: From discussions with Jon, HvRegisterVsmVpStatus is
+	// untrusted in an isolated guest as the hypervisor can lie. We should
+	// probably report this via underhill_boot instead, or modify some arch
+	// register.
+
 	ret = hv_do_hypercall(control, input, output);
 	if (hv_result_success(ret)) {
 		ret = output->as64.low & HV_VTL_MASK;
@@ -435,6 +440,9 @@ int __init hv_common_init(void)
 	/*
 	 * The VP assist page is useless to a TDX guest: the only use we
 	 * would have for it is lazy EOI, which can not be used with TDX.
+	 *
+	 * TODO TDX: UH doens't require this on TDX right now, but we may
+	 * want it in the future?
 	 */
 	if (hv_isolation_type_tdx())
 		hv_vp_assist_page = NULL;
@@ -460,7 +468,7 @@ int hv_common_cpu_init(unsigned int cpu)
 {
 	union hv_vp_assist_reg_contents vp_assist_reg = { 0 };
 	struct hv_vp_assist_page **hvp = &hv_vp_assist_page[cpu];
-	
+
 	void **inputarg, **outputarg;
 	u8 **synic_eventring_tail;
 	u64 msr_vp_index;
@@ -533,7 +541,7 @@ int hv_common_cpu_init(unsigned int cpu)
 
 	if (msr_vp_index > hv_max_vp_index)
 		hv_max_vp_index = msr_vp_index;
-	
+
 	if (!hv_vp_assist_page)
 		return 0;
 
@@ -562,7 +570,7 @@ int hv_common_cpu_init(unsigned int cpu)
 
 		WARN_ON(!(*hvp));
 		if (*hvp) {
-			if (hv_isolation_type_en_snp()) {
+			if (hv_isolation_type_en_snp() || hv_isolation_type_tdx()) {
 				WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1) != 0);
 				memset(*hvp, 0, PAGE_SIZE);
 			}
@@ -610,7 +618,7 @@ int hv_common_cpu_die(unsigned int cpu)
 
 	local_irq_restore(flags);
 
-	if (hv_isolation_type_en_snp())
+	if (hv_isolation_type_en_snp() || hv_isolation_type_tdx())
 		set_memory_encrypted((unsigned long)mem, 1);
 
 	kfree(mem);
@@ -618,7 +626,7 @@ int hv_common_cpu_die(unsigned int cpu)
 	if (hv_vp_assist_page && hv_vp_assist_page[cpu]) {
 		union hv_vp_assist_reg_contents vp_assist_reg = { 0 };
 
-		if (hv_isolation_type_en_snp())
+		if (hv_isolation_type_en_snp() || hv_isolation_type_tdx())
 			WARN_ON_ONCE(set_memory_encrypted(
 				    (unsigned long)hv_vp_assist_page[cpu],
 				    1) != 0);

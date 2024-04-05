@@ -77,7 +77,7 @@ struct mshv_vtl_cpu_context {
 	struct fxregs_state fx_state;
 
 #elif defined CONFIG_ARM64
-		/* 
+		/*
 		 * NOTE: x18 is managed by the hypervisor. It won't be reloaded from this array.
 		 * It is included here for convenience in the common case.
 		 */
@@ -88,7 +88,7 @@ struct mshv_vtl_cpu_context {
 
 	#error "Unsupported architecture"
 
-#endif	
+#endif
 };
 
 #define MSHV_VTL_RUN_FLAG_HALTED BIT(0)
@@ -129,5 +129,59 @@ union mshv_vtl_ghcb {
 #define SEV_GHCB_VERSION        1
 #define SEV_GHCB_FORMAT_BASE        0
 #define SEV_GHCB_FORMAT_VTL_RETURN  2
+
+/// The GPR list for TDG.VP.ENTER.
+/// Made available via mmaping the mshv_vtl driver.
+/// Specified in the TDX specification as L2_ENTER_GUEST_STATE.
+struct tdx_l2_enter_guest_state {
+	u64 rax;
+	u64 rcx;
+	u64 rdx;
+	u64 rbx;
+	u64 rsp;
+	u64 rbp;
+	u64 rsi;
+	u64 rdi;
+	u64 r8;
+	u64 r9;
+	u64 r10;
+	u64 r11;
+	u64 r12;
+	u64 r13;
+	u64 r14;
+	u64 r15;
+	u64 rflags;
+	u64 rip;
+	u64 ssp;
+	u8 rvi; // GUEST_INTERRUPT_STATUS lower bits
+	u8 svi; // GUSET_INTERRUPT_STATUS upper bits
+};
+
+/// The register values returned from a TDG.VP.ENTER call.
+/// These are readable via mmaping the mshv_vtl driver, and returned on a run_vp ioctl exit.
+/// See the TDX ABI specification for output operands for TDG.VP.ENTER.
+struct tdx_tdg_vp_enter_exit_info {
+	u64 rax;
+	u64 rcx;
+	u64 rdx;
+	u64 rsi;
+	u64 rdi;
+	u64 r8;
+	u64 r9;
+	u64 r10;
+	u64 r11;
+	u64 r12;
+	u64 r13;
+};
+
+/// Register values that must be set by the kernel before entering lower VTLs.
+struct tdx_vp_state {
+	u64 msr_kernel_gs_base;
+	u64 msr_star;
+	u64 msr_lstar;
+	u64 msr_cstar;
+	u64 msr_sfmask;
+	u64 msr_xss;
+};
 
 #endif /* _MSHV_VTL_H */

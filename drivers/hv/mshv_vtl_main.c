@@ -35,6 +35,9 @@
 #include <asm/sev.h>
 #include <uapi/asm/mtrr.h>
 #include <asm/sev.h>
+#include <asm/tdx.h>
+#include <asm/fpu/xcr.h>
+
 #include "../../kernel/fpu/legacy.h"
 
 #endif
@@ -62,6 +65,10 @@ MODULE_LICENSE("GPL");
 #define MSHV_RUN_PAGE_OFFSET	0
 #define MSHV_REG_PAGE_OFFSET	1
 #define MSHV_VMSA_PAGE_OFFSET	2
+#define MSHV_TDX_GPR_LIST_PAGE_OFFSET	3
+#define MSHV_TDX_EXIT_INFO_PAGE_OFFSET	4
+#define MSHV_TDX_APIC_PAGE_OFFSET	5
+#define MSHV_TDX_VP_STATE_OFFSET	6
 #define VTL2_VMBUS_SINT_INDEX	7
 
 #ifdef CONFIG_X86_64
@@ -151,6 +158,16 @@ struct mshv_vtl_per_cpu {
 	struct mshv_vtl_run *run;
 	struct page *reg_page;
 	struct page *vmsa_page;
+	struct tdx_l2_enter_guest_state *tdx_gpr_list;
+	struct tdx_vp_state *tdx_vp_state;
+	struct tdx_tdg_vp_enter_exit_info *tdx_exit_info;
+	struct page *tdx_apic_page;
+	u64 xss;
+	u64 l1_msr_kernel_gs_base;
+	u64 l1_msr_star;
+	u64 l1_msr_lstar;
+	u64 l1_msr_cstar;
+	u64 l1_msr_sfmask;
 };
 
 static struct mutex	mshv_vtl_poll_file_lock;
@@ -175,6 +192,42 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 {
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
+
+#ifdef CONFIG_X86_64
+
+static struct tdx_l2_enter_guest_state *tdx_this_gpr_list(void) {
+	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_gpr_list);
+}
+
+static struct tdx_tdg_vp_enter_exit_info *tdx_this_exit_info(void) {
+	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_exit_info);
+}
+
+static struct tdx_l2_enter_guest_state *tdx_gpr_list_page(int cpu) {
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_gpr_list, cpu);
+}
+
+static struct tdx_tdg_vp_enter_exit_info *tdx_exit_info_page(int cpu) {
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_exit_info, cpu);
+}
+
+static struct page *tdx_apic_page(int cpu) {
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
+}
+
+static struct page *tdx_this_apic_page(void) {
+	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page);
+}
+
+static struct tdx_vp_state *tdx_this_vp_state(void) {
+	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_vp_state);
+}
+
+static struct tdx_vp_state *tdx_cpu_vp_state(int cpu) {
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_vp_state, cpu);
+}
+
+#endif
 
 static long __mshv_vtl_ioctl_check_extension(u32 arg)
 {
@@ -308,7 +361,7 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 
 	/* Enable intercepts, used when there is no intercept page, or
 	   for proxy interrupts for SNP. */
-	if (!mshv_vsm_capabilities.intercept_page_available || hv_isolation_type_en_snp())
+	if (!mshv_vsm_capabilities.intercept_page_available || hv_isolation_type_en_snp() || hv_isolation_type_tdx())
 		hv_set_register(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
 				sint.as_uint64);
 	/* VTL2 Host VSP SINT is (un)masked when the user mode requests that */
@@ -320,12 +373,18 @@ static int mshv_vtl_get_vsm_regs(void)
 	union hv_input_vtl input_vtl;
 	int ret, count = 0;
 
+	// BUGBUG-ISOLATION: these registers all untrusted on hardware iso platforms.
+	// Should we even query them? they seem meaningless on hardware iso.
+	if (hv_isolation_type_tdx()) {
+		pr_info("TODO: TDX detected, should skip vsm register query");
+	}
+
 	input_vtl.as_uint8 = 0;
 	registers[count++].name = HV_REGISTER_VSM_CAPABILITIES;
 
 	/* Code page offset register is not supported on ARM */
 #ifdef CONFIG_X86_64
-	if (!hv_isolation_type_en_snp())
+	if (!hv_isolation_type_en_snp() && !hv_isolation_type_tdx())
 		registers[count++].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
 #endif
 
@@ -336,7 +395,12 @@ static int mshv_vtl_get_vsm_regs(void)
 
 	mshv_vsm_capabilities.as_uint64 = registers[0].value.reg64;
 #ifdef CONFIG_X86_64
-	if (!hv_isolation_type_en_snp()) {
+	if (hv_isolation_type_en_snp())
+		mshv_vsm_capabilities.dr6_shared = 0;
+	else if (hv_isolation_type_tdx())
+		mshv_vsm_capabilities.dr6_shared = 1;
+
+	if (!hv_isolation_type_en_snp() && !hv_isolation_type_tdx()) {
 		mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
 		pr_debug("%s: VSM code page offsets: %#016llx\n", __func__,
 			mshv_vsm_page_offsets.as_uint64);
@@ -432,7 +496,7 @@ static void mshv_vtl_vmbus_isr(void)
 	}
 
 	/* Handle proxied interrupts from the host. */
-	if (hv_isolation_type_en_snp())
+	if (hv_isolation_type_en_snp() || hv_isolation_type_tdx())
 		mshv_vtl_scan_proxy_interrupts(per_cpu);
 
 	event_flags = (union hv_synic_event_flags *)per_cpu->synic_event_page +
@@ -453,6 +517,70 @@ static void mshv_vtl_vmbus_isr(void)
 	vmbus_isr();
 }
 
+#ifdef CONFIG_X86_64
+
+struct tdx_extended_field_code {
+	union {
+		u64 as_u64;
+		struct {
+			u64 field_code        : 24;
+			u64 reserved_z0       : 8;
+			u64 field_size        : 2;
+			u64 last_element      : 4;
+			u64 last_field        : 9;
+			u64 reserved_z1       : 3;
+			u64 increment_size    : 1;
+			u64 write_mask_valid  : 1;
+			u64 context_code      : 3;
+			u64 reserved_z2       : 1;
+			u64 class_code        : 6;
+			u64 reserved_z3       : 1;
+			u64 non_arch          : 1;
+		};
+	};
+};
+
+struct vmx_vmcs_field {
+	union {
+		u32 as_u32;
+
+		struct
+		{
+			u32 access_high:1;
+			u32 index:9;
+			u32 type:2;          // Use VMX_VMCS_FIELD_TYPE_*
+			u32 reserved_zero:1;
+			u32 field_width:2;    // Use VMX_VMCS_FIELD_WIDTH_*
+			u32 reserved:17;
+		};
+	};
+};
+
+static void mshv_write_tdx_apic_page(u64 apic_page_gpa)
+{
+	struct tdx_extended_field_code extended_field_code;
+	struct vmx_vmcs_field vmcs_field;
+	u64 status = 0;
+
+	extended_field_code.as_u64 = 0;
+	extended_field_code.field_code = 0x00002012; // VMX_VMCS_VIRTUAL_APIC_PAGE
+	extended_field_code.context_code = 2; // TDX_CONTEXT_CODE_VP_SCOPE
+	extended_field_code.class_code = 36; // L2_VM1 aka VTL0
+
+	vmcs_field.as_u32 = 0x00002012;
+	extended_field_code.field_size = 3; // TDX_FIELD_SIZE_64_BIT
+
+	/* Issue tdg_vp_wr to set the apic page. */
+	status = __tdx_module_call(10, 0, extended_field_code.as_u64, apic_page_gpa, 0xFFFFFFFFFFFFFFFF, NULL);
+	pr_info("set_apic_page gpa: %llx status: %llx\n", apic_page_gpa, status);
+
+	if (status != 0) {
+		panic("write tdx apic page failed: %llx\n", status);
+	}
+}
+
+#endif
+
 static int mshv_vtl_alloc_context(unsigned int cpu)
 {
 	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
@@ -469,6 +597,48 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		ret = mshv_configure_vmsa_page(per_cpu);
 		if (ret < 0)
 			return ret;
+#endif
+	} else if (hv_isolation_type_tdx()) {
+#ifdef CONFIG_X86_64
+		// Allocate pages for TDX GPR list, TDX exit info, and TDX APIC page
+		struct page *tdx_gpr_list_page, *tdx_exit_info_page, *tdx_apic_page, *tdx_vp_state;
+		tdx_gpr_list_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!tdx_gpr_list_page)
+			return -ENOMEM;
+
+		tdx_exit_info_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!tdx_exit_info_page) {
+			__free_page(tdx_gpr_list_page);
+			return -ENOMEM;
+		}
+
+		tdx_apic_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!tdx_apic_page) {
+			__free_page(tdx_gpr_list_page);
+			__free_page(tdx_exit_info_page);
+			return -ENOMEM;
+		}
+
+		tdx_vp_state = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!tdx_vp_state) {
+			__free_page(tdx_gpr_list_page);
+			__free_page(tdx_exit_info_page);
+			__free_page(tdx_apic_page);
+			return -ENOMEM;
+		}
+
+		per_cpu->tdx_gpr_list = page_address(tdx_gpr_list_page);
+		per_cpu->tdx_exit_info = page_address(tdx_exit_info_page);
+		per_cpu->tdx_apic_page = tdx_apic_page;
+		per_cpu->tdx_vp_state = page_address(tdx_vp_state);
+
+		/* Capture the intial syscall MSRs to be restored after VP.ENTER.
+			TODO TDX: Needs review from kernel experts. */
+		rdmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+		rdmsrl(MSR_STAR, per_cpu->l1_msr_star);
+		rdmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
+		rdmsrl(MSR_CSTAR, per_cpu->l1_msr_cstar);
+		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
 #endif
 	} else if (mshv_vsm_capabilities.intercept_page_available)
 		mshv_vtl_configure_reg_page(per_cpu);
@@ -808,6 +978,19 @@ static int mshv_vtl_set_reg(struct hv_register_assoc *regs)
 	case HV_X64_REGISTER_MSR_MTRR_FIX4KF8000:
 		wrmsrl(MSR_MTRRfix4K_F8000, reg64);
 		break;
+	case HV_X64_REGISTER_XFEM:
+		if (!hv_isolation_type_tdx())
+			return -EINVAL;
+		/* Briefly enable xsave in order to access xcr0. */
+		{
+			u64 cr4 = native_read_cr4();
+			BUG_ON(cr4 & X86_CR4_OSXSAVE);
+			native_write_cr4(cr4 | X86_CR4_OSXSAVE);
+			/* This may fault. Right now we trust user mode. */
+			xsetbv(0, reg64);
+			native_write_cr4(cr4);
+		}
+		break;
 
 	default:
 		goto hypercall;
@@ -991,6 +1174,18 @@ static int mshv_vtl_get_reg(struct hv_register_assoc *regs)
 	case HV_X64_REGISTER_MSR_MTRR_FIX4KF8000:
 		rdmsrl(MSR_MTRRfix4K_F8000, *reg64);
 		break;
+	case HV_X64_REGISTER_XFEM:
+		if (!hv_isolation_type_tdx())
+			return -EINVAL;
+		/* Briefly enable xsave in order to access xcr0. */
+		{
+			u64 cr4 = native_read_cr4();
+			BUG_ON(cr4 & X86_CR4_OSXSAVE);
+			native_write_cr4(cr4 | X86_CR4_OSXSAVE);
+			*reg64 = xgetbv(0);
+			native_write_cr4(cr4);
+		}
+		break;
 
 	default:
 		goto hypercall;
@@ -1139,6 +1334,100 @@ static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 flags)
 
 #elif CONFIG_X86_64
 
+/* TODO TDX: Confirm noinline produces the right asm for saving register state */
+noinline static void mshv_vtl_return_tdx(struct mshv_vtl_cpu_context *vtl0)
+{
+	struct tdx_tdg_vp_enter_exit_info *tdx_exit_info;
+	struct tdx_vp_state *tdx_vp_state;
+	struct mshv_vtl_run *vtl_run;
+	struct mshv_vtl_per_cpu *per_cpu;
+
+	register void *__sp asm("rsp");
+	register u64 r8 asm("r8");
+	register u64 r9 asm("r9");
+	register u64 r10 asm("r10");
+	register u64 r11 asm("r11");
+	register u64 r12 asm("r12");
+	register u64 r13 asm("r13");
+	register u64 r14 asm("r14");
+	register u64 r15 asm("r15");
+
+	/* TODO TDX: For now, hardcode VP.ENTER rax value and RCX.
+		RCX encodes vtl0 and invd translations */
+	u64 input_rax = 25;
+	u64 input_rcx = (u64) 1 << 52;
+	u64 input_rdx = virt_to_phys((void*) tdx_this_gpr_list());
+
+	tdx_exit_info = tdx_this_exit_info();
+	tdx_vp_state = tdx_this_vp_state();
+	vtl_run = mshv_vtl_this_run();
+	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+
+	kernel_fpu_begin_mask(0);
+	fxrstor(&vtl0->fx_state); // restore FP reg and XMM regs
+	native_write_cr2(vtl0->cr2);
+
+	/* Restore VTL0's syscall registers & MSRs */
+	wrmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+	wrmsrl(MSR_STAR, tdx_vp_state->msr_star);
+	wrmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
+	wrmsrl(MSR_CSTAR, tdx_vp_state->msr_cstar);
+	wrmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+
+	if (tdx_vp_state->msr_xss != per_cpu->xss)
+		wrmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
+
+	r8 = 0;
+	r9 = 0;
+	r10 = 0;
+	r11 = 0;
+	r12 = 0;
+	r13 = 0;
+	r14 = 0;
+	r15 = 0;
+
+	/* TODO TDX: pushq popq causes some build complaints unclear why when mshv uses
+	it also. alignment checks even though tdcall has no alignment reqs? */
+	asm __volatile__ (\
+	/* save rbp onto the stack, since it will be clobbered and inline asm will not save it */
+		"pushq	%%rbp\n"
+		"tdcall\n"
+	/* restore rbp from the stack */
+		"popq	%%rbp\n"
+		: "=a"(tdx_exit_info->rax), "=c"(tdx_exit_info->rcx),
+		  "=d"(tdx_exit_info->rdx), "=S"(tdx_exit_info->rsi), "=D"(tdx_exit_info->rdi),
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11), "=r"(r12), "=r"(r13), "=r"(r14), "=r"(r15), "+r" (__sp)
+		: "a"(input_rax), "c"(input_rcx), "d"(input_rdx)
+		: "rbx", "cc", "memory" // TODO: cc necessary?
+	);
+
+	tdx_exit_info->r8 = r8;
+	tdx_exit_info->r9 = r9;
+	tdx_exit_info->r10 = r10;
+	tdx_exit_info->r11 = r11;
+	tdx_exit_info->r12 = r12;
+	tdx_exit_info->r13 = r13;
+	vtl0->cr2 = native_read_cr2();
+	rdmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
+	per_cpu->xss = tdx_vp_state->msr_xss;
+
+	rdmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+	rdmsrl(MSR_STAR, tdx_vp_state->msr_star);
+	rdmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
+	rdmsrl(MSR_CSTAR, tdx_vp_state->msr_cstar);
+	rdmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+
+	/* Restore VTL2's syscall registers & MSRs */
+	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+	wrmsrl(MSR_STAR, per_cpu->l1_msr_star);
+	wrmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
+	wrmsrl(MSR_CSTAR, per_cpu->l1_msr_cstar);
+	wrmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+
+	fxsave(&vtl0->fx_state);
+	kernel_fpu_end();
+}
+
 static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 flags)
 {
 	struct hv_vp_assist_page *hvp;
@@ -1160,6 +1449,20 @@ static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 flags)
 		else {
 			u8 target_vtl = 0; /* hardcode for now */
 			snp_mshv_vtl_return(target_vtl);
+		}
+		return;
+	}
+	else if (hv_isolation_type_tdx())
+	{
+		/* Clear RAX to an exit (PENDING_INTERRUPT) that the usermode VMM will
+		do nothing, if we are halting. */
+		tdx_this_exit_info()->rax = 0x112000000000;
+
+		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED))
+			tdx_safe_halt();
+		else {
+			/* only supports VTL0 */
+			mshv_vtl_return_tdx(vtl0);
 		}
 		return;
 	}
@@ -1312,8 +1615,11 @@ static void mshv_vtl_idle(void)
 		}
 		raw_local_irq_enable();
 	} else {
-#if defined(CONFIG_X86_64)		
-		native_safe_halt();
+#if defined(CONFIG_X86_64)
+		if (hv_isolation_type_tdx())
+			tdx_safe_halt();
+		else
+			native_safe_halt();
 #elif defined(CONFIG_ARM64)
 		default_idle();
 #else
@@ -1393,6 +1699,12 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 			current->flags &= ~PF_IDLE;
 		}
 
+		if (hv_isolation_type_tdx())
+		{
+			/* Go to usermode for every exit. */
+			goto done;
+		}
+
 		hvp = hv_vp_assist_page[smp_processor_id()];
 		this_cpu_inc(num_vtl0_transitions);
 		switch (hvp->vtl_entry_reason) {
@@ -1451,13 +1763,13 @@ mshv_vtl_ioctl_get_set_regs(void __user *user_args, bool set)
 
 	if (set) {
 		ret = mshv_vtl_set_reg(registers);
-		if (!ret)
+		if (ret <= 0)
 			goto free_return; /* No need of hypercall */
 		ret = vtl_set_vp_registers(args.count, registers);
 
 	} else {
 		ret = mshv_vtl_get_reg(registers);
-		if (!ret)
+		if (ret <= 0)
 			goto copy_args; /* No need of hypercall */
 		ret = vtl_get_vp_registers(args.count, registers);
 		if (ret)
@@ -1597,6 +1909,33 @@ static long mshv_vtl_ioctl_rmpadjust(void __user* rmpa_user)
 	return rc;
 }
 
+/* Issue a td module call from usermode. Note that currently only tdmodule calls
+	are supported, not TD.VMCALL. */
+static long mshv_vtl_ioctl_tdcall(void __user* user_tdcall)
+{
+	struct mshv_tdcall tdcall = {};
+	struct tdx_module_output output = {};
+	u64 status = 0;
+
+	if (!hv_isolation_type_tdx())
+		return -EINVAL;
+
+	if (copy_from_user(&tdcall, user_tdcall, sizeof(tdcall)))
+		return -EFAULT;
+
+	status = __tdx_module_call(tdcall.rax, tdcall.rcx, tdcall.rdx, tdcall.r8, tdcall.r9, &output);
+
+	tdcall.rax = status;
+	tdcall.rcx = output.rcx;
+	tdcall.rdx = output.rdx;
+	tdcall.r8 = output.r8;
+	tdcall.r9 = output.r9;
+	tdcall.r10_out = output.r10;
+	tdcall.r11_out = output.r11;
+
+	return copy_to_user(user_tdcall, &tdcall, sizeof(tdcall)) ? -EFAULT : 0;
+}
+
 static long __mshv_vtl_ioctl_host_visibility(void __user *user_visibility)
 {
 	size_t num_pages;
@@ -1707,6 +2046,28 @@ static long mshv_vtl_ioctl_host_visibility_v(void __user *user_visibility_v)
 	return rc;
 }
 
+static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
+{
+	u64 value;
+
+	value = native_read_msr(MSR_IA32_VMX_CR4_FIXED1);
+
+	return copy_to_user(user_arg, &value, sizeof(value)) ? -EFAULT : 0;
+}
+
+static long mshv_vtl_ioctl_enable_apic_page(void)
+{
+	preempt_disable();
+
+	/* TODO: Maybe modify ioctl to take a bool to enable disable? Although, we'd
+		never probably want to disable it? */
+	mshv_write_tdx_apic_page(page_to_phys(tdx_this_apic_page()));
+
+	preempt_enable();
+
+	return 0;
+}
+
 #endif
 
 static long
@@ -1744,7 +2105,17 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_VTL_HOST_VISIBILITY_V:
 		ret = mshv_vtl_ioctl_host_visibility_v((void __user *)arg);
 		break;
+	case MSHV_VTL_TDCALL:
+		ret = mshv_vtl_ioctl_tdcall((void __user *)arg);
+		break;
+	case MSHV_VTL_READ_VMX_CR4_FIXED1:
+		ret = mshv_vtl_ioctl_read_vmx_cr4_fixed1((void __user *)arg);
+		break;
+	case MSHV_VTL_ENABLE_APIC_PAGE:
+		ret = mshv_vtl_ioctl_enable_apic_page();
+		break;
 #endif
+
 	default:
 		dev_err(vtl->module_dev, "invalid vtl ioctl: %#x\n", ioctl);
 		ret = -ENOTTY;
@@ -1772,6 +2143,28 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 		if (!hv_isolation_type_en_snp())
 			return VM_FAULT_SIGBUS;
 		page = *per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page, cpu);
+#ifdef CONFIG_X86_64
+	} else if (real_off == MSHV_TDX_GPR_LIST_PAGE_OFFSET) {
+		if (!hv_isolation_type_tdx())
+			return VM_FAULT_SIGBUS;
+
+		page = virt_to_page(tdx_gpr_list_page(cpu));
+	} else if (real_off == MSHV_TDX_EXIT_INFO_PAGE_OFFSET) {
+		if (!hv_isolation_type_tdx())
+			return VM_FAULT_SIGBUS;
+
+		page = virt_to_page(tdx_exit_info_page(cpu));
+	} else if (real_off == MSHV_TDX_APIC_PAGE_OFFSET) {
+		if (!hv_isolation_type_tdx())
+			return VM_FAULT_SIGBUS;
+
+		page = tdx_apic_page(cpu);
+	} else if (real_off == MSHV_TDX_VP_STATE_OFFSET) {
+		if (!hv_isolation_type_tdx())
+			return VM_FAULT_SIGBUS;
+
+		page = virt_to_page(tdx_cpu_vp_state(cpu));
+#endif
 	} else {
 		return VM_FAULT_NOPAGE;
 	}
@@ -2224,6 +2617,12 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 	pfn_t pfn;
 	int ret = VM_FAULT_FALLBACK;
 
+	/* HACK: on TDX, mm does not preserve the decrypted bit we set
+	when setting up the vma. Fix this properly by ensuring _PAGE_ENC
+	includes the shared bit. */
+	if (vmf->vma->vm_pgoff & DECRYPTED_MASK)
+		WRITE_ONCE(vmf->vma->vm_page_prot, pgprot_decrypted(vmf->vma->vm_page_prot));
+
 	switch (order) {
 	case 0:
 		pfn = __pfn_to_pfn_t(vmf->pgoff & ~DECRYPTED_MASK, PFN_DEV | PFN_MAP);
@@ -2373,7 +2772,7 @@ static int __init mshv_vtl_init(void)
 	else
 		pr_info("X86_FEATURE_SMAP is not set");
 
-	if (!hv_isolation_type_en_snp()) {
+	if (!hv_isolation_type_en_snp() && !hv_isolation_type_tdx()) {
 		if (mshv_vtl_configure_vsm_partition(dev)) {
 			dev_emerg(dev, "VSM configuration failed !!\n");
 			BUG();

@@ -269,6 +269,16 @@ struct mshv_host_visibility_v {
 	struct mshv_host_visibility **visibility;
 } __packed;
 
+struct mshv_tdcall {
+	__u64 rax; // Call code and returned status
+	__u64 rcx;
+	__u64 rdx;
+	__u64 r8;
+	__u64 r9;
+	__u64 r10_out; // only supported as output
+	__u64 r11_out; // only supported as output
+} __packed;
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -322,7 +332,9 @@ struct mshv_host_visibility_v {
 #define MSHV_VTL_RMPADJUST	_IOW(MSHV_IOCTL, 0x29, struct mshv_rmpadjust)
 #define MSHV_VTL_HOST_VISIBILITY	_IOW(MSHV_IOCTL, 0x30, struct mshv_host_visibility)
 #define MSHV_VTL_HOST_VISIBILITY_V	_IOW(MSHV_IOCTL, 0x31, struct mshv_host_visibility_v)
-
+#define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
+#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
+#define MSHV_VTL_ENABLE_APIC_PAGE _IO(MSHV_IOCTL, 0x34)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
