@@ -14,11 +14,14 @@
 #include <asm/smap.h>
 #include <asm/fpu/api.h>
 #include <asm/fpu/types.h>
+#include <asm/fpu/xcr.h>
 #include <asm/realmode.h>
+#include <asm/tdx.h>
 #include <uapi/asm/mtrr.h>
 
 #include <../kernel/smpboot.h>
 #include "../../kernel/fpu/legacy.h"
+#include "../../drivers/hv/mshv_vtl.h"
 
 #include <asm/mshyperv.h>
 #include <uapi/hyperv/hvgdk.h>
@@ -259,6 +262,9 @@ int __init hv_vtl_early_init(void)
 	return 0;
 }
 
+noinline void mshv_vtl_return_tdx(void);
+struct mshv_vtl_run *mshv_vtl_this_run(void);
+
 void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_offset)
 {
 	struct hv_vp_assist_page *hvp;
@@ -272,6 +278,24 @@ void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_of
 	register u64 r13 asm("r13");
 	register u64 r14 asm("r14");
 	register u64 r15 asm("r15");
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	if (hv_isolation_type_tdx()) {
+		/*
+		 * Clear RAX to an exit (PENDING_INTERRUPT) that the usermode
+		 * VMM will do nothing, if we are halting.
+		 */
+		mshv_vtl_this_run()->tdx_context.exit_info.rax = 0x112000000000;
+
+		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED)) {
+			tdx_safe_halt();
+		} else {
+			/* Only supports VTL0 */
+			mshv_vtl_return_tdx();
+		}
+		return;
+	}
+#endif
 
 	hvp = hv_vp_assist_page[smp_processor_id()];
 
@@ -501,6 +525,20 @@ int hv_vtl_set_reg(struct hv_register_assoc *regs, bool shared)
 	case HV_X64_REGISTER_MSR_MTRR_FIX4KF8000:
 		wrmsrl(MSR_MTRRfix4K_F8000, reg64);
 		break;
+	case HV_X64_REGISTER_XFEM:
+		if (!hv_isolation_type_tdx())
+			return -EINVAL;
+
+		/* Briefly enable xsave in order to access xcr0. */
+		u64 cr4 = native_read_cr4();
+
+		WARN_ON_ONCE(cr4 & X86_CR4_OSXSAVE);
+		native_write_cr4(cr4 | X86_CR4_OSXSAVE);
+		/* This may fault. Right now we trust user mode. */
+		xsetbv(0, reg64);
+		native_write_cr4(cr4);
+
+		break;
 
 	default:
 		return 1;
@@ -674,6 +712,19 @@ int hv_vtl_get_reg(struct hv_register_assoc *regs, bool shared)
 		break;
 	case HV_X64_REGISTER_MSR_MTRR_FIX4KF8000:
 		rdmsrl(MSR_MTRRfix4K_F8000, *reg64);
+		break;
+	case HV_X64_REGISTER_XFEM:
+		if (!hv_isolation_type_tdx())
+			return -EINVAL;
+
+		/* Briefly enable xsave in order to access xcr0. */
+		u64 cr4 = native_read_cr4();
+
+		WARN_ON_ONCE(cr4 & X86_CR4_OSXSAVE);
+		native_write_cr4(cr4 | X86_CR4_OSXSAVE);
+		*reg64 = xgetbv(0);
+		native_write_cr4(cr4);
+
 		break;
 
 	default:
