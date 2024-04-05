@@ -8,6 +8,7 @@
 #include <linux/io.h>
 #include <asm/nospec-branch.h>
 #include <asm/paravirt.h>
+#include <asm/tdx.h>
 #include <asm-generic/hyperv-defs.h>
 
 /*
@@ -356,13 +357,18 @@ struct hv_vtl_cpu_context {
 
 };
 
+#define MSHV_VTL_RUN_FLAG_HALTED BIT(0)
+
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
 void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_offset);
 
 static inline void hv_vtl_idle(void)
 {
-	native_safe_halt();
+	if (hv_isolation_type_tdx())
+		tdx_halt();
+	else
+		native_safe_halt();
 }
 
 struct hv_register_assoc;
