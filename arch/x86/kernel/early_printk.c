@@ -394,10 +394,13 @@ static int __init setup_early_printk(char *buf)
 			early_xdbc_parse_parameter(buf + 4, keep);
 #endif
 // #ifdef CONFIG_HV_HCL
-		if (!strncmp(buf, "mshvdbg_snp", 11))
+		if (!strncmp(buf, "mshvdbg_tdx", 11))
+			early_console_register(&mshvdbg_console_tdx, keep);
+		else if (!strncmp(buf, "mshvdbg_snp", 11))
 			early_console_register(&mshvdbg_console_snp, keep);
 		else if (!strncmp(buf, "mshvdbg", 7))
 			early_console_register(&mshvdbg_console, keep);
+
 // #endif
 
 		buf++;

@@ -4,6 +4,8 @@
 
 #include <asm/mshyperv.h>
 
+#include <asm/tdx.h>
+
 #define HVCALL_OUTPUT_DEBUG_CHAR 0x0071
 
 static int connected_to_hv = 0;
@@ -111,6 +113,53 @@ void early_log_to_mshvdbg_ghcb(const char *buf, unsigned len)
 		local_irq_restore(flags);
 }
 
+#define TDX_MSR_SPECIAL_DEBUG_PRINT 0x400000C1
+
+static void tdx_write_msr(u32 index, u64 value)
+{
+	struct tdx_hypercall_args args = {
+		.r10 = TDX_HYPERCALL_STANDARD,
+		// .r11 = EXIT_REASON_MSR_WRITE,
+        .r11 = 32,
+		.r12 = index,
+		.r13 = value,
+	};
+
+	/*
+	 * Emulate the MSR write via hypercall. More info about ABI
+	 * can be found in TDX Guest-Host-Communication Interface
+	 * (GHCI) section titled "TDG.VP.VMCALL<Instruction.WRMSR>".
+	 */
+	__tdx_hypercall(&args);
+}
+
+void early_log_to_mshvdbg_tdx(const char *buf, unsigned len)
+{
+    int idx;
+    u64 val;
+    unsigned long flags;
+    int uneven_head;
+
+    if (hyperv_pcpu_input_arg)
+        local_irq_save(flags);
+
+    uneven_head = len % 6;
+    if (uneven_head) {
+        val = 0;
+        memcpy((char*)&val, buf, uneven_head);
+        tdx_write_msr(TDX_MSR_SPECIAL_DEBUG_PRINT, val);
+    }
+
+    for (idx = uneven_head; idx < len; idx += 6) {
+        val = 0;
+        memcpy((char*)&val, buf + idx, 6);
+        tdx_write_msr(TDX_MSR_SPECIAL_DEBUG_PRINT, val);
+    }
+
+    if (hyperv_pcpu_input_arg)
+        local_irq_restore(flags);
+}
+
 static void mshvdbg_write_hvcall(struct console *con, const char *str, unsigned n)
 {
     if (!connected_to_hv) {
@@ -129,6 +178,12 @@ static void mshvdbg_write_ghcb(struct console *con, const char *str, unsigned n)
     early_log_to_mshvdbg_ghcb(str, n);
 }
 
+static void mshvdbg_write_tdx(struct console *con, const char *str, unsigned n)
+{
+    (void)con;
+    early_log_to_mshvdbg_tdx(str, n);
+}
+
 struct console mshvdbg_console = {
     .name = "mshvdbg",
     .write = mshvdbg_write_hvcall,
@@ -139,6 +194,13 @@ struct console mshvdbg_console = {
 struct console mshvdbg_console_snp = {
     .name = "mshvdbg_snp",
     .write = mshvdbg_write_ghcb,
+    .flags = CON_PRINTBUFFER,
+    .index = -1,
+};
+
+struct console mshvdbg_console_tdx = {
+    .name = "mshvdbg_tdx",
+    .write = mshvdbg_write_tdx,
     .flags = CON_PRINTBUFFER,
     .index = -1,
 };
