@@ -262,7 +262,7 @@ hv_uio_probe(struct hv_device *dev,
 
 	if(channel->device_id == HV_NIC) {
 		recv_buf_size = RECV_BUFFER_SIZE;
-		recv_buf_size = SEND_BUFFER_SIZE;
+		send_buf_size = SEND_BUFFER_SIZE;
 	}
 
 	pdata = devm_kzalloc(&dev->device, sizeof(*pdata), GFP_KERNEL);
