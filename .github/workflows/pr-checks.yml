@@ -1,0 +1,40 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-pr-fields:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Check for required fields in PR description
+      run: |
+        echo "Pull Request Title: ${{ github.event.pull_request.title }}"
+        echo "Pull Request Body: ${{ github.event.pull_request.body }}"
+        
+        if ! echo "${{ github.event.pull_request.body }}" | grep -q "How-Tested:"; then
+          echo "::error::Missing 'How-Tested:' field in the pull request description."
+          exit 1
+        fi
+        
+        if ! echo "${{ github.event.pull_request.body }}" | grep -q "Breaking-Change: \(Yes\|No\)"; then
+          echo "::error::The 'Breaking-Change:' field must be either 'Yes' or 'No'."
+          exit 1
+        fi
+        
+        # Note: Checking 'Signed-off-by:' in commit messages might require cloning the repo
+        # and inspecting commit messages with git log or similar, which is more complex in a PR context.
+
+    - name: Check commit messages for Signed-off-by
+      run: |
+        git fetch origin +refs/pull/${{ github.event.pull_request.number }}/merge
+        git checkout FETCH_HEAD
+        if ! git log --pretty=format:%B -n 1 | grep -q "Signed-off-by:"; then
+          echo "::error::Missing 'Signed-off-by:' in the latest commit message."
+          exit 1
+        fi
+
