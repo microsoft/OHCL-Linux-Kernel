@@ -2,7 +2,7 @@ name: Pull Request Checks
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ user/apais/underhill-main/pr-check ]
 
 jobs:
   check-pr-fields:
