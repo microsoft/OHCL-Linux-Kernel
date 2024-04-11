@@ -2617,12 +2617,6 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 	pfn_t pfn;
 	int ret = VM_FAULT_FALLBACK;
 
-	/* HACK: on TDX, mm does not preserve the decrypted bit we set
-	when setting up the vma. Fix this properly by ensuring _PAGE_ENC
-	includes the shared bit. */
-	if (vmf->vma->vm_pgoff & DECRYPTED_MASK)
-		WRITE_ONCE(vmf->vma->vm_page_prot, pgprot_decrypted(vmf->vma->vm_page_prot));
-
 	switch (order) {
 	case 0:
 		pfn = __pfn_to_pfn_t(vmf->pgoff & ~DECRYPTED_MASK, PFN_DEV | PFN_MAP);
