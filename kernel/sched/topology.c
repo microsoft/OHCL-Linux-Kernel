@@ -2317,6 +2317,7 @@ static struct sched_domain *build_sched_domain(struct sched_domain_topology_leve
 	return sd;
 }
 
+#ifdef CONFIG_SCHED_DEBUG
 /*
  * Ensure topology masks are sane, i.e. there are no conflicts (overlaps) for
  * any two given CPUs at this (non-NUMA) topology level.
@@ -2352,6 +2353,7 @@ static bool topology_span_sane(struct sched_domain_topology_level *tl,
 
 	return true;
 }
+#endif
 
 /*
  * Build sched domains for a given set of CPUs and attach the sched domains
@@ -2381,8 +2383,10 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		sd = NULL;
 		for_each_sd_topology(tl) {
 
+#ifdef CONFIG_SCHED_DEBUG
 			if (WARN_ON(!topology_span_sane(tl, cpu_map, i)))
 				goto error;
+#endif
 
 			sd = build_sched_domain(tl, cpu_map, attr, sd, i);
 
