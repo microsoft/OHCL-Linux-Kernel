@@ -40,18 +40,6 @@
 #define SEND_BUFFER_SIZE (16 * 1024 * 1024)
 #define RECV_BUFFER_SIZE (31 * 1024 * 1024)
 
-static size_t recv_buf_size = RECV_BUFFER_SIZE;
-module_param(recv_buf_size, ulong, 0644);
-MODULE_PARM_DESC(recv_buf_size, "receive buffer size in bytes");
-
-static size_t send_buf_size = SEND_BUFFER_SIZE;
-module_param(send_buf_size, ulong, 0644);
-MODULE_PARM_DESC(send_buf_size, "send buffer size in bytes");
-
-static size_t ring_size = DEFAULT_HV_RING_SIZE;
-module_param(ring_size, ulong, 0644);
-MODULE_PARM_DESC(ring_size, "primary channel ring buffer size in bytes");
-
 static bool no_mask = false;
 module_param(no_mask, bool, 0644);
 MODULE_PARM_DESC(no_mask, "do not manipulate the interrupt mask flag from kernel mode");
@@ -262,10 +250,20 @@ hv_uio_probe(struct hv_device *dev,
 {
 	struct vmbus_channel *channel = dev->channel;
 	struct hv_uio_private_data *pdata;
+	size_t ring_size = hv_dev_ring_size(channel);
+	size_t recv_buf_size = 0, send_buf_size = 0;
 	void *ring_buffer;
 	int ret;
 
 	dev_dbg(&dev->device, "primary channel ring size = %lx", ring_size);
+
+	if (!ring_size)
+		ring_size = DEFAULT_HV_RING_SIZE;
+
+	if(channel->device_id == HV_NIC) {
+		recv_buf_size = RECV_BUFFER_SIZE;
+		recv_buf_size = SEND_BUFFER_SIZE;
+	}
 
 	pdata = devm_kzalloc(&dev->device, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)

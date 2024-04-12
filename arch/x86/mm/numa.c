@@ -631,6 +631,23 @@ static void __init numa_init_array(void)
 	}
 }
 
+static void __init of_parse_and_init_cpus(void)
+{
+	struct device_node *dn;
+	int cpuid = 0;
+	int nid;
+
+	for_each_of_cpu_node(dn) {
+		if (cpuid >= NR_CPUS) {
+			pr_warn("NR_CPUS too small for %d cpuid\n", cpuid);
+			return;
+		}
+		nid = of_node_to_nid(dn);
+		numa_set_node(cpuid, nid);
+		cpuid++;
+	}
+}
+
 static int __init numa_init(int (*init_func)(void))
 {
 	int i;
@@ -674,6 +691,9 @@ static int __init numa_init(int (*init_func)(void))
 	ret = numa_register_memblks(&numa_meminfo);
 	if (ret < 0)
 		return ret;
+
+	if (acpi_disabled)
+		of_parse_and_init_cpus();
 
 	for (i = 0; i < nr_cpu_ids; i++) {
 		int nid = early_cpu_to_node(i);
@@ -964,7 +984,7 @@ static int __init cmp_memblk(const void *a, const void *b)
 	const struct numa_memblk *ma = *(const struct numa_memblk **)a;
 	const struct numa_memblk *mb = *(const struct numa_memblk **)b;
 
-	return ma->start - mb->start;
+	return (ma->start > mb->start) - (ma->start < mb->start);
 }
 
 static struct numa_memblk *numa_memblk_list[NR_NODE_MEMBLKS] __initdata;
@@ -974,14 +994,12 @@ static struct numa_memblk *numa_memblk_list[NR_NODE_MEMBLKS] __initdata;
  * @start: address to begin fill
  * @end: address to end fill
  *
- * Find and extend numa_meminfo memblks to cover the @start-@end
- * physical address range, such that the first memblk includes
- * @start, the last memblk includes @end, and any gaps in between
- * are filled.
+ * Find and extend numa_meminfo memblks to cover the physical
+ * address range @start-@end
  *
  * RETURNS:
  * 0		  : Success
- * NUMA_NO_MEMBLK : No memblk exists in @start-@end range
+ * NUMA_NO_MEMBLK : No memblks exist in address range @start-@end
  */
 
 int __init numa_fill_memblks(u64 start, u64 end)
@@ -993,17 +1011,14 @@ int __init numa_fill_memblks(u64 start, u64 end)
 
 	/*
 	 * Create a list of pointers to numa_meminfo memblks that
-	 * overlap start, end. Exclude (start == bi->end) since
-	 * end addresses in both a CFMWS range and a memblk range
-	 * are exclusive.
-	 *
-	 * This list of pointers is used to make in-place changes
-	 * that fill out the numa_meminfo memblks.
+	 * overlap start, end. The list is used to make in-place
+	 * changes that fill out the numa_meminfo memblks.
 	 */
 	for (int i = 0; i < mi->nr_blks; i++) {
 		struct numa_memblk *bi = &mi->blk[i];
 
-		if (start < bi->end && end >= bi->start) {
+		if (memblock_addrs_overlap(start, end - start, bi->start,
+					   bi->end - bi->start)) {
 			blk[count] = &mi->blk[i];
 			count++;
 		}

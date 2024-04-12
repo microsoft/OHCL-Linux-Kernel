@@ -2,6 +2,13 @@
 Commit Hash     Date                    Commit Message/[Author]
 -------------   ----------              ---------------------------------------------------------------------------------
 
+4ab6923451a2 	2024-03-13 		x86/hyperv: Use per cpu initial stack for vtl context [Saurabh Sengar]
+9451cc98e46e 	2024-03-13		Revert "x86/hyperv: Disable parallel cpu bringup for VTL" [Saurabh Sengar]
+e2ad0a997440 	2024-02-29		config: Switch to 100 HZ value [Boqun Feng]
+74517ca3ad73 	2024-02-14		x86/numa: Map NUMA node to CPUs as per DeviceTree [Saurabh Singh Sengar]
+c825d4a5eb9f 	2024-02-27		Disable P2P DMA as we don't use it and it causes crashes in 6.6 [Roman Kisel 🦇]
+403947b0b63e 	2023-11-08		uio_hv_generic: Remove module params for custom ring buffer sizes [Allen Pais]
+d99c47ee94d5 	2024-02-01 		uh-config: bump kernel version to v6.6 [Allen Pais]
 8328403da5648   2024-02-01              x86/hyperv: Disable parallel cpu bringup for VTL [Allen Pais]
 90dc8f005b4e4   2023-11-02              Drivers: hv: vmbus: Log on missing offers [Allen Pais]
 6a09ba823f2df   2023-11-01              Drivers: hv: vmbus: Wait for offers during boot [Allen Pais]

@@ -13,6 +13,7 @@
 #include <asm/mshyperv.h>
 #include <asm/realmode.h>
 #include <linux/memblock.h>
+#include <../kernel/smpboot.h>
 
 extern void hv_tdx_trampoline(void);
 extern struct boot_params boot_params;
@@ -82,13 +83,6 @@ void __init hv_vtl_init_platform(void)
 	x86_platform.legacy.devices.pnpbios = 0;
 
 	x86_init.hyper.msi_ext_dest_id = hv_vtl_msi_ext_dest_id;
-
-	/*
-	 * TODO: Investigate issues with stack corruption when attempting
-	 * parallel bring up of secondary vCPUs in VTL context. Implement
-	 * necessary support for this feature.
-	 */
-	x86_cpuinit.parallel_bringup = false;
 }
 
 static inline u64 hv_vtl_system_desc_base(struct ldttss_desc *desc)
@@ -108,7 +102,7 @@ static void hv_vtl_ap_entry(void)
 	((secondary_startup_64_fn)secondary_startup_64)(&boot_params, &boot_params);
 }
 
-static int hv_vtl_bringup_vcpu(u32 target_vp_index, u64 eip_ignored)
+static int hv_vtl_bringup_vcpu(u32 target_vp_index, int cpu, u64 eip_ignored)
 {
 	u64 status;
 	int ret = 0;
@@ -122,7 +116,9 @@ static int hv_vtl_bringup_vcpu(u32 target_vp_index, u64 eip_ignored)
 	struct ldttss_desc *ldt;
 	struct desc_struct *gdt;
 
-	u64 rsp = current->thread.sp;
+	struct task_struct *idle = idle_thread_get(cpu);
+	u64 rsp = (unsigned long)idle->thread.sp;
+
 	u64 rip = (u64)&hv_vtl_ap_entry;
 
 	native_store_gdt(&gdt_ptr);
@@ -329,7 +325,15 @@ restore:
 
 static int hv_vtl_wakeup_secondary_cpu(int apicid, unsigned long start_eip)
 {
-	int vp_id;
+	int vp_id, cpu;
+
+	/* Find the logical CPU for the APIC ID */
+	for_each_present_cpu(cpu) {
+		if (arch_match_cpu_phys_id(cpu, apicid))
+			break;
+	}
+	if (cpu >= nr_cpu_ids)
+		return -EINVAL;
 
 	pr_debug("Bringing up CPU with APIC ID %d in VTL2...\n", apicid);
 	/* TODO TDX: we cannot trust the hypervisor to perform this mapping...
@@ -349,7 +353,7 @@ static int hv_vtl_wakeup_secondary_cpu(int apicid, unsigned long start_eip)
 	if (hv_isolation_type_tdx())
 		return hv_vtl_bringup_tdx_vcpu(vp_id, start_eip);
 	else
-		return hv_vtl_bringup_vcpu(vp_id, start_eip);
+		return hv_vtl_bringup_vcpu(vp_id, cpu, start_eip);
 }
 
 int __init hv_vtl_early_init(void)
