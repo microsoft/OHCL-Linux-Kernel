@@ -36,6 +36,7 @@ LIST_HEAD(pci_root_buses);
 EXPORT_SYMBOL(pci_root_buses);
 
 static LIST_HEAD(pci_domain_busn_res_list);
+static DEFINE_MUTEX(pci_domain_busn_res_list_lock);
 
 struct pci_domain_busn_res {
 	struct list_head list;
@@ -46,14 +47,22 @@ struct pci_domain_busn_res {
 static struct resource *get_pci_domain_busn_res(int domain_nr)
 {
 	struct pci_domain_busn_res *r;
+	struct resource *ret;
 
-	list_for_each_entry(r, &pci_domain_busn_res_list, list)
-		if (r->domain_nr == domain_nr)
-			return &r->res;
+	mutex_lock(&pci_domain_busn_res_list_lock);
+
+	list_for_each_entry(r, &pci_domain_busn_res_list, list) {
+		if (r->domain_nr == domain_nr) {
+			ret = &r->res;
+			goto out;
+		}
+	}
 
 	r = kzalloc(sizeof(*r), GFP_KERNEL);
-	if (!r)
-		return NULL;
+	if (!r) {
+		ret = NULL;
+		goto out;
+	}
 
 	r->domain_nr = domain_nr;
 	r->res.start = 0;
@@ -61,8 +70,10 @@ static struct resource *get_pci_domain_busn_res(int domain_nr)
 	r->res.flags = IORESOURCE_BUS | IORESOURCE_PCI_FIXED;
 
 	list_add_tail(&r->list, &pci_domain_busn_res_list);
-
-	return &r->res;
+	ret = &r->res;
+out:
+	mutex_unlock(&pci_domain_busn_res_list_lock);
+	return ret;
 }
 
 /*
