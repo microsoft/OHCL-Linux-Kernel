@@ -215,10 +215,6 @@ static struct page *tdx_apic_page(int cpu) {
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
 }
 
-static struct page *tdx_this_apic_page(void) {
-	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page);
-}
-
 static struct tdx_vp_state *tdx_this_vp_state(void) {
 	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_vp_state);
 }
@@ -639,6 +635,9 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		rdmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
 		rdmsrl(MSR_CSTAR, per_cpu->l1_msr_cstar);
 		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+
+		/* Enable the apic page. */
+		mshv_write_tdx_apic_page(page_to_phys(tdx_apic_page));
 #endif
 	} else if (mshv_vsm_capabilities.intercept_page_available)
 		mshv_vtl_configure_reg_page(per_cpu);
@@ -2055,19 +2054,6 @@ static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
 	return copy_to_user(user_arg, &value, sizeof(value)) ? -EFAULT : 0;
 }
 
-static long mshv_vtl_ioctl_enable_apic_page(void)
-{
-	preempt_disable();
-
-	/* TODO: Maybe modify ioctl to take a bool to enable disable? Although, we'd
-		never probably want to disable it? */
-	mshv_write_tdx_apic_page(page_to_phys(tdx_this_apic_page()));
-
-	preempt_enable();
-
-	return 0;
-}
-
 #endif
 
 static long
@@ -2110,9 +2096,6 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;
 	case MSHV_VTL_READ_VMX_CR4_FIXED1:
 		ret = mshv_vtl_ioctl_read_vmx_cr4_fixed1((void __user *)arg);
-		break;
-	case MSHV_VTL_ENABLE_APIC_PAGE:
-		ret = mshv_vtl_ioctl_enable_apic_page();
 		break;
 #endif
 
