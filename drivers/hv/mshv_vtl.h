@@ -93,42 +93,34 @@ struct mshv_vtl_cpu_context {
 
 #define MSHV_VTL_RUN_FLAG_HALTED BIT(0)
 
-struct mshv_vtl_run {
-	u32 cancel;
-	u32 vtl_ret_action_size;
-	__u32 flags;
-	__u8 scan_proxy_irr;
-	__u8 pad[2];
-	__u8 enter_mode;
-	char exit_message[MAX_RUN_MSG_SIZE];
-	union {
-		struct mshv_vtl_cpu_context cpu_context;
+#ifdef CONFIG_X86_64
 
-		/*
-		 * Reserving room for the cpu context to grow and be
-		 * able to maintain compat with user mode.
-		 */
-		char reserved[1024];
-	};
-	char vtl_ret_actions[MAX_RUN_MSG_SIZE];
-	__u32 proxy_irr[8];
+/// The register values returned from a TDG.VP.ENTER call.
+/// These are readable via mmaping the mshv_vtl driver, and returned on a run_vp ioctl exit.
+/// See the TDX ABI specification for output operands for TDG.VP.ENTER.
+struct tdx_tdg_vp_enter_exit_info {
+	u64 rax;
+	u64 rcx;
+	u64 rdx;
+	u64 rsi;
+	u64 rdi;
+	u64 r8;
+	u64 r9;
+	u64 r10;
+	u64 r11;
+	u64 r12;
+	u64 r13;
 };
 
-union mshv_vtl_ghcb {
-    struct {
-        u64 ghcb_data[511];
-        u16 reserved;
-        u16 version;
-        u32 format;
-    } __packed;
-    struct {
-        union hv_input_vtl target_vtl;
-    };
+/// Register values that must be set by the kernel before entering lower VTLs.
+struct tdx_vp_state {
+	u64 msr_kernel_gs_base;
+	u64 msr_star;
+	u64 msr_lstar;
+	u64 msr_sfmask;
+	u64 msr_xss;
+	u64 cr2;
 };
-
-#define SEV_GHCB_VERSION        1
-#define SEV_GHCB_FORMAT_BASE        0
-#define SEV_GHCB_FORMAT_VTL_RETURN  2
 
 /// The GPR list for TDG.VP.ENTER.
 /// Made available via mmaping the mshv_vtl driver.
@@ -155,33 +147,75 @@ struct tdx_l2_enter_guest_state {
 	u64 ssp;
 	u8 rvi; // GUEST_INTERRUPT_STATUS lower bits
 	u8 svi; // GUSET_INTERRUPT_STATUS upper bits
+	u8 reserved[6];
 };
 
-/// The register values returned from a TDG.VP.ENTER call.
-/// These are readable via mmaping the mshv_vtl driver, and returned on a run_vp ioctl exit.
-/// See the TDX ABI specification for output operands for TDG.VP.ENTER.
-struct tdx_tdg_vp_enter_exit_info {
-	u64 rax;
-	u64 rcx;
-	u64 rdx;
-	u64 rsi;
-	u64 rdi;
-	u64 r8;
-	u64 r9;
-	u64 r10;
-	u64 r11;
-	u64 r12;
-	u64 r13;
+/*
+ * This structure must be placed in a larger structure at offset 272 (0x110).
+ * The GPR list for TDX and fx_state for xsave have alignment requirements on the
+ * addresses they are at due to ISA requirements.
+ */
+struct tdx_vp_context {
+	struct tdx_tdg_vp_enter_exit_info exit_info;
+	__u8 pad1[48];
+	struct tdx_vp_state vp_state;
+	__u8 pad2[56];
+	/* Must be on 256 byte boundary. */
+	struct tdx_l2_enter_guest_state l2_enter_guest_state;
+	/* Pad space until the next 256 byte boundary. */
+	__u8 pad3[96];
+	/* Must be 16 byte aligned. */
+	struct fxregs_state fx_state;
+	__u8 pad4[16];
 };
 
-/// Register values that must be set by the kernel before entering lower VTLs.
-struct tdx_vp_state {
-	u64 msr_kernel_gs_base;
-	u64 msr_star;
-	u64 msr_lstar;
-	u64 msr_cstar;
-	u64 msr_sfmask;
-	u64 msr_xss;
+static_assert(offsetof(struct tdx_vp_context, l2_enter_guest_state) + 272 == 512);
+static_assert(sizeof(struct tdx_vp_context) == 1024);
+
+#endif
+struct mshv_vtl_run {
+	u32 cancel;
+	u32 vtl_ret_action_size;
+	__u32 flags;
+	__u8 scan_proxy_irr;
+	__u8 pad[2];
+	__u8 enter_mode;
+	char exit_message[MAX_RUN_MSG_SIZE];
+	union {
+		struct mshv_vtl_cpu_context cpu_context;
+#ifdef CONFIG_X86_64
+		struct tdx_vp_context tdx_context;
+#endif
+
+		/*
+		 * Reserving room for the cpu context to grow and be
+		 * able to maintain compat with user mode.
+		 */
+		char reserved[1024];
+	};
+	char vtl_ret_actions[MAX_RUN_MSG_SIZE];
+	__u32 proxy_irr[8];
 };
+
+#ifdef CONFIG_X86_64
+static_assert(offsetof(struct mshv_vtl_run, tdx_context) == 272);
+#endif
+
+union mshv_vtl_ghcb {
+    struct {
+        u64 ghcb_data[511];
+        u16 reserved;
+        u16 version;
+        u32 format;
+    } __packed;
+    struct {
+        union hv_input_vtl target_vtl;
+    };
+};
+
+#define SEV_GHCB_VERSION        1
+#define SEV_GHCB_FORMAT_BASE        0
+#define SEV_GHCB_FORMAT_VTL_RETURN  2
+
 
 #endif /* _MSHV_VTL_H */

@@ -65,10 +65,7 @@ MODULE_LICENSE("GPL");
 #define MSHV_RUN_PAGE_OFFSET	0
 #define MSHV_REG_PAGE_OFFSET	1
 #define MSHV_VMSA_PAGE_OFFSET	2
-#define MSHV_TDX_GPR_LIST_PAGE_OFFSET	3
-#define MSHV_TDX_EXIT_INFO_PAGE_OFFSET	4
-#define MSHV_TDX_APIC_PAGE_OFFSET	5
-#define MSHV_TDX_VP_STATE_OFFSET	6
+#define MSHV_APIC_PAGE_OFFSET	3
 #define VTL2_VMBUS_SINT_INDEX	7
 
 #ifdef CONFIG_X86_64
@@ -158,15 +155,11 @@ struct mshv_vtl_per_cpu {
 	struct mshv_vtl_run *run;
 	struct page *reg_page;
 	struct page *vmsa_page;
-	struct tdx_l2_enter_guest_state *tdx_gpr_list;
-	struct tdx_vp_state *tdx_vp_state;
-	struct tdx_tdg_vp_enter_exit_info *tdx_exit_info;
 	struct page *tdx_apic_page;
 	u64 xss;
 	u64 l1_msr_kernel_gs_base;
 	u64 l1_msr_star;
 	u64 l1_msr_lstar;
-	u64 l1_msr_cstar;
 	u64 l1_msr_sfmask;
 };
 
@@ -195,32 +188,8 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 
 #ifdef CONFIG_X86_64
 
-static struct tdx_l2_enter_guest_state *tdx_this_gpr_list(void) {
-	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_gpr_list);
-}
-
-static struct tdx_tdg_vp_enter_exit_info *tdx_this_exit_info(void) {
-	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_exit_info);
-}
-
-static struct tdx_l2_enter_guest_state *tdx_gpr_list_page(int cpu) {
-	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_gpr_list, cpu);
-}
-
-static struct tdx_tdg_vp_enter_exit_info *tdx_exit_info_page(int cpu) {
-	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_exit_info, cpu);
-}
-
 static struct page *tdx_apic_page(int cpu) {
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
-}
-
-static struct tdx_vp_state *tdx_this_vp_state(void) {
-	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_vp_state);
-}
-
-static struct tdx_vp_state *tdx_cpu_vp_state(int cpu) {
-	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_vp_state, cpu);
 }
 
 #endif
@@ -596,44 +565,20 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 #endif
 	} else if (hv_isolation_type_tdx()) {
 #ifdef CONFIG_X86_64
-		// Allocate pages for TDX GPR list, TDX exit info, and TDX APIC page
-		struct page *tdx_gpr_list_page, *tdx_exit_info_page, *tdx_apic_page, *tdx_vp_state;
-		tdx_gpr_list_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
-		if (!tdx_gpr_list_page)
-			return -ENOMEM;
-
-		tdx_exit_info_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
-		if (!tdx_exit_info_page) {
-			__free_page(tdx_gpr_list_page);
-			return -ENOMEM;
-		}
+		struct page *tdx_apic_page;
 
 		tdx_apic_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
 		if (!tdx_apic_page) {
-			__free_page(tdx_gpr_list_page);
-			__free_page(tdx_exit_info_page);
 			return -ENOMEM;
 		}
 
-		tdx_vp_state = alloc_page(GFP_KERNEL | __GFP_ZERO);
-		if (!tdx_vp_state) {
-			__free_page(tdx_gpr_list_page);
-			__free_page(tdx_exit_info_page);
-			__free_page(tdx_apic_page);
-			return -ENOMEM;
-		}
-
-		per_cpu->tdx_gpr_list = page_address(tdx_gpr_list_page);
-		per_cpu->tdx_exit_info = page_address(tdx_exit_info_page);
 		per_cpu->tdx_apic_page = tdx_apic_page;
-		per_cpu->tdx_vp_state = page_address(tdx_vp_state);
 
 		/* Capture the intial syscall MSRs to be restored after VP.ENTER.
 			TODO TDX: Needs review from kernel experts. */
 		rdmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
 		rdmsrl(MSR_STAR, per_cpu->l1_msr_star);
 		rdmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
-		rdmsrl(MSR_CSTAR, per_cpu->l1_msr_cstar);
 		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
 
 		/* Enable the apic page. */
@@ -1334,7 +1279,7 @@ static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 flags)
 #elif CONFIG_X86_64
 
 /* TODO TDX: Confirm noinline produces the right asm for saving register state */
-noinline static void mshv_vtl_return_tdx(struct mshv_vtl_cpu_context *vtl0)
+noinline static void mshv_vtl_return_tdx(void)
 {
 	struct tdx_tdg_vp_enter_exit_info *tdx_exit_info;
 	struct tdx_vp_state *tdx_vp_state;
@@ -1351,26 +1296,25 @@ noinline static void mshv_vtl_return_tdx(struct mshv_vtl_cpu_context *vtl0)
 	register u64 r14 asm("r14");
 	register u64 r15 asm("r15");
 
+	vtl_run = mshv_vtl_this_run();
+	tdx_exit_info = &vtl_run->tdx_context.exit_info;
+	tdx_vp_state = &vtl_run->tdx_context.vp_state;
+	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+
 	/* TODO TDX: For now, hardcode VP.ENTER rax value and RCX.
 		RCX encodes vtl0 and invd translations */
 	u64 input_rax = 25;
 	u64 input_rcx = (u64) 1 << 52;
-	u64 input_rdx = virt_to_phys((void*) tdx_this_gpr_list());
-
-	tdx_exit_info = tdx_this_exit_info();
-	tdx_vp_state = tdx_this_vp_state();
-	vtl_run = mshv_vtl_this_run();
-	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	u64 input_rdx = virt_to_phys((void*) &vtl_run->tdx_context.l2_enter_guest_state);
 
 	kernel_fpu_begin_mask(0);
-	fxrstor(&vtl0->fx_state); // restore FP reg and XMM regs
-	native_write_cr2(vtl0->cr2);
+	fxrstor(&vtl_run->tdx_context.fx_state); // restore FP reg and XMM regs
+	native_write_cr2(tdx_vp_state->cr2);
 
 	/* Restore VTL0's syscall registers & MSRs */
 	wrmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
 	wrmsrl(MSR_STAR, tdx_vp_state->msr_star);
 	wrmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
-	wrmsrl(MSR_CSTAR, tdx_vp_state->msr_cstar);
 	wrmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
 
 	if (tdx_vp_state->msr_xss != per_cpu->xss)
@@ -1406,24 +1350,22 @@ noinline static void mshv_vtl_return_tdx(struct mshv_vtl_cpu_context *vtl0)
 	tdx_exit_info->r11 = r11;
 	tdx_exit_info->r12 = r12;
 	tdx_exit_info->r13 = r13;
-	vtl0->cr2 = native_read_cr2();
+	tdx_vp_state->cr2 = native_read_cr2();
 	rdmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
 	per_cpu->xss = tdx_vp_state->msr_xss;
 
 	rdmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
 	rdmsrl(MSR_STAR, tdx_vp_state->msr_star);
 	rdmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
-	rdmsrl(MSR_CSTAR, tdx_vp_state->msr_cstar);
 	rdmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
 
 	/* Restore VTL2's syscall registers & MSRs */
 	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
 	wrmsrl(MSR_STAR, per_cpu->l1_msr_star);
 	wrmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
-	wrmsrl(MSR_CSTAR, per_cpu->l1_msr_cstar);
 	wrmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
 
-	fxsave(&vtl0->fx_state);
+	fxsave(&vtl_run->tdx_context.fx_state);
 	kernel_fpu_end();
 }
 
@@ -1455,13 +1397,13 @@ static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0, u32 flags)
 	{
 		/* Clear RAX to an exit (PENDING_INTERRUPT) that the usermode VMM will
 		do nothing, if we are halting. */
-		tdx_this_exit_info()->rax = 0x112000000000;
+		mshv_vtl_this_run()->tdx_context.exit_info.rax = 0x112000000000;
 
 		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED))
 			tdx_safe_halt();
 		else {
 			/* only supports VTL0 */
-			mshv_vtl_return_tdx(vtl0);
+			mshv_vtl_return_tdx();
 		}
 		return;
 	}
@@ -2127,26 +2069,11 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 			return VM_FAULT_SIGBUS;
 		page = *per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page, cpu);
 #ifdef CONFIG_X86_64
-	} else if (real_off == MSHV_TDX_GPR_LIST_PAGE_OFFSET) {
-		if (!hv_isolation_type_tdx())
-			return VM_FAULT_SIGBUS;
-
-		page = virt_to_page(tdx_gpr_list_page(cpu));
-	} else if (real_off == MSHV_TDX_EXIT_INFO_PAGE_OFFSET) {
-		if (!hv_isolation_type_tdx())
-			return VM_FAULT_SIGBUS;
-
-		page = virt_to_page(tdx_exit_info_page(cpu));
-	} else if (real_off == MSHV_TDX_APIC_PAGE_OFFSET) {
+	} else if (real_off == MSHV_APIC_PAGE_OFFSET) {
 		if (!hv_isolation_type_tdx())
 			return VM_FAULT_SIGBUS;
 
 		page = tdx_apic_page(cpu);
-	} else if (real_off == MSHV_TDX_VP_STATE_OFFSET) {
-		if (!hv_isolation_type_tdx())
-			return VM_FAULT_SIGBUS;
-
-		page = virt_to_page(tdx_cpu_vp_state(cpu));
 #endif
 	} else {
 		return VM_FAULT_NOPAGE;
