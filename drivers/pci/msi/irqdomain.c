@@ -75,6 +75,14 @@ static struct msi_domain_ops pci_msi_domain_ops_default = {
 	.set_desc	= pci_msi_domain_set_desc,
 };
 
+static void pci_msix_prepare_desc(struct irq_domain *domain, msi_alloc_info_t *arg,
+				  struct msi_desc *desc)
+{
+	/* Don't fiddle with preallocated MSI descriptors */
+	if (!desc->pci.mask_base)
+		msix_prepare_msi_desc(to_pci_dev(desc->dev), desc);
+}
+
 static void pci_msi_domain_update_dom_ops(struct msi_domain_info *info)
 {
 	struct msi_domain_ops *ops = info->ops;
@@ -84,6 +92,14 @@ static void pci_msi_domain_update_dom_ops(struct msi_domain_info *info)
 	} else {
 		if (ops->set_desc == NULL)
 			ops->set_desc = pci_msi_domain_set_desc;
+		/*
+		 * Plug the default MSI-X prepare descriptor to workaround
+		 * the inability of Hyper-V vPCI module to setup the MSI-X
+		 * descriptors properly; especially for dynamically allocated
+		 * MSI-X.
+		 */
+		if (ops->prepare_desc == NULL)
+			ops->prepare_desc = pci_msix_prepare_desc;
 	}
 }
 
@@ -200,14 +216,6 @@ static void pci_irq_mask_msix(struct irq_data *data)
 static void pci_irq_unmask_msix(struct irq_data *data)
 {
 	pci_msix_unmask(irq_data_get_msi_desc(data));
-}
-
-static void pci_msix_prepare_desc(struct irq_domain *domain, msi_alloc_info_t *arg,
-				  struct msi_desc *desc)
-{
-	/* Don't fiddle with preallocated MSI descriptors */
-	if (!desc->pci.mask_base)
-		msix_prepare_msi_desc(to_pci_dev(desc->dev), desc);
 }
 
 static const struct msi_domain_template pci_msix_template = {
