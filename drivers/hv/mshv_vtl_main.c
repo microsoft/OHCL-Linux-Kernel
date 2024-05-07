@@ -2222,9 +2222,9 @@ static void mshv_vtl_synic_mask_vmbus_sint(const u8 *mask)
 		sint.as_uint64);
 
 	if (!sint.masked)
-		pr_debug("%s: Unmasking VTL2 VMBUS SINT on VP %d\n", __func__, smp_processor_id());
+		pr_debug("%s: Unmasking VTL2 VMBUS SINT\n", __func__);
 	else
-		pr_debug("%s: Masking VTL2 VMBUS SINT on VP %d\n", __func__, smp_processor_id());
+		pr_debug("%s: Masking VTL2 VMBUS SINT\n", __func__);
 }
 
 static void mshv_vtl_read_remote(void *buffer)
