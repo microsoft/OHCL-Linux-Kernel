@@ -39,6 +39,7 @@
 #include <asm/sev.h>
 #include <asm/realmode.h>
 #include <asm/e820/api.h>
+#include <asm/prom.h>
 
 #define EN_SEV_SNP_PROCESSOR_INFO_ADDR	 0x802000
 #define HV_AP_INIT_GPAT_DEFAULT		0x0007040600070406ULL
@@ -730,6 +731,15 @@ static bool __init ms_hyperv_msi_ext_dest_id(void)
 	return eax & HYPERV_VS_PROPERTIES_EAX_EXTENDED_IOAPIC_RTE;
 }
 
+static void __init ms_hyperv_guest_init(void) {
+#if defined(CONFIG_X86_64) && defined(CONFIG_OF)
+	struct multiproc_wakeup wakeup;
+
+	if (!dtb_setup_ap_mailbox(&wakeup))
+		enable_mailbox_wakeup(wakeup.base_address);
+#endif
+}
+
 #ifdef CONFIG_AMD_MEM_ENCRYPT
 static void hv_sev_es_hcall_prepare(struct ghcb *ghcb, struct pt_regs *regs)
 {
@@ -752,6 +762,7 @@ const __initconst struct hypervisor_x86 x86_hyper_ms_hyperv = {
 	.name			= "Microsoft Hyper-V",
 	.detect			= ms_hyperv_platform,
 	.type			= X86_HYPER_MS_HYPERV,
+	.init.guest_late_init	= ms_hyperv_guest_init,
 	.init.x2apic_available	= ms_hyperv_x2apic_available,
 	.init.msi_ext_dest_id	= ms_hyperv_msi_ext_dest_id,
 	.init.init_platform	= ms_hyperv_init_platform,
