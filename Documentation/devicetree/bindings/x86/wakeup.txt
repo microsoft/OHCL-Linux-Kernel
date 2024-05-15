@@ -1,0 +1,20 @@
+===========================================================
+Secondary CPU enable-method "acpi-wakeup-mailbox" binding
+===========================================================
+
+This document describes the "acpi-wakeup-mailbox" method for
+enabling secondary CPUs.
+
+The ACPI spec defines a merchanism to let the bootstrap processor wake up application
+processors with a mailbox. The "acpi-wakeup-mailbox" enable method follows the
+"Multiprocessor Wakeup Mailbox Structure" defined in the ACPI spec[1].
+
+This enable method applys to all CPUs and should be defined in the "cpus" node
+and will not be defined on each "cpu" node, since the ACPI mailbox structure is
+shared by all the CPUs.
+
+* Physical address of the mailbox
+The physical address of the mailbox is defined as "wakeup-mailbox-addr"
+property. The address must be 4K bytes aligned and it should be in the reserved
+memory.
+

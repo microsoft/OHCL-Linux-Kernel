@@ -38,5 +38,13 @@ static inline void x86_flattree_get_config(void) { }
 #endif
 extern char cmd_line[COMMAND_LINE_SIZE];
 
+#ifdef CONFIG_X86_64
+struct multiproc_wakeup {
+	u16 mailbox_version;
+	u64 base_address;
+};
+
+int dtb_setup_ap_mailbox(struct multiproc_wakeup *wakeup);
+#endif
 #endif /* __ASSEMBLY__ */
 #endif

@@ -283,6 +283,51 @@ static void __init dtb_apic_setup(void)
 	dtb_ioapic_setup();
 }
 
+#ifdef CONFIG_X86_64
+int dtb_setup_ap_mailbox(struct multiproc_wakeup *wakeup)
+{
+	struct device_node *node;
+	u64 mailaddr;
+	u16 version = 0;
+	int ret = 0;
+
+	if (!IS_ENABLED(CONFIG_SMP))
+		return -ENODEV;
+
+	node = of_find_node_by_path("/cpus");
+	if (!node)
+		return -ENODEV;
+
+	if (of_property_match_string(node, "enable-method",
+				     "acpi-wakeup-mailbox") < 0) {
+		pr_err("No acpi wakeup mailbox enable-method\n");
+		ret = -ENODEV;
+		goto done;
+	}
+
+	wakeup->mailbox_version = 0;
+	if (!of_property_read_u16(node, "wakeup-mailbox-version", &version)) {
+		if (version > 1) {
+			pr_err("Invalid wakeup mailbox version %x\n", version);
+			ret = -EINVAL;
+			goto done;
+		}
+		wakeup->mailbox_version = version;
+	}
+	if(of_property_read_u64(node, "wakeup-mailbox-addr", &mailaddr)) {
+		pr_err("Invalid wakeup mailbox addr\n");
+		ret = -EINVAL;
+		goto done;
+	}
+	wakeup->base_address = mailaddr;
+	pr_info("dt wakeup-mailbox: addr %llx version %x\n", mailaddr, version);
+done:
+	of_node_put(node);
+	return ret;
+}
+EXPORT_SYMBOL(dtb_setup_ap_mailbox);
+#endif
+
 #ifdef CONFIG_OF_EARLY_FLATTREE
 void __init x86_flattree_get_config(void)
 {
