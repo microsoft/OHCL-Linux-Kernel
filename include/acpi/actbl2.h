@@ -1114,20 +1114,6 @@ struct acpi_madt_multiproc_wakeup {
 	u64 base_address;
 };
 
-#define ACPI_MULTIPROC_WAKEUP_MB_OS_SIZE        2032
-#define ACPI_MULTIPROC_WAKEUP_MB_FIRMWARE_SIZE  2048
-
-struct acpi_madt_multiproc_wakeup_mailbox {
-	u16 command;
-	u16 reserved;		/* reserved - must be zero */
-	u32 apic_id;
-	u64 wakeup_vector;
-	u8 reserved_os[ACPI_MULTIPROC_WAKEUP_MB_OS_SIZE];	/* reserved for OS use */
-	u8 reserved_firmware[ACPI_MULTIPROC_WAKEUP_MB_FIRMWARE_SIZE];	/* reserved for firmware use */
-};
-
-#define ACPI_MP_WAKE_COMMAND_WAKEUP    1
-
 /* 17: CPU Core Interrupt Controller (ACPI 6.5) */
 
 struct acpi_madt_core_pic {
