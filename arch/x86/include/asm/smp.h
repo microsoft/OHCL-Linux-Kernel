@@ -130,6 +130,9 @@ void native_send_call_func_ipi(const struct cpumask *mask);
 void native_send_call_func_single_ipi(int cpu);
 
 void smp_store_cpu_info(int id);
+#ifdef CONFIG_X86_64
+void enable_mailbox_wakeup(u64 addr);
+#endif
 
 asmlinkage __visible void smp_reboot_interrupt(void);
 __visible void smp_reschedule_interrupt(struct pt_regs *regs);
