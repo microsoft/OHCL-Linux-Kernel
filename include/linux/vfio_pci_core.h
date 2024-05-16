@@ -19,6 +19,26 @@
 #ifndef VFIO_PCI_CORE_H
 #define VFIO_PCI_CORE_H
 
+#ifdef CONFIG_64BIT
+#ifndef ioread64
+#define ioread64 ioread64_pci
+static inline u64 ioread64_pci(const volatile void __iomem *addr)
+{
+	return readq(addr);
+}
+#endif
+#endif /* CONFIG_64BIT */
+
+#ifdef CONFIG_64BIT
+#ifndef iowrite64
+#define iowrite64 iowrite64_pci
+static inline void iowrite64_pci(u64 value, volatile void __iomem *addr)
+{
+	writeq(value, addr);
+}
+#endif
+#endif /* CONFIG_64BIT */
+
 #define VFIO_PCI_OFFSET_SHIFT   40
 #define VFIO_PCI_OFFSET_TO_INDEX(off)	(off >> VFIO_PCI_OFFSET_SHIFT)
 #define VFIO_PCI_INDEX_TO_OFFSET(index)	((u64)(index) << VFIO_PCI_OFFSET_SHIFT)
