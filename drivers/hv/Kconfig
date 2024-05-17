@@ -94,8 +94,10 @@ config MSHV_VTL
 	# MTRRs are controlled by VTL0, and are not specific to individual VTLs.
 	# Therefore, do not attempt to access or modify MTRRs here.
 	depends on !MTRR
+	depends on OF
 	select CPUMASK_OFFSTACK
 	select VIRT_XFER_TO_GUEST_WORK
+	select VMAP_PFN
 	default n
 	help
 	  Select this option to enable Hyper-V VTL driver support.
