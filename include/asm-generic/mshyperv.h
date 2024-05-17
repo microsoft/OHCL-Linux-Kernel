@@ -22,6 +22,7 @@
 #include <linux/bitops.h>
 #include <acpi/acpi_numa.h>
 #include <linux/cpumask.h>
+#include <linux/interrupt.h>
 #include <linux/nmi.h>
 #include <asm/ptrace.h>
 #include <hyperv/hvhdk.h>
@@ -205,6 +206,8 @@ extern int vmbus_irq;
 
 int hv_get_hypervisor_version(union hv_hypervisor_version_info *info);
 
+irqreturn_t vmbus_percpu_isr(int irq, void *dev_id);
+void hv_setup_percpu_vmbus_handler(void (*handler)(void));
 void hv_setup_vmbus_handler(void (*handler)(void));
 void hv_remove_vmbus_handler(void);
 void hv_setup_stimer0_handler(void (*handler)(void));
