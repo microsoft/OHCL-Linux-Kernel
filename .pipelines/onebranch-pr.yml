@@ -9,7 +9,11 @@
 #################################################################################
 
 variables:
-  LinuxContainerImage: 'mcr.microsoft.com/onebranch/cbl-mariner/build:2.0' # Docker image which is used to build the project https://aka.ms/obpipelines/containers
+  # Docker image which is used to build the project https://aka.ms/obpipelines/containers
+  # sha is used to prevent the pipeline from using the most recent image, which breaks the perf build.
+  # Both the OneBranch and Mariner teams are investigating this problem, and a solution will be provided soon.
+  LinuxContainerImage: 'mcr.microsoft.com/onebranch/cbl-mariner/build:2.0@sha256:63eef19cd97c8d46880f15e3e67057a53da3a958e860158b32d33a7d48297677'
+
   DEBIAN_FRONTEND: noninteractive
   PipelineShortName: 'prbuild'
 
