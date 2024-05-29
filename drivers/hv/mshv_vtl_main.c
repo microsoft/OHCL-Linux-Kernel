@@ -534,7 +534,7 @@ DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 
 static void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
-	struct hv_vp_assist_page *hvp;
+	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 	struct mshv_vtl_run *this_run = mshv_vtl_this_run();
 	struct hv_vtl_cpu_context *cpu_ctx = &this_run->cpu_context;
 	u32 flags = READ_ONCE(this_run->flags);
@@ -559,7 +559,6 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 	}
 
 	hv_vtl_return(cpu_ctx, flags, mshv_vsm_page_offsets.vtl_return_offset);
-	hvp = hv_vp_assist_page[smp_processor_id()];
 
 	trace_mshv_vtl_exit_vtl0_rcuidle(hvp->vtl_entry_reason, cpu_ctx);
 }
