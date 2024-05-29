@@ -22,6 +22,7 @@
 #include <linux/ptrace.h>
 #include <linux/random.h>
 #include <linux/efi.h>
+#include <linux/hyperv.h>
 #include <linux/kdebug.h>
 #include <linux/kmsg_dump.h>
 #include <linux/sizes.h>
@@ -601,7 +602,7 @@ int hv_common_cpu_init(unsigned int cpu)
 		}
 
 		if (*hvp)
-			msr.pfn = vmalloc_to_pfn(*hvp);
+			msr.pfn = virt_to_hvpfn(*hvp);
 
 	}
 	if (!WARN_ON(!(*hvp))) {
