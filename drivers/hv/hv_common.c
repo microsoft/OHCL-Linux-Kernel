@@ -30,6 +30,7 @@
 #include <linux/dma-map-ops.h>
 #include <linux/set_memory.h>
 #include <linux/vmalloc.h>
+#include <linux/hyperv.h>
 #include <asm/hyperv-tlfs.h>
 #include <asm/mshyperv.h>
 
@@ -624,7 +625,7 @@ int hv_common_cpu_init(unsigned int cpu)
 		if (!*hvp) {
 			*hvp = __vmalloc(PAGE_SIZE, GFP_KERNEL | __GFP_ZERO);
 			if (*hvp)
-				vp_assist_reg.pfn = vmalloc_to_pfn(*hvp);
+				vp_assist_reg.pfn = virt_to_hvpfn(*hvp);
 		}
 
 		WARN_ON(!(*hvp));
