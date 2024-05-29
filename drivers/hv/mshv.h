@@ -25,4 +25,12 @@ int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 int hv_call_get_partition_property(u64 partition_id, u64 property_code,
 				   u64 *property_value);
 
+#ifdef CONFIG_X86_64
+int __init mshv_vtl_sidecar_init(void);
+void mshv_vtl_sidecar_exit(void);
+#else
+static inline int mshv_vtl_sidecar_init(void) { return 0; }
+static inline void mshv_vtl_sidecar_exit(void) {}
+#endif
+
 #endif /* _MSHV_H */
