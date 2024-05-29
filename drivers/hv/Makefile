@@ -18,6 +18,7 @@ mshv_root-y := mshv_root_main.o mshv_synic.o mshv_eventfd.o mshv_irq.o \
 mshv_root-$(CONFIG_DEBUG_FS) += mshv_debugfs.o
 mshv_root-$(CONFIG_TRACEPOINTS) += mshv_trace.o
 mshv_vtl-y := mshv_vtl_main.o
+mshv_vtl-$(CONFIG_X86_64)       += mshv_vtl_sidecar.o
 
 # Code that must be built-in
 obj-$(CONFIG_HYPERV) += hv_common.o
