@@ -159,4 +159,14 @@ static_assert(sizeof(struct mshv_vtl_run) <= 4096);
 #define SEV_GHCB_FORMAT_BASE        0
 #define SEV_GHCB_FORMAT_VTL_RETURN  2
 
+#ifdef CONFIG_X86_64
+void mshv_vtl_sidecar_isr(void);
+int __init mshv_vtl_sidecar_init(void);
+void mshv_vtl_sidecar_exit(void);
+#else
+static inline void mshv_vtl_sidecar_isr(void) {}
+static inline int mshv_vtl_sidecar_init(void) { return 0; }
+static inline void mshv_vtl_sidecar_exit(void) {}
+#endif
+
 #endif /* _MSHV_VTL_H */

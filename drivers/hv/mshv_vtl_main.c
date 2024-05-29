@@ -9,6 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/hashtable.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include <linux/miscdevice.h>
 #include <linux/anon_inodes.h>
 #include <linux/pfn_t.h>
@@ -533,6 +534,7 @@ static void mshv_vtl_vmbus_isr(void)
 		}
 	}
 
+	mshv_vtl_sidecar_isr();
 	vmbus_isr();
 }
 
@@ -2555,6 +2557,8 @@ static int __init mshv_vtl_init_memory(void)
 	return 0;
 }
 
+extern struct platform_driver mshv_vtl_sidecar;
+
 static int __init mshv_vtl_init(void)
 {
 	int ret;
@@ -2603,10 +2607,14 @@ static int __init mshv_vtl_init(void)
 	if (ret)
 		goto free_hvcall;
 
+	ret = mshv_vtl_sidecar_init();
+	if (ret)
+		goto free_low;
+
 	mem_dev = kzalloc(sizeof(*mem_dev), GFP_KERNEL);
 	if (!mem_dev) {
 		ret = -ENOMEM;
-		goto free_low;
+		goto free_sidecar;
 	}
 
 	mutex_init(&mshv_vtl_poll_file_lock);
@@ -2632,6 +2640,8 @@ static int __init mshv_vtl_init(void)
 
 free_mem:
 	kfree(mem_dev);
+free_sidecar:
+	mshv_vtl_sidecar_exit();
 free_low:
 	misc_deregister(&mshv_vtl_low);
 free_hvcall:
@@ -2650,6 +2660,7 @@ static void __exit mshv_vtl_exit(void)
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
 	misc_deregister(&mshv_vtl_low);
+	mshv_vtl_sidecar_exit();
 	device_del(mem_dev);
 	kfree(mem_dev);
 }
