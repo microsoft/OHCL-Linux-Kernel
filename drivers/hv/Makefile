@@ -23,6 +23,7 @@ mshv-y				+= mshv_main.o
 mshv_root-y			:= mshv_root_main.o mshv_synic.o mshv_portid_table.o \
 						mshv_eventfd.o mshv_msi.o mshv_root_hv_call.o hv_call.o
 mshv_vtl-y			:= mshv_vtl_main.o hv_call.o
+mshv_vtl-$(CONFIG_X86_64)	+= mshv_vtl_sidecar.o
 
 obj-$(CONFIG_MSHV_XFER_TO_GUEST_WORK) += xfer_to_guest.o
 

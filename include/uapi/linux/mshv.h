@@ -279,6 +279,12 @@ struct mshv_tdcall {
 	__u64 r11_out; // only supported as output
 } __packed;
 
+struct mshv_vtl_sidecar_info {
+	__u32 base_cpu;
+	__u32 cpu_count;
+	__u32 per_cpu_shmem;
+};
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -344,6 +350,12 @@ struct mshv_tdcall {
 /* hv_hvcall device */
 #define MSHV_HVCALL_SETUP        _IOW(MSHV_IOCTL, 0x1E, struct mshv_vtl_hvcall_setup)
 #define MSHV_HVCALL              _IOWR(MSHV_IOCTL, 0x1F, struct mshv_vtl_hvcall)
+
+/* mshv_vtl_sidecar device */
+#define MSHV_VTL_SIDECAR_START	_IO(MSHV_IOCTL, 0xf0)
+#define MSHV_VTL_SIDECAR_STOP	_IO(MSHV_IOCTL, 0xf1)
+#define MSHV_VTL_SIDECAR_RUN	_IO(MSHV_IOCTL, 0xf2)
+#define MSHV_VTL_SIDECAR_INFO	_IOR(MSHV_IOCTL, 0xf3, struct mshv_vtl_sidecar_info)
 
 /* register page mapping example:
  * struct hv_vp_register_page *regs = mmap(NULL,
