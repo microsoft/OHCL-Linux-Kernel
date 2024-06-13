@@ -303,6 +303,25 @@ err_out:
 	return ERR_PTR(ret);
 }
 
+static int vfio_group_ioctl_device_keep_alive(struct vfio_group *group,
+					      char __user *arg)
+{
+	struct vfio_device *device;
+	char *buf;
+
+	buf = strndup_user(arg, PAGE_SIZE);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+
+	device = vfio_device_get_from_name(group, buf);
+	kfree(buf);
+	if (IS_ERR(device))
+		return PTR_ERR(device);
+
+	device->keep_alive = 1;
+	return 0;
+}
+
 static int vfio_group_ioctl_get_device_fd(struct vfio_group *group,
 					  char __user *arg)
 {
@@ -389,6 +408,8 @@ static long vfio_group_fops_unl_ioctl(struct file *filep,
 	void __user *uarg = (void __user *)arg;
 
 	switch (cmd) {
+	case VFIO_GROUP_KEEP_ALIVE:
+		return vfio_group_ioctl_device_keep_alive(group, uarg);
 	case VFIO_GROUP_GET_DEVICE_FD:
 		return vfio_group_ioctl_get_device_fd(group, uarg);
 	case VFIO_GROUP_GET_STATUS:

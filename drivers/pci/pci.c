@@ -4423,6 +4423,16 @@ void __iomem *devm_pci_remap_cfg_resource(struct device *dev,
 }
 EXPORT_SYMBOL(devm_pci_remap_cfg_resource);
 
+/* populates the BME bit value set by BIOS in device object */
+static void __pci_init_bios_master(struct pci_dev *dev)
+{
+	u16 cmd;
+
+	pci_read_config_word(dev, PCI_COMMAND, &cmd);
+
+	dev->is_busmaster = !!(cmd & PCI_COMMAND_MASTER);
+}
+
 static void __pci_set_master(struct pci_dev *dev, bool enable)
 {
 	u16 old_cmd, cmd;
@@ -4492,6 +4502,13 @@ void pci_set_master(struct pci_dev *dev)
 	pcibios_set_master(dev);
 }
 EXPORT_SYMBOL(pci_set_master);
+
+/* populates the BME bit value set by BIOS in device object */
+void pci_master_bios_init(struct pci_dev *dev)
+{
+	__pci_init_bios_master(dev);
+}
+EXPORT_SYMBOL(pci_master_bios_init);
 
 /**
  * pci_clear_master - disables bus-mastering for device dev

@@ -1315,6 +1315,7 @@ void pci_disable_device(struct pci_dev *dev);
 extern unsigned int pcibios_max_latency;
 void pci_set_master(struct pci_dev *dev);
 void pci_clear_master(struct pci_dev *dev);
+void pci_master_bios_init(struct pci_dev *dev);
 
 int pci_set_pcie_reset_state(struct pci_dev *dev, enum pcie_reset_state state);
 int pci_set_cacheline_size(struct pci_dev *dev);

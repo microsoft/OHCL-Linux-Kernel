@@ -1279,6 +1279,14 @@ struct vfio_precopy_info {
 
 #define VFIO_MIG_GET_PRECOPY_INFO _IO(VFIO_TYPE, VFIO_BASE + 21)
 
+/**
+ * VFIO_GROUP_KEEP_ALIVE - _IOW(VFIO_TYPE, VFIO_BASE + 22, char)
+ *
+ * This ioctl is used to set a flag indicating the device need not be
+ * brought down, and any further access to hw should be avoided.
+ */
+ #define VFIO_GROUP_KEEP_ALIVE _IO(VFIO_TYPE, VFIO_BASE + 22)
+
 /*
  * Upon VFIO_DEVICE_FEATURE_SET, allow the device to be moved into a low power
  * state with the platform-based power management.  Device use of lower power

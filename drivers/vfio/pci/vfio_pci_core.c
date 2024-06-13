@@ -481,7 +481,10 @@ int vfio_pci_core_enable(struct vfio_pci_core_device *vdev)
 	}
 
 	/* Don't allow our initial saved state to include busmaster */
-	pci_clear_master(pdev);
+	if (vdev->vdev.keep_alive)
+		pci_master_bios_init(pdev);
+	else
+		pci_clear_master(pdev);
 
 	ret = pci_enable_device(pdev);
 	if (ret)
