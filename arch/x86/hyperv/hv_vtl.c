@@ -15,43 +15,12 @@
 #include <linux/memblock.h>
 #include <../kernel/smpboot.h>
 
-extern void hv_tdx_trampoline(void);
 extern struct boot_params boot_params;
 static struct real_mode_header hv_vtl_real_mode_header;
-static u64 hv_tdx_trampoline_cr3;
 
 static bool __init hv_vtl_msi_ext_dest_id(void)
 {
 	return true;
-}
-
-static void __init hv_tdx_reserve_real_mode(void)
-{
-	phys_addr_t mem;
-	size_t size = real_mode_size_needed();
-	u64 *pml4;
-	u64 *pdpte;
-	u64 i;
-
-	/* Space for page table for lower 4GB. */
-	size += PAGE_SIZE * 2;
-
-	/* On TDX platforms, we only need the memory to be <4GB since
-	 * the 64-bit trampoline only goes down to 32-bit mode. */
-	mem = memblock_phys_alloc_range(size, PAGE_SIZE, 0, 1ul<<32);
-	if (!mem)
-		panic("No sub-4G memory is available for the trampoline\n");
-
-	set_real_mode_mem(mem + PAGE_SIZE * 2);
-
-	/* Initialize an identity mapped page table mapping the lower 4GB. */
-	pml4 = __va(mem);
-	pdpte = __va(mem + PAGE_SIZE);
-	pml4[0] = __pa(pdpte) | _PAGE_PRESENT | _PAGE_RW;
-	for (i = 0; i < 4; i++)
-		pdpte[i] = (i << PUD_SHIFT) | _PAGE_PRESENT | _PAGE_RW | _PAGE_PSE | _PAGE_DIRTY | _PAGE_ACCESSED;
-
-	hv_tdx_trampoline_cr3 = mem;
 }
 
 void __init hv_vtl_init_platform(void)
@@ -59,12 +28,8 @@ void __init hv_vtl_init_platform(void)
 	pr_info("Linux runs in Hyper-V Virtual Trust Level\n");
 
 	x86_init.resources.probe_roms = x86_init_noop;
-	if (hv_isolation_type_tdx())
-		x86_platform.realmode_reserve = hv_tdx_reserve_real_mode;
-	else {
-		x86_platform.realmode_reserve = x86_init_noop;
-		x86_platform.realmode_init = x86_init_noop;
-	}
+	x86_platform.realmode_reserve = x86_init_noop;
+	x86_platform.realmode_init = x86_init_noop;
 	x86_init.irqs.pre_vector_init = x86_init_noop;
 	x86_init.timers.timer_init = x86_init_noop;
 
@@ -211,118 +176,6 @@ free_lock:
 	return ret;
 }
 
-static int hv_vtl_bringup_tdx_vcpu(int vp_id, unsigned long start_eip)
-{
-	struct trampoline_context {
-		u32 start_gate;
-
-		u16 data_selector;
-		u16 static_gdt_limit;
-		u32 static_gdt_base;
-
-		u16 task_selector;
-		u16 idtr_limit;
-
-		u64 idtr_base;
-
-		u64 initial_rip;
-		u16 code_selector;
-		u16 padding_2[2];
-		u16 gdtr_limit;
-		u64 gdtr_base;
-
-		u64 rsp;
-		u64 rbp;
-		u64 rsi;
-		u64 r8;
-		u64 r9;
-		u64 r10;
-		u64 r11;
-		u64 cr0;
-		u64 cr3;
-		u64 cr4;
-		u32 transition_cr3;
-		u32 padding_3;
-
-		u8 static_gdt[16];
-	};
-
-	u64 pa_context = 0xfffff000;
-	struct trampoline_context *ctx;
-	static DEFINE_MUTEX(reset_page_lock);
-	u64 status;
-	struct hv_enable_vp_vtl *input;
-	unsigned long irq_flags;
-	int ret;
-
-	/* Map the trampoline page. */
-	ctx = ioremap_encrypted(pa_context, sizeof(*ctx));
-	if (!ctx)
-		return -ENOMEM;
-
-	/*
-	 * Ensure the hypervisor has started the processor, and that it
-	 * is configured to run from VTL2.
-	 */
-	local_irq_save(irq_flags);
-	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-	memset(input, 0, sizeof(*input));
-	input->partition_id = HV_PARTITION_ID_SELF;
-	input->vp_index = vp_id;
-	input->target_vtl.target_vtl = HV_VTL_MGMT;
-
-	pr_info("enabling vtl2 for vp %d\n", vp_id);
-	status = hv_do_hypercall(HVCALL_ENABLE_VP_VTL, input, NULL);
-	if (!hv_result_success(status) &&
-	    hv_result(status) != HV_STATUS_VTL_ALREADY_ENABLED) {
-		pr_err("HVCALL_ENABLE_VP_VTL failed for VP : %d ! [Err: %#llx\n]",
-		       vp_id, status);
-		ret = -EINVAL;
-		goto restore;
-	}
-
-	pr_info("starting vtl2 for vp %d\n", vp_id);
-	status = hv_do_hypercall(HVCALL_START_VP, input, NULL);
-	if (!hv_result_success(status)) {
-		pr_err("HVCALL_START_VP failed for VP : %d ! [Err: %#llx]\n",
-		       vp_id, status);
-		ret = -EINVAL;
-		goto restore;
-	}
-
-	ret = 0;
-
-restore:
-	local_irq_restore(irq_flags);
-	if (ret) {
-		iounmap(ctx);
-		return ret;
-	}
-
-	/* Use the reset page to provide the initial context. */
-	mutex_lock(&reset_page_lock);
-	BUG_ON(ctx->start_gate != 0);
-	ctx->gdtr_limit = 0;
-	ctx->idtr_limit = 0;
-	ctx->code_selector = 0;
-	ctx->task_selector = 0;
-	ctx->transition_cr3 = hv_tdx_trampoline_cr3;
-	ctx->cr3 = hv_tdx_trampoline_cr3;
-	ctx->cr0 = X86_CR0_PE | X86_CR0_PG | X86_CR0_NE;
-	ctx->cr4 = X86_CR4_PAE | X86_CR4_MCE;
-	ctx->r8 = pa_context;
-	ctx->r9 = start_eip;
-	ctx->initial_rip = __pa(hv_tdx_trampoline);
-	smp_store_release(&ctx->start_gate, vp_id);
-
-	/* Wait for the AP to read the context from the reset page. */
-	while (smp_load_acquire(&ctx->start_gate) != 0)
-		cpu_relax();
-	mutex_unlock(&reset_page_lock);
-	iounmap(ctx);
-	return 0;
-}
-
 static int hv_vtl_wakeup_secondary_cpu(int apicid, unsigned long start_eip)
 {
 	int vp_id, cpu;
@@ -336,9 +189,6 @@ static int hv_vtl_wakeup_secondary_cpu(int apicid, unsigned long start_eip)
 		return -EINVAL;
 
 	pr_debug("Bringing up CPU with APIC ID %d in VTL2...\n", apicid);
-	/* TODO TDX: we cannot trust the hypervisor to perform this mapping...
-		Instead, we need hypervisor support for TDX 1.5 ENUM_TOPOLOGY to query
-		this directly from the tdx module. */
 	vp_id = hv_apicid_to_vp_id(apicid);
 
 	if (vp_id < 0) {
@@ -350,10 +200,7 @@ static int hv_vtl_wakeup_secondary_cpu(int apicid, unsigned long start_eip)
 		return -EINVAL;
 	}
 
-	if (hv_isolation_type_tdx())
-		return hv_vtl_bringup_tdx_vcpu(vp_id, start_eip);
-	else
-		return hv_vtl_bringup_vcpu(vp_id, cpu, start_eip);
+	return hv_vtl_bringup_vcpu(vp_id, cpu, start_eip);
 }
 
 int __init hv_vtl_early_init(void)
@@ -372,9 +219,7 @@ int __init hv_vtl_early_init(void)
 	if (!hv_isolation_type_en_snp())
 		apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
 
-	if (!hv_isolation_type_tdx())
-		real_mode_header = &hv_vtl_real_mode_header;
-
+	real_mode_header = &hv_vtl_real_mode_header;
 
 	return 0;
 }
