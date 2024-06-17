@@ -17,16 +17,27 @@
 
 extern struct boot_params boot_params;
 static struct real_mode_header hv_vtl_real_mode_header;
+extern u64 wakeup_mailbox_addr;
 
 static bool __init hv_vtl_msi_ext_dest_id(void)
 {
 	return true;
 }
 
+static bool hv_is_private_mmio_tdx(u64 addr)
+{
+	if (wakeup_mailbox_addr && (addr >= wakeup_mailbox_addr &&
+			addr < (wakeup_mailbox_addr + PAGE_SIZE)))
+		return true;
+	return false;
+}
+
 void __init hv_vtl_init_platform(void)
 {
 	pr_info("Linux runs in Hyper-V Virtual Trust Level\n");
 
+	if (hv_isolation_type_tdx())
+		x86_platform.hyper.is_private_mmio = hv_is_private_mmio_tdx;
 	x86_init.resources.probe_roms = x86_init_noop;
 	x86_platform.realmode_reserve = x86_init_noop;
 	x86_platform.realmode_init = x86_init_noop;

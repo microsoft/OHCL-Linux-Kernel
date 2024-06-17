@@ -731,12 +731,15 @@ static bool __init ms_hyperv_msi_ext_dest_id(void)
 	return eax & HYPERV_VS_PROPERTIES_EAX_EXTENDED_IOAPIC_RTE;
 }
 
+u64 wakeup_mailbox_addr;
 static void __init ms_hyperv_guest_init(void) {
 #if defined(CONFIG_X86_64) && defined(CONFIG_OF)
 	struct multiproc_wakeup wakeup;
 
-	if (!dtb_setup_ap_mailbox(&wakeup))
+	if (!dtb_setup_ap_mailbox(&wakeup)) {
 		enable_mailbox_wakeup(wakeup.base_address);
+		wakeup_mailbox_addr = wakeup.base_address;
+	}
 #endif
 }
 
