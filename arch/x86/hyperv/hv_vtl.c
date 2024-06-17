@@ -32,15 +32,32 @@ static bool hv_is_private_mmio_tdx(u64 addr)
 	return false;
 }
 
+static void __init hv_tdx_reserve_real_mode(void)
+{
+	phys_addr_t mem;
+	size_t size = real_mode_size_needed();
+
+	/* On TDX platforms, we only need the memory to be <4GB since
+	 * the 64-bit trampoline only goes down to 32-bit mode. */
+	mem = memblock_phys_alloc_range(size, PAGE_SIZE, 0, 1ul<<32);
+	if (!mem)
+		panic("No sub-4G memory is available for the trampoline\n");
+	set_real_mode_mem(mem);
+}
+
 void __init hv_vtl_init_platform(void)
 {
 	pr_info("Linux runs in Hyper-V Virtual Trust Level\n");
 
-	if (hv_isolation_type_tdx())
+	if (hv_isolation_type_tdx()) {
 		x86_platform.hyper.is_private_mmio = hv_is_private_mmio_tdx;
+		x86_platform.realmode_reserve = hv_tdx_reserve_real_mode;
+	}
+	else {
+		x86_platform.realmode_reserve = x86_init_noop;
+		x86_platform.realmode_init = x86_init_noop;
+	}
 	x86_init.resources.probe_roms = x86_init_noop;
-	x86_platform.realmode_reserve = x86_init_noop;
-	x86_platform.realmode_init = x86_init_noop;
 	x86_init.irqs.pre_vector_init = x86_init_noop;
 	x86_init.timers.timer_init = x86_init_noop;
 
@@ -230,7 +247,8 @@ int __init hv_vtl_early_init(void)
 	if (!hv_isolation_type_en_snp() && !hv_isolation_type_tdx())
 		apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
 
-	real_mode_header = &hv_vtl_real_mode_header;
+	if (!hv_isolation_type_tdx())
+		real_mode_header = &hv_vtl_real_mode_header;
 
 	return 0;
 }
