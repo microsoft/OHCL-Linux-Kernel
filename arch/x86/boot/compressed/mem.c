@@ -34,6 +34,7 @@ static bool early_is_tdx_guest(void)
 
 void arch_accept_memory(phys_addr_t start, phys_addr_t end)
 {
+#ifdef CONFIG_EFI
 	/* Platform-specific memory-acceptance call goes here */
 	if (early_is_tdx_guest()) {
 		if (!tdx_accept_memory(start, end))
@@ -43,6 +44,9 @@ void arch_accept_memory(phys_addr_t start, phys_addr_t end)
 	} else {
 		error("Cannot accept memory: unknown platform\n");
 	}
+#else
+	error("Cannot accept memory in this bootloader: EFI not enabled\n");
+#endif
 }
 
 bool init_unaccepted_memory(void)
