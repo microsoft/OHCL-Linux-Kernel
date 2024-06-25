@@ -27,6 +27,14 @@
 
 static void init_vp_index(struct vmbus_channel *channel);
 
+/*
+ * TODO: Specifying `pref_ring_size` here doesn't really work because
+ * the user mode has to know the size to work with these devices.
+ * Assuming a size here and hoping that user mode will not break
+ * is not really compatible with any future changes in the size
+ * here. Consider exposing this size through some form of sysfs
+ * vmbus device that the user mode can query and adjust accordingly.
+ */
 const struct vmbus_device vmbus_devs[] = {
 	/* IDE */
 	{ .dev_type = HV_IDE,
@@ -142,12 +150,95 @@ const struct vmbus_device vmbus_devs[] = {
 	  .allowed_in_isolated = false,
 	},
 
-	/*
-	 * Unknown GUID
-	 * 64 KB ring buffer + 4 KB header should be sufficient size for any Hyper-V device apart
-	 * from HV_NIC and HV_SCSI. This case avoid the fallback for unknown devices to allocate
-	 * much bigger (2 MB) of ring size.
-	 */
+	/* GED */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_GED,
+	  HV_GED_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* GET */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_GET,
+	  HV_GET_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* GEL */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_GEL,
+	  HV_GEL_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* UART */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_UART,
+	  HV_UART_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* COM1 */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_COM1,
+	  HV_COM1_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* COM2 */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_COM2,
+	  HV_COM2_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* COM3 */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_COM3,
+	  HV_COM3_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* COM4 */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_COM4,
+	  HV_COM4_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* CRASHDUMP */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_CRASHDUMP,
+	  HV_CRASHDUMP_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* CRASHDUMP VTL0 */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_CRASHDUMP_VTL0,
+	  HV_CRASHDUMP_VTL0_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* CRASHDUMP VTL2 */
+	{ .pref_ring_size = 0x11000,
+	  .dev_type = HV_CRASHDUMP_VTL2,
+	  HV_CRASHDUMP_VTL2_GUID,
+	  .perf_device = false,
+	  .allowed_in_isolated = true,
+	},
+
+	/* Unknown GUID */
 	{ .pref_ring_size = 0x11000,
 	  .dev_type = HV_UNKNOWN,
 	  .perf_device = false,
@@ -1009,6 +1100,7 @@ static bool vmbus_is_valid_offer(const struct vmbus_channel_offer_channel *offer
 		if (guid_equal(guid, &vmbus_devs[i].guid))
 			return vmbus_devs[i].allowed_in_isolated;
 	}
+
 	return false;
 }
 
