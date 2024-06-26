@@ -257,6 +257,15 @@ struct mshv_rmpadjust {
 	__u8 padding[6];
 } __packed;
 
+struct mshv_rmpquery {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[6];
+	__u64* flags;
+} __packed;
+
 struct mshv_host_visibility {
 	__u64 start_user_va;
 	__u64 end_user_va;
@@ -340,6 +349,8 @@ struct mshv_vtl_sidecar_info {
 #define MSHV_VTL_HOST_VISIBILITY_V	_IOW(MSHV_IOCTL, 0x31, struct mshv_host_visibility_v)
 #define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
 #define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
+#define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
+#define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)

@@ -195,6 +195,7 @@ struct mshv_vtl_run {
 	};
 	char vtl_ret_actions[MAX_RUN_MSG_SIZE];
 	__u32 proxy_irr[8];
+	union hv_input_vtl vtl;
 };
 
 #ifdef CONFIG_X86_64

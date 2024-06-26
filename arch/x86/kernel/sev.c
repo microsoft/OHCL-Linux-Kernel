@@ -2250,7 +2250,7 @@ e_restore_irq:
 }
 EXPORT_SYMBOL_GPL(snp_issue_guest_request);
 
-void snp_mshv_vtl_return(u8 input_vtl)
+void snp_mshv_vtl_return(u8 target_vtl)
 {
 	struct ghcb *ghcb;
 	struct ghcb_state state;
@@ -2259,7 +2259,7 @@ void snp_mshv_vtl_return(u8 input_vtl)
 	ghcb = __sev_get_ghcb(&state);
 	ghcb->protocol_version = ghcb_version;
 	ghcb->ghcb_usage = 2;
-	ghcb->save.reserved_0x0[0] = input_vtl;
+	ghcb->save.reserved_0x0[0] = target_vtl;
 	sev_es_wr_ghcb_msr(__pa(ghcb));
 	VMGEXIT();
 	__sev_put_ghcb(&state);
