@@ -366,15 +366,21 @@ static int vtl_set_vp_registers(u16 count,
 					count, input_vtl, registers);
 }
 
+#define DECRYPTED_MASK	(1ul << 51)
+
 static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 {
 	struct mshv_vtl_ram_disposition vtl0_mem;
 	struct dev_pagemap *pgmap;
 	void *addr;
+	bool decrypted;
 
 	if (copy_from_user(&vtl0_mem, arg, sizeof(vtl0_mem)))
 		return -EFAULT;
 
+	decrypted = vtl0_mem.start_pfn & DECRYPTED_MASK;
+	vtl0_mem.start_pfn &= ~DECRYPTED_MASK;
+	vtl0_mem.last_pfn &= ~DECRYPTED_MASK;
 	if (vtl0_mem.last_pfn <= vtl0_mem.start_pfn) {
 		dev_err(vtl->module_dev, "range start pfn (%llx) > end pfn (%llx)\n",
 			vtl0_mem.start_pfn, vtl0_mem.last_pfn);
@@ -389,6 +395,8 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	pgmap->ranges[0].end = PFN_PHYS(vtl0_mem.last_pfn) - 1;
 	pgmap->nr_range = 1;
 	pgmap->type = MEMORY_DEVICE_GENERIC;
+	if (decrypted)
+		pgmap->flags = PGMAP_DECRYPTED;
 
 	/*
 	 * Determine the highest page order that can be used for the range.
@@ -1544,13 +1552,14 @@ static bool can_fault(struct vm_fault *vmf, unsigned long size, pfn_t *pfn)
 	unsigned long start = vmf->address & ~mask;
 	unsigned long end = start + size;
 	bool valid;
+	unsigned long pgoff = vmf->pgoff & ~DECRYPTED_MASK;
 
-	valid = (vmf->address & mask) == ((vmf->pgoff << PAGE_SHIFT) & mask) &&
+	valid = (vmf->address & mask) == ((pgoff << PAGE_SHIFT) & mask) &&
 		start >= vmf->vma->vm_start &&
 		end <= vmf->vma->vm_end;
 
 	if (valid)
-		*pfn = __pfn_to_pfn_t(vmf->pgoff & ~(mask >> PAGE_SHIFT), PFN_DEV | PFN_MAP);
+		*pfn = __pfn_to_pfn_t(pgoff & ~(mask >> PAGE_SHIFT), PFN_DEV | PFN_MAP);
 
 	return valid;
 }
@@ -1562,7 +1571,7 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 
 	switch (order) {
 	case 0:
-		pfn = __pfn_to_pfn_t(vmf->pgoff, PFN_DEV | PFN_MAP);
+		pfn = __pfn_to_pfn_t(vmf->pgoff & ~DECRYPTED_MASK, PFN_DEV | PFN_MAP);
 		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
 
 	case PMD_ORDER:
@@ -1594,6 +1603,11 @@ static int mshv_vtl_low_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	vma->vm_ops = &mshv_vtl_low_vm_ops;
 	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP);
+	if (vma->vm_pgoff & DECRYPTED_MASK)
+		vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
+	else
+		vma->vm_page_prot = pgprot_encrypted(vma->vm_page_prot);
+
 	return 0;
 }
 
