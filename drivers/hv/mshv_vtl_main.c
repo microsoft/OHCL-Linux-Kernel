@@ -427,15 +427,22 @@ static int vtl_set_vp_register(struct hv_register_assoc *reg)
 					1, input_vtl_normal, reg);
 }
 
+#define DECRYPTED_MASK	(1ul << 51)
+
 static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 {
 	struct mshv_vtl_ram_disposition vtl0_mem;
 	struct dev_pagemap *pgmap;
 	void *addr;
+	bool decrypted;
 
 	if (copy_from_user(&vtl0_mem, arg, sizeof(vtl0_mem)))
 		return -EFAULT;
 	/* vtl0_mem.last_pfn is excluded in the pagemap range for VTL0 as per design */
+
+	decrypted = vtl0_mem.start_pfn & DECRYPTED_MASK;
+	vtl0_mem.start_pfn &= ~DECRYPTED_MASK;
+	vtl0_mem.last_pfn &= ~DECRYPTED_MASK;
 	if (vtl0_mem.last_pfn <= vtl0_mem.start_pfn) {
 		dev_err(vtl->module_dev, "range start pfn (%llx) > end pfn (%llx)\n",
 			vtl0_mem.start_pfn, vtl0_mem.last_pfn);
@@ -450,6 +457,8 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	pgmap->ranges[0].end = PFN_PHYS(vtl0_mem.last_pfn) - 1;
 	pgmap->nr_range = 1;
 	pgmap->type = MEMORY_DEVICE_GENERIC;
+	if (decrypted)
+		pgmap->flags = PGMAP_DECRYPTED;
 
 	/*
 	 * Determine the highest page order that can be used for the given memory range.
@@ -1337,6 +1346,7 @@ static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 
 static bool can_fault(struct vm_fault *vmf, unsigned long size, unsigned long *pfn)
 {
+	unsigned long pgoff = vmf->pgoff & ~DECRYPTED_MASK;
 	unsigned long mask = size - 1;
 	unsigned long start = vmf->address & ~mask;
 	unsigned long end = start + size;
@@ -1346,8 +1356,9 @@ static bool can_fault(struct vm_fault *vmf, unsigned long size, unsigned long *p
 		start >= vmf->vma->vm_start &&
 		end <= vmf->vma->vm_end;
 
+	/* __pfn_to_pfn_t */
 	if (is_valid)
-		*pfn = vmf->pgoff & ~(mask >> PAGE_SHIFT);
+		*pfn = pgoff & ~(mask >> PAGE_SHIFT);
 
 	return is_valid;
 }
@@ -1359,6 +1370,7 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 
 	switch (order) {
 	case 0:
+		/* __pfn_to_pfn_t ? */
 		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
 
 	case PMD_ORDER:
@@ -1393,6 +1405,10 @@ static int mshv_vtl_low_mmap(struct file *filp, struct vm_area_struct *vma)
 	vma->vm_ops = &mshv_vtl_low_vm_ops;
 	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP);
 
+	if (vma->vm_pgoff & DECRYPTED_MASK)
+		vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
+	else
+		vma->vm_page_prot = pgprot_encrypted(vma->vm_page_prot);
 	return 0;
 }
 
