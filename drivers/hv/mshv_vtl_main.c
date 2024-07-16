@@ -810,17 +810,20 @@ DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 
 static void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
-	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
+	struct hv_vp_assist_page *hvp;
 	struct mshv_vtl_run *this_run = mshv_vtl_this_run();
 	struct hv_vtl_cpu_context *cpu_ctx = &this_run->cpu_context;
 	u32 flags = READ_ONCE(this_run->flags);
 
 	trace_mshv_vtl_enter_vtl0_rcuidle(cpu_ctx);
 
+	/* A VTL2 TDX kernel doesn't allocate hv_vp_assist_page at the moment */
+	hvp = hv_vp_assist_page ? hv_vp_assist_page[smp_processor_id()] : NULL;
+
 	/*
 	 * Process signal event direct set in the run page, if any.
 	 */
-	if (mshv_vsm_capabilities.return_action_available) {
+	if (hvp && mshv_vsm_capabilities.return_action_available) {
 		u32 offset = READ_ONCE(mshv_vtl_this_run()->vtl_ret_action_size);
 
 		WRITE_ONCE(mshv_vtl_this_run()->vtl_ret_action_size, 0);
@@ -835,6 +838,9 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 	}
 
 	hv_vtl_return(cpu_ctx, flags, mshv_vsm_page_offsets.vtl_return_offset);
+
+	if (!hvp)
+		return;
 
 	trace_mshv_vtl_exit_vtl0_rcuidle(hvp->vtl_entry_reason, cpu_ctx);
 }
