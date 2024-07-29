@@ -266,6 +266,14 @@ struct mshv_rmpquery {
 	__u64* flags;
 } __packed;
 
+struct mshv_invlpgb {
+	__u64 rax;
+	__u32 pad0;
+	__u32 edx;
+	__u32 pad1;
+	__u32 ecx;
+} __packed;
+
 struct mshv_host_visibility {
 	__u64 start_user_va;
 	__u64 end_user_va;
@@ -351,6 +359,8 @@ struct mshv_vtl_sidecar_info {
 #define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
 #define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
 #define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
+#define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
+#define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)

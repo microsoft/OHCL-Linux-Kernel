@@ -1911,6 +1911,41 @@ static long mshv_vtl_ioctl_rmpquery(void __user* rmpq_user)
 	return rc;
 }
 
+static long mshv_vtl_ioctl_invlpgb(void __user* invlpgb_user)
+{
+	struct mshv_invlpgb invlpgb = {};
+
+	if (copy_from_user(&invlpgb, invlpgb_user, sizeof(invlpgb)))
+		return -EFAULT;
+
+	/*
+	 * `invlpgb` might not be supported by an older toolchain.
+	 * Use the raw encoding instead of the mnemonic not to break
+	 * the build on the older systems.
+	*/
+	asm volatile(".byte 0x0F,0x01,0xFE\n\t"
+			:
+			: "a"(invlpgb.rax), "c"(invlpgb.ecx), "d"(invlpgb.edx)
+			: "memory");
+
+	return 0;
+}
+
+static long mshv_vtl_ioctl_tlbsync(void)
+{
+	/*
+	 * `tlbsync` might not be supported by an older toolchain.
+	 * Use the raw encoding instead of the mnemonic not to break
+	 * the build on the older systems.
+	*/
+	asm volatile(".byte 0x0F,0x01,0xFF\n\t"
+			:
+			:
+			: "memory");
+
+	return 0;
+}
+
 /* Issue a td module call from usermode. Note that currently only tdmodule calls
 	are supported, not TD.VMCALL. */
 static long mshv_vtl_ioctl_tdcall(void __user* user_tdcall)
@@ -2131,6 +2166,12 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;
 	case MSHV_VTL_RMPQUERY:
 		ret = mshv_vtl_ioctl_rmpquery((void __user *)arg);
+		break;
+	case MSHV_VTL_INVLPGB:
+		ret = mshv_vtl_ioctl_invlpgb((void __user *)arg);
+		break;
+	case MSHV_VTL_TLBSYNC:
+		ret = mshv_vtl_ioctl_tlbsync();
 		break;
 	case MSHV_VTL_HOST_VISIBILITY:
 		ret = mshv_vtl_ioctl_host_visibility((void __user *)arg);
