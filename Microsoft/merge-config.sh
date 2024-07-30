@@ -1,5 +1,6 @@
-#!/bin/bash
+#!/bin/bash -e
 
+set -o pipefail
 set -x
 
 # Define paths to configurations
@@ -9,18 +10,13 @@ FRAGMENT_CONFIG_X64="x64-cvm.config"
 BASE_CONFIG_ARM64="hcl-arm64.config"
 FRAGMENT_CONFIG_ARM64="arm64-cvm.config"
 
-# Function to detect the architecture type
-arch() {
-    uname -m
-}
-
 # Determine the architecture
-ARCH=$(arch)
+ARCH=$(uname -m)
 
 # Adjust the architecture name for x86_64 to x64
 if [ "$ARCH" == "x86_64" ]; then
     ARCH="x64"
-elif [ "$ARCH" != "aarch64" ]; then
+elif [ "$ARCH" == "aarch64" ]; then
     ARCH="arm64"
 else
     echo "Unsupported architecture: $ARCH"
