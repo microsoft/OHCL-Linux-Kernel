@@ -62,7 +62,7 @@ EXPORT_SYMBOL_GPL(vfio_pci_core_iowrite##size);
 VFIO_IOWRITE(8)
 VFIO_IOWRITE(16)
 VFIO_IOWRITE(32)
-#ifdef iowrite64
+#ifdef CONFIG_64BIT
 VFIO_IOWRITE(64)
 #endif
 
@@ -90,7 +90,7 @@ EXPORT_SYMBOL_GPL(vfio_pci_core_ioread##size);
 VFIO_IOREAD(8)
 VFIO_IOREAD(16)
 VFIO_IOREAD(32)
-#ifdef ioread64
+#ifdef CONFIG_64BIT
 VFIO_IOREAD(64)
 #endif
 
@@ -128,7 +128,7 @@ static int vfio_pci_iordwr##size(struct vfio_pci_core_device *vdev,\
 VFIO_IORDWR(8)
 VFIO_IORDWR(16)
 VFIO_IORDWR(32)
-#if defined(ioread64) && defined(iowrite64)
+#ifdef CONFIG_64BIT
 VFIO_IORDWR(64)
 #endif
 
@@ -156,7 +156,7 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 		else
 			fillable = 0;
 
-#if defined(ioread64) && defined(iowrite64)
+#ifdef CONFIG_64BIT
 		if (fillable >= 8 && !(off % 8)) {
 			ret = vfio_pci_iordwr64(vdev, iswrite, test_mem,
 						io, buf, off, &filled);
@@ -382,7 +382,7 @@ static void vfio_pci_ioeventfd_do_write(struct vfio_pci_ioeventfd *ioeventfd,
 		vfio_pci_core_iowrite32(ioeventfd->vdev, test_mem,
 					ioeventfd->data, ioeventfd->addr);
 		break;
-#ifdef iowrite64
+#ifdef CONFIG_64BIT
 	case 8:
 		vfio_pci_core_iowrite64(ioeventfd->vdev, test_mem,
 					ioeventfd->data, ioeventfd->addr);
@@ -441,7 +441,7 @@ int vfio_pci_ioeventfd(struct vfio_pci_core_device *vdev, loff_t offset,
 	      pos >= vdev->msix_offset + vdev->msix_size))
 		return -EINVAL;
 
-#ifndef iowrite64
+#ifndef CONFIG_64BIT
 	if (count == 8)
 		return -EINVAL;
 #endif
