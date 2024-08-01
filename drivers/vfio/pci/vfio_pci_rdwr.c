@@ -16,6 +16,7 @@
 #include <linux/io.h>
 #include <linux/vfio.h>
 #include <linux/vgaarb.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 
 #include "vfio_pci_priv.h"
 
@@ -61,7 +62,7 @@ EXPORT_SYMBOL_GPL(vfio_pci_core_iowrite##size);
 VFIO_IOWRITE(8)
 VFIO_IOWRITE(16)
 VFIO_IOWRITE(32)
-#ifdef iowrite64
+#ifdef CONFIG_64BIT
 VFIO_IOWRITE(64)
 #endif
 
@@ -89,12 +90,12 @@ EXPORT_SYMBOL_GPL(vfio_pci_core_ioread##size);
 VFIO_IOREAD(8)
 VFIO_IOREAD(16)
 VFIO_IOREAD(32)
-#ifdef ioread64
+#ifdef CONFIG_64BIT
 VFIO_IOREAD(64)
 #endif
 
 #define VFIO_IORDWR(size)						\
-static int vfio_pci_core_iordwr##size(struct vfio_pci_core_device *vdev,\
+static int vfio_pci_iordwr##size(struct vfio_pci_core_device *vdev,\
 				bool iswrite, bool test_mem,		\
 				void __iomem *io, char __user *buf,	\
 				loff_t off, size_t *filled)		\
@@ -127,23 +128,9 @@ static int vfio_pci_core_iordwr##size(struct vfio_pci_core_device *vdev,\
 VFIO_IORDWR(8)
 VFIO_IORDWR(16)
 VFIO_IORDWR(32)
-#if defined(ioread64) && defined(iowrite64)
+#ifdef CONFIG_64BIT
 VFIO_IORDWR(64)
 #endif
-
-static int fill_size(size_t fillable, loff_t off)
-{
-	unsigned int fill_size;
-#if defined(ioread64) && defined(iowrite64)
-	for (fill_size = 8; fill_size >= 0; fill_size /= 2) {
-#else
-	for (fill_size = 4; fill_size >= 0; fill_size /= 2) {
-#endif /* defined(ioread64) && defined(iowrite64) */
-		if (fillable >= fill_size && !(off % fill_size))
-			return fill_size;
-	}
-	return -1;
-}
 
 /*
  * Read or write from an __iomem region (MMIO or I/O port) with an excluded
@@ -169,38 +156,34 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 		else
 			fillable = 0;
 
-		switch (fill_size(fillable, off)) {
-#if defined(ioread64) && defined(iowrite64)
-		case 8:
-			ret = vfio_pci_core_iordwr64(vdev, iswrite, test_mem,
-						     io, buf, off, &filled);
+#ifdef CONFIG_64BIT
+		if (fillable >= 8 && !(off % 8)) {
+			ret = vfio_pci_iordwr64(vdev, iswrite, test_mem,
+						io, buf, off, &filled);
 			if (ret)
 				return ret;
-			break;
 
-#endif /* defined(ioread64) && defined(iowrite64) */
-		case 4:
-			ret = vfio_pci_core_iordwr32(vdev, iswrite, test_mem,
-						     io, buf, off, &filled);
+		} else
+#endif
+		if (fillable >= 4 && !(off % 4)) {
+			ret = vfio_pci_iordwr32(vdev, iswrite, test_mem,
+						io, buf, off, &filled);
 			if (ret)
 				return ret;
-			break;
 
-		case 2:
-			ret = vfio_pci_core_iordwr16(vdev, iswrite, test_mem,
-						     io, buf, off, &filled);
+		} else if (fillable >= 2 && !(off % 2)) {
+			ret = vfio_pci_iordwr16(vdev, iswrite, test_mem,
+						io, buf, off, &filled);
 			if (ret)
 				return ret;
-			break;
 
-		case 1:
-			ret = vfio_pci_core_iordwr8(vdev, iswrite, test_mem,
-						    io, buf, off, &filled);
+		} else if (fillable) {
+			ret = vfio_pci_iordwr8(vdev, iswrite, test_mem,
+					       io, buf, off, &filled);
 			if (ret)
 				return ret;
-			break;
 
-		default:
+		} else {
 			/* Fill reads with -1, drop writes */
 			filled = min(count, (size_t)(x_end - off));
 			if (!iswrite) {
@@ -399,7 +382,7 @@ static void vfio_pci_ioeventfd_do_write(struct vfio_pci_ioeventfd *ioeventfd,
 		vfio_pci_core_iowrite32(ioeventfd->vdev, test_mem,
 					ioeventfd->data, ioeventfd->addr);
 		break;
-#ifdef iowrite64
+#ifdef CONFIG_64BIT
 	case 8:
 		vfio_pci_core_iowrite64(ioeventfd->vdev, test_mem,
 					ioeventfd->data, ioeventfd->addr);
@@ -458,7 +441,7 @@ int vfio_pci_ioeventfd(struct vfio_pci_core_device *vdev, loff_t offset,
 	      pos >= vdev->msix_offset + vdev->msix_size))
 		return -EINVAL;
 
-#ifndef iowrite64
+#ifndef CONFIG_64BIT
 	if (count == 8)
 		return -EINVAL;
 #endif

@@ -19,26 +19,6 @@
 #ifndef VFIO_PCI_CORE_H
 #define VFIO_PCI_CORE_H
 
-#ifdef CONFIG_64BIT
-#ifndef ioread64
-#define ioread64 ioread64_pci
-static inline u64 ioread64_pci(const volatile void __iomem *addr)
-{
-	return readq(addr);
-}
-#endif
-#endif /* CONFIG_64BIT */
-
-#ifdef CONFIG_64BIT
-#ifndef iowrite64
-#define iowrite64 iowrite64_pci
-static inline void iowrite64_pci(u64 value, volatile void __iomem *addr)
-{
-	writeq(value, addr);
-}
-#endif
-#endif /* CONFIG_64BIT */
-
 #define VFIO_PCI_OFFSET_SHIFT   40
 #define VFIO_PCI_OFFSET_TO_INDEX(off)	(off >> VFIO_PCI_OFFSET_SHIFT)
 #define VFIO_PCI_INDEX_TO_OFFSET(index)	((u64)(index) << VFIO_PCI_OFFSET_SHIFT)
@@ -154,26 +134,26 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 			       void __iomem *io, char __user *buf,
 			       loff_t off, size_t count, size_t x_start,
 			       size_t x_end, bool iswrite);
-#define VFIO_IOWRITE_DECLATION(size) \
+#define VFIO_IOWRITE_DECLARATION(size) \
 int vfio_pci_core_iowrite##size(struct vfio_pci_core_device *vdev,	\
 			bool test_mem, u##size val, void __iomem *io);
 
-VFIO_IOWRITE_DECLATION(8)
-VFIO_IOWRITE_DECLATION(16)
-VFIO_IOWRITE_DECLATION(32)
+VFIO_IOWRITE_DECLARATION(8)
+VFIO_IOWRITE_DECLARATION(16)
+VFIO_IOWRITE_DECLARATION(32)
 #ifdef iowrite64
-VFIO_IOWRITE_DECLATION(64)
+VFIO_IOWRITE_DECLARATION(64)
 #endif
 
-#define VFIO_IOREAD_DECLATION(size) \
+#define VFIO_IOREAD_DECLARATION(size) \
 int vfio_pci_core_ioread##size(struct vfio_pci_core_device *vdev,	\
 			bool test_mem, u##size *val, void __iomem *io);
 
-VFIO_IOREAD_DECLATION(8)
-VFIO_IOREAD_DECLATION(16)
-VFIO_IOREAD_DECLATION(32)
+VFIO_IOREAD_DECLARATION(8)
+VFIO_IOREAD_DECLARATION(16)
+VFIO_IOREAD_DECLARATION(32)
 #ifdef ioread64
-VFIO_IOREAD_DECLATION(64)
+VFIO_IOREAD_DECLARATION(64)
 #endif
 
 #endif /* VFIO_PCI_CORE_H */
