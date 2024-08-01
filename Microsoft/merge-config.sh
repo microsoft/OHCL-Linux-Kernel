@@ -19,7 +19,7 @@ if [ "$ARCH" == "x86_64" ]; then
 elif [ "$ARCH" == "aarch64" ]; then
     ARCH="arm64"
 else
-    echo "Unsupported architecture: $ARCH"
+    echo "Unsupported architecture: $ARCH" 1>&2
     exit 1
 fi
 
@@ -31,18 +31,18 @@ elif [ "$ARCH" == "arm64" ]; then
     BASE_CONFIG="$BASE_CONFIG_ARM64"
     FRAGMENT_CONFIG="$FRAGMENT_CONFIG_ARM64"
 else
-    echo "Unsupported architecture: $ARCH"
+    echo "Unsupported architecture: $ARCH" 1>&2
     exit 1
 fi
 
 # Ensure the provided config files exist
 if [ ! -f "$BASE_CONFIG" ]; then
-    echo "Base config file $BASE_CONFIG not found!"
+    echo "Base config file $BASE_CONFIG not found!" 1>&2
     exit 1
 fi
 
 if [ ! -f "$FRAGMENT_CONFIG" ]; then
-    echo "Fragment config file $FRAGMENT_CONFIG not found!"
+    echo "Fragment config file $FRAGMENT_CONFIG not found!" 1>&2
     exit 1
 fi
 
