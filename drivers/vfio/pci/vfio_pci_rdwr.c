@@ -131,20 +131,6 @@ VFIO_IORDWR(32)
 VFIO_IORDWR(64)
 #endif
 
-static int fill_size(size_t fillable, loff_t off)
-{
-	unsigned int fill_size;
-#if defined(ioread64) && defined(iowrite64)
-	for (fill_size = 8; fill_size >= 0; fill_size /= 2) {
-#else
-	for (fill_size = 4; fill_size >= 0; fill_size /= 2) {
-#endif /* defined(ioread64) && defined(iowrite64) */
-		if (fillable >= fill_size && !(off % fill_size))
-			return fill_size;
-	}
-	return -1;
-}
-
 /*
  * Read or write from an __iomem region (MMIO or I/O port) with an excluded
  * range which is inaccessible.  The excluded range drops writes and fills
@@ -169,38 +155,34 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 		else
 			fillable = 0;
 
-		switch (fill_size(fillable, off)) {
 #if defined(ioread64) && defined(iowrite64)
-		case 8:
+		if (fillable >= 8 && !(off % 8)) {
 			ret = vfio_pci_core_iordwr64(vdev, iswrite, test_mem,
 						     io, buf, off, &filled);
 			if (ret)
 				return ret;
-			break;
 
+		} else
 #endif /* defined(ioread64) && defined(iowrite64) */
-		case 4:
+		if (fillable >= 4 && !(off % 4)) {
 			ret = vfio_pci_core_iordwr32(vdev, iswrite, test_mem,
 						     io, buf, off, &filled);
 			if (ret)
 				return ret;
-			break;
 
-		case 2:
+		} else if (fillable >= 2 && !(off % 2)) {
 			ret = vfio_pci_core_iordwr16(vdev, iswrite, test_mem,
 						     io, buf, off, &filled);
 			if (ret)
 				return ret;
-			break;
 
-		case 1:
+		} else if (fillable) {
 			ret = vfio_pci_core_iordwr8(vdev, iswrite, test_mem,
 						    io, buf, off, &filled);
 			if (ret)
 				return ret;
-			break;
 
-		default:
+		} else {
 			/* Fill reads with -1, drop writes */
 			filled = min(count, (size_t)(x_end - off));
 			if (!iswrite) {
