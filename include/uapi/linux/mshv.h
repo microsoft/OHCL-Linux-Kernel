@@ -264,6 +264,8 @@ struct mshv_rmpquery {
 	__u8 ram;
 	__u8 padding[6];
 	__u64* flags;
+	__u64* page_size;
+	__u64* pages_processed;
 } __packed;
 
 struct mshv_invlpgb {

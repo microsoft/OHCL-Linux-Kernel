@@ -179,15 +179,15 @@ static __always_inline void sev_es_nmi_complete(void)
 extern int __init sev_es_efi_map_ghcbs(pgd_t *pgd);
 extern void sev_enable(struct boot_params *bp);
 
-static inline int rmpquery(unsigned long vaddr, bool rmp_psize, u64 *attrs)
+static inline int rmpquery(unsigned long vaddr, u64* rmp_psize, u64 *attrs)
 {
 	int rc;
 
 	/* "rmpquery" mnemonic support in binutils 2.36 and newer */
 	asm volatile(".byte 0xF3,0x0F,0x01,0xFD\n\t"
-		     : "=a"(rc)
-		     : "a"(vaddr), "c"(rmp_psize), "d"(attrs)
-		     : "memory", "cc");
+			: "=a"(rc), "=c"(*rmp_psize), "=d"(*attrs)
+			: "a"(vaddr), "c"(*rmp_psize), "d"(*attrs)
+			: "memory", "cc");
 
 	return rc;
 }

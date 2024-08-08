@@ -1860,6 +1860,9 @@ static long mshv_vtl_ioctl_rmpquery(void __user* rmpq_user)
 	u64 pfn_end, pfn;
 	long rc;
 	struct mshv_rmpquery rmpq = {};
+	u64 pages_processed;
+	u64 __user* user_flags_in_out;
+	u64 __user* user_page_size_out;
 
 	if (!hv_isolation_type_en_snp())
 		return -EINVAL;
@@ -1872,12 +1875,22 @@ static long mshv_vtl_ioctl_rmpquery(void __user* rmpq_user)
 
 	pfn = rmpq.start_pfn;
 	pfn_end = pfn + rmpq.page_count;
-	u64 __user* user_flags_out = rmpq.flags;
+	pages_processed = 0;
+	user_flags_in_out = rmpq.flags;
+	user_page_size_out = rmpq.page_size;
+	rc = 0;
 
 	while (pfn < pfn_end) {
 		unsigned long pfns[1] = { pfn };
-		void *vaddr;
-		u64 flags;
+		void *vaddr = NULL;
+		u64 page_size = -1;
+		u64 flags = 0;
+
+		if (copy_from_user(&flags, user_flags_in_out, sizeof(flags))) {
+			pr_warn("Failed to copy flags in for pfn %#llx when querying RMP\n", pfn);
+			rc = -EFAULT;
+			break;
+		}
 
 		if (rmpq.ram)
 			vaddr = kmap_local_page(pfn_to_page(pfn));
@@ -1889,25 +1902,48 @@ static long mshv_vtl_ioctl_rmpquery(void __user* rmpq_user)
 			break;
 		}
 
-		rc = rmpquery((u64)vaddr, RMP_PG_SIZE_4K, &flags);
+		rc = rmpquery((u64)vaddr, &page_size, &flags);
 		if (rmpq.ram)
 			kunmap_local(vaddr);
 		else
 			vunmap(vaddr);
-		if (WARN(rc, "Failed to rmpquery pfn %#llx, ret %ld", pfn, rc)) {
+		if (rc != 0 && rc != 2) {
+			pr_warn("Bogus status %ld for pfn %#llx when querying RMP\n", rc, pfn);
+			rc = -EINVAL;
+			break;
+		}
+		if (rc == 2) {
+			rc = -EPERM;
+			pr_warn("Current ASID not 0 or the RMP entry is immutable\n");
+		}
+
+		if (rc) {
+			pr_warn("Failed to rmpquery pfn %#llx, ret %ld\n", pfn, rc);
 			if (rmpq.terminate_on_failure)
 				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PSC);
 			else
 				break;
 		}
 
-		rc = copy_to_user(user_flags_out, &flags, sizeof(flags));
+		if (copy_to_user(user_flags_in_out, &flags, sizeof(flags))) {
+			pr_warn("Failed to copy flags out for pfn %#llx when querying RMP\n", pfn);
+			rc = -EFAULT;
+			break;
+		}
+		if (copy_to_user(user_page_size_out, &page_size, sizeof(page_size))) {
+			pr_warn("Failed to copy page size out for pfn %#llx when querying RMP\n", pfn);
+			rc = -EFAULT;
+			break;
+		}
 
 		++pfn;
-		++user_flags_out;
+		++user_flags_in_out;
+		++user_page_size_out;
+		++pages_processed;
 	}
 
-	return rc;
+	return copy_to_user(rmpq.pages_processed, &pages_processed, sizeof(pages_processed)) ?
+		-EFAULT : rc;
 }
 
 static long mshv_vtl_ioctl_invlpgb(void __user* invlpgb_user)
