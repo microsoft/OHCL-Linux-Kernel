@@ -64,6 +64,7 @@ void __init hv_vtl_init_platform(void)
 	else {
 		x86_platform.realmode_reserve = x86_init_noop;
 		x86_platform.realmode_init = x86_init_noop;
+		real_mode_header = &hv_vtl_real_mode_header;
 	}
 	x86_init.irqs.pre_vector_init = x86_init_noop;
 	x86_init.timers.timer_init = x86_init_noop;
@@ -372,8 +373,6 @@ int __init hv_vtl_early_init(void)
 	if (!hv_isolation_type_en_snp())
 		apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
 
-	if (!hv_isolation_type_tdx())
-		real_mode_header = &hv_vtl_real_mode_header;
 
 
 	return 0;
