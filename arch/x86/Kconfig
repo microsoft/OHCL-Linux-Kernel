@@ -1123,7 +1123,7 @@ config X86_LOCAL_APIC
 
 config X86_MAILBOX_WAKEUP
 	def_bool y
-	depends on ACPI_MADT_WAKEUP
+	depends on OF || ACPI_MADT_WAKEUP
 	depends on X86_64
 	depends on SMP
 	depends on X86_LOCAL_APIC
