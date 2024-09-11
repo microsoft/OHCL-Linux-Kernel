@@ -429,8 +429,12 @@ int snp_cpuid(void (*cpuid_fn)(void *ctx, struct cpuid_leaf *leaf),
 		/* Skip post-processing for out-of-range zero leafs. */
 		if (!(leaf->fn <= cpuid_std_range_max ||
 		      (leaf->fn >= 0x40000000 && leaf->fn <= cpuid_hyp_range_max) ||
-		      (leaf->fn >= 0x80000000 && leaf->fn <= cpuid_ext_range_max)))
-			return 0;
+		      (leaf->fn >= 0x80000000 && leaf->fn <= cpuid_ext_range_max))) {
+                       if (leaf->fn < 0x400000ff && leaf->fn >= 0x40000000)
+                               return -EOPNOTSUPP;
+                       else
+                               return 0;
+		}
 	}
 
 	return snp_cpuid_postprocess(cpuid_fn, ctx, leaf);
