@@ -584,6 +584,8 @@ static int snp_cpuid_postprocess(struct ghcb *ghcb, struct es_em_ctxt *ctxt,
 	switch (leaf->fn) {
 	case 0x1:
 		snp_cpuid_hv(ghcb, ctxt, &leaf_hv);
+		leaf->ecx |= BIT(31); /* Inside a VM */
+		leaf->ecx |= BIT(21); /* x2apic bit */
 
 		/* initial APIC ID */
 		leaf->ebx = (leaf_hv.ebx & GENMASK(31, 24)) | (leaf->ebx & GENMASK(23, 0));
