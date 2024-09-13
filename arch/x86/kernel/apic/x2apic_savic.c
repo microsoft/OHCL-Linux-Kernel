@@ -38,6 +38,11 @@ enum lapic_lvt_entry {
 
 #define APIC_LVTx(x) (APIC_LVTT + 0x10 * (x))
 
+static inline void savic_wr_control_msr(u64 val)
+{
+	native_wrmsr(MSR_AMD64_SECURE_AVIC_CONTROL, lower_32_bits(val), upper_32_bits(val));
+}
+
 static int x2apic_savic_acpi_madt_oem_check(char *oem_id, char *oem_table_id)
 {
 	return x2apic_enabled() && cc_platform_has(CC_ATTR_SNP_SECURE_AVIC);
@@ -143,12 +148,12 @@ static void x2apic_savic_write(u32 reg, u32 data)
 
 	switch (reg) {
 	case APIC_LVTT:
+	case APIC_LVT0:
+	case APIC_LVT1:
 	case APIC_TMICT:
 	case APIC_TDCR:
 		write_msr_to_hv(reg, data);
 		break;
-	case APIC_LVT0:
-	case APIC_LVT1:
 	/* APIC_ID is writable and configured by guest for Secure AVIC */
 	case APIC_ID:
 	case APIC_TASKPRI:
@@ -401,6 +406,7 @@ static void x2apic_savic_setup(void)
 	ret = sev_notify_savic_gpa(gpa);
 	if (ret != ES_OK)
 		snp_abort();
+	savic_wr_control_msr(gpa | MSR_AMD64_SECURE_AVIC_ALLOWEDNMI);
 	this_cpu_write(savic_setup_done, true);
 }
 
