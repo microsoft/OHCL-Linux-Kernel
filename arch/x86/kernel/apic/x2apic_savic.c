@@ -14,6 +14,7 @@
 #include <linux/sizes.h>
 
 #include <asm/apic.h>
+#include <asm/cpuid.h>
 #include <asm/sev.h>
 
 #include "local.h"
@@ -200,6 +201,8 @@ static void x2apic_savic_send_IPI_mask_allbutself(const struct cpumask *mask, in
 
 static void init_backing_page(void *backing_page)
 {
+	u32 hv_apic_id;
+	u32 apic_id;
 	u32 val;
 	int i;
 
@@ -220,6 +223,13 @@ static void init_backing_page(void *backing_page)
 
 	val = read_msr_from_hv(APIC_LDR);
 	set_reg(backing_page, APIC_LDR, val);
+
+	/* Read APIC ID from Extended Topology Enumeration CPUID */
+	apic_id = cpuid_edx(0x0000000b);
+	hv_apic_id = read_msr_from_hv(APIC_ID);
+	WARN_ONCE(hv_apic_id != apic_id, "Inconsistent APIC_ID values: %d (cpuid), %d (msr)",
+			apic_id, hv_apic_id);
+	set_reg(backing_page, APIC_ID, apic_id);
 }
 
 static void x2apic_savic_setup(void)
