@@ -1331,18 +1331,15 @@ int __init sev_es_efi_map_ghcbs(pgd_t *pgd)
 	return 0;
 }
 
-static enum es_result vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt)
+static enum es_result __vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt, bool write)
 {
 	struct pt_regs *regs = ctxt->regs;
+	u64 exit_info_1 = write ? 1 : 0;
 	enum es_result ret;
-	u64 exit_info_1;
-
-	/* Is it a WRMSR? */
-	exit_info_1 = (ctxt->insn.opcode.bytes[1] == 0x30) ? 1 : 0;
 
 	if (regs->cx == MSR_SVSM_CAA) {
 		/* Writes to the SVSM CAA msr are ignored */
-		if (exit_info_1)
+		if (write)
 			return ES_OK;
 
 		regs->ax = lower_32_bits(this_cpu_read(svsm_caa_pa));
@@ -1352,17 +1349,45 @@ static enum es_result vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt)
 	}
 
 	ghcb_set_rcx(ghcb, regs->cx);
-	if (exit_info_1) {
+	if (write) {
 		ghcb_set_rax(ghcb, regs->ax);
 		ghcb_set_rdx(ghcb, regs->dx);
 	}
 
 	ret = sev_es_ghcb_hv_call(ghcb, ctxt, SVM_EXIT_MSR, exit_info_1, 0);
 
-	if ((ret == ES_OK) && (!exit_info_1)) {
+	if (ret == ES_OK && !write) {
 		regs->ax = ghcb->save.rax;
 		regs->dx = ghcb->save.rdx;
 	}
+
+	return ret;
+}
+
+static enum es_result vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt)
+{
+	return __vc_handle_msr(ghcb, ctxt, ctxt->insn.opcode.bytes[1] == 0x30);
+}
+
+enum es_result sev_ghcb_msr_read(u64 msr, u64 *value)
+{
+	struct pt_regs regs = { .cx = msr };
+	struct es_em_ctxt ctxt = { .regs = &regs };
+	struct ghcb_state state;
+	unsigned long flags;
+	enum es_result ret;
+	struct ghcb *ghcb;
+
+	local_irq_save(flags);
+	ghcb = __sev_get_ghcb(&state);
+	vc_ghcb_invalidate(ghcb);
+
+	ret = __vc_handle_msr(ghcb, &ctxt, false);
+	if (ret == ES_OK)
+		*value = regs.ax | regs.dx << 32;
+
+	__sev_put_ghcb(&state);
+	local_irq_restore(flags);
 
 	return ret;
 }
