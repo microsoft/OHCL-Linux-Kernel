@@ -174,6 +174,8 @@ static void apic_update_vector(struct irq_data *irqd, unsigned int newvec,
 		apicd->prev_cpu = apicd->cpu;
 		WARN_ON_ONCE(apicd->cpu == newcpu);
 	} else {
+		if (apic->update_vector)
+			apic->update_vector(apicd->cpu, apicd->vector, false);
 		irq_matrix_free(vector_matrix, apicd->cpu, apicd->vector,
 				managed);
 	}
@@ -183,6 +185,8 @@ setnew:
 	apicd->cpu = newcpu;
 	BUG_ON(!IS_ERR_OR_NULL(per_cpu(vector_irq, newcpu)[newvec]));
 	per_cpu(vector_irq, newcpu)[newvec] = desc;
+	if (apic->update_vector)
+		apic->update_vector(apicd->cpu, apicd->vector, true);
 }
 
 static void vector_assign_managed_shutdown(struct irq_data *irqd)
@@ -528,11 +532,15 @@ static bool vector_configure_legacy(unsigned int virq, struct irq_data *irqd,
 	if (irqd_is_activated(irqd)) {
 		trace_vector_setup(virq, true, 0);
 		apic_update_irq_cfg(irqd, apicd->vector, apicd->cpu);
+		if (apic->update_vector)
+			apic->update_vector(apicd->cpu, apicd->vector, true);
 	} else {
 		/* Release the vector */
 		apicd->can_reserve = true;
 		irqd_set_can_reserve(irqd);
 		clear_irq_vector(irqd);
+		if (apic->update_vector)
+			apic->update_vector(apicd->cpu, apicd->vector, false);
 		realloc = true;
 	}
 	raw_spin_unlock_irqrestore(&vector_lock, flags);

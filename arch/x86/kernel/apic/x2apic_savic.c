@@ -19,6 +19,9 @@
 
 #include "local.h"
 
+#define VEC_POS(v)	((v) & (32 - 1))
+#define REG_POS(v)	(((v) >> 5) << 4)
+
 static DEFINE_PER_CPU(void *, apic_backing_page);
 static DEFINE_PER_CPU(bool, savic_setup_done);
 
@@ -199,6 +202,22 @@ static void x2apic_savic_send_IPI_mask_allbutself(const struct cpumask *mask, in
 	__send_IPI_mask(mask, vector, APIC_DEST_ALLBUT);
 }
 
+static void x2apic_savic_update_vector(unsigned int cpu, unsigned int vector, bool set)
+{
+	void *backing_page;
+	unsigned long *reg;
+	int reg_off;
+
+	backing_page = per_cpu(apic_backing_page, cpu);
+	reg_off = SAVIC_ALLOWED_IRR_OFFSET + REG_POS(vector);
+	reg = (unsigned long *)((char *)backing_page + reg_off);
+
+	if (set)
+		test_and_set_bit(VEC_POS(vector), reg);
+	else
+		test_and_clear_bit(VEC_POS(vector), reg);
+}
+
 static void init_backing_page(void *backing_page)
 {
 	u32 hv_apic_id;
@@ -313,6 +332,8 @@ static struct apic apic_x2apic_savic __ro_after_init = {
 	.eoi				= native_apic_msr_eoi,
 	.icr_read			= native_x2apic_icr_read,
 	.icr_write			= native_x2apic_icr_write,
+
+	.update_vector			= x2apic_savic_update_vector,
 };
 
 apic_driver(apic_x2apic_savic);
