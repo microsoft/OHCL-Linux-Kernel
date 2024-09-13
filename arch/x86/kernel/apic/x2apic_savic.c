@@ -9,11 +9,15 @@
 
 #include <linux/cpumask.h>
 #include <linux/cc_platform.h>
+#include <linux/percpu-defs.h>
 
 #include <asm/apic.h>
 #include <asm/sev.h>
 
 #include "local.h"
+
+static DEFINE_PER_CPU(void *, apic_backing_page);
+static DEFINE_PER_CPU(bool, savic_setup_done);
 
 static int x2apic_savic_acpi_madt_oem_check(char *oem_id, char *oem_table_id)
 {
@@ -61,14 +65,47 @@ static void x2apic_savic_send_IPI_mask_allbutself(const struct cpumask *mask, in
 	__send_IPI_mask(mask, vector, APIC_DEST_ALLBUT);
 }
 
+static void x2apic_savic_setup(void)
+{
+	void *backing_page;
+	enum es_result ret;
+	unsigned long gpa;
+
+	if (this_cpu_read(savic_setup_done))
+		return;
+
+	backing_page = this_cpu_read(apic_backing_page);
+	gpa = __pa(backing_page);
+	ret = sev_notify_savic_gpa(gpa);
+	if (ret != ES_OK)
+		snp_abort();
+	this_cpu_write(savic_setup_done, true);
+}
+
 static int x2apic_savic_probe(void)
 {
+	void *backing_pages;
+	unsigned int cpu;
+	size_t sz;
+	int i;
+
 	if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
 		return 0;
 
 	if (!x2apic_mode) {
 		pr_err("Secure AVIC enabled in non x2APIC mode\n");
 		snp_abort();
+	}
+
+	sz = ALIGN(num_possible_cpus() * SZ_4K, SZ_2M);
+	backing_pages = kzalloc(sz, GFP_ATOMIC);
+	if (!backing_pages)
+		snp_abort();
+
+	i = 0;
+	for_each_possible_cpu(cpu) {
+		per_cpu(apic_backing_page, cpu) = backing_pages + i * SZ_4K;
+		i++;
 	}
 
 	pr_info("Secure AVIC Enabled\n");
@@ -81,6 +118,7 @@ static struct apic apic_x2apic_savic __ro_after_init = {
 	.name				= "secure avic x2apic",
 	.probe				= x2apic_savic_probe,
 	.acpi_madt_oem_check		= x2apic_savic_acpi_madt_oem_check,
+	.setup				= x2apic_savic_setup,
 
 	.dest_mode_logical		= false,
 

@@ -414,6 +414,7 @@ u64 sev_get_status(void);
 void sev_show_status(void);
 void snp_update_svsm_ca(void);
 void snp_mshv_vtl_return(u8 target_vtl);
+enum es_result sev_notify_savic_gpa(u64 gpa);
 
 #else	/* !CONFIG_AMD_MEM_ENCRYPT */
 
@@ -451,6 +452,7 @@ static inline u64 sev_get_status(void) { return 0; }
 static inline void sev_show_status(void) { }
 static inline void snp_update_svsm_ca(void) { }
 static inline void snp_mshv_vtl_return(u8 input_vtl) { }
+static inline enum es_result sev_notify_savic_gpa(u64 gpa) { return ES_UNSUPPORTED; }
 
 #endif	/* CONFIG_AMD_MEM_ENCRYPT */
 
