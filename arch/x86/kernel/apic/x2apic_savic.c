@@ -69,6 +69,20 @@ static u32 read_msr_from_hv(u32 reg)
 	return lower_32_bits(data);
 }
 
+static void write_msr_to_hv(u32 reg, u64 data)
+{
+	u64 msr;
+	int ret;
+
+	msr = APIC_BASE_MSR + (reg >> 4);
+	ret = sev_ghcb_msr_write(msr, data);
+	if (ret != ES_OK) {
+		pr_err("Secure AVIC msr (%#llx) write returned error (%d)\n", msr, ret);
+		/* MSR writes should never fail. Any failure is fatal error for SNP guest */
+		snp_abort();
+	}
+}
+
 #define SAVIC_ALLOWED_IRR_OFFSET	0x204
 
 static u32 x2apic_savic_read(u32 reg)
@@ -124,6 +138,7 @@ static u32 x2apic_savic_read(u32 reg)
 static void x2apic_savic_write(u32 reg, u32 data)
 {
 	void *backing_page = this_cpu_read(apic_backing_page);
+	unsigned int cfg;
 
 	switch (reg) {
 	case APIC_LVTT:
@@ -131,7 +146,6 @@ static void x2apic_savic_write(u32 reg, u32 data)
 	case APIC_LVT1:
 	case APIC_TMICT:
 	case APIC_TDCR:
-	case APIC_SELF_IPI:
 	/* APIC_ID is writable and configured by guest for Secure AVIC */
 	case APIC_ID:
 	case APIC_TASKPRI:
@@ -149,6 +163,11 @@ static void x2apic_savic_write(u32 reg, u32 data)
 	case APIC_EILVTn(0) ... APIC_EILVTn(3):
 		set_reg(backing_page, reg, data);
 		break;
+	/* Self IPIs are accelerated by hardware, use wrmsr */
+	case APIC_SELF_IPI:
+		cfg = __prepare_ICR(APIC_DEST_SELF, data, 0);
+		native_x2apic_icr_write(cfg, 0);
+		break;
 	/* ALLOWED_IRR offsets are writable */
 	case SAVIC_ALLOWED_IRR_OFFSET ... SAVIC_ALLOWED_IRR_OFFSET + 0x70:
 		if (IS_ALIGNED(reg - SAVIC_ALLOWED_IRR_OFFSET, 16)) {
@@ -161,13 +180,100 @@ static void x2apic_savic_write(u32 reg, u32 data)
 	}
 }
 
+static void send_ipi(int cpu, int vector)
+{
+	void *backing_page;
+	int reg_off;
+
+	backing_page = per_cpu(apic_backing_page, cpu);
+	reg_off = APIC_IRR + REG_POS(vector);
+	/*
+	 * Use test_and_set_bit() to ensure that IRR updates are atomic w.r.t. other
+	 * IRR updates such as during VMRUN and during CPU interrupt handling flow.
+	 */
+	test_and_set_bit(VEC_POS(vector), (unsigned long *)((char *)backing_page + reg_off));
+}
+
+static void send_ipi_dest(u64 icr_data)
+{
+	int vector, cpu;
+
+	vector = icr_data & APIC_VECTOR_MASK;
+	cpu = icr_data >> 32;
+
+	send_ipi(cpu, vector);
+}
+
+static void send_ipi_target(u64 icr_data)
+{
+	if (icr_data & APIC_DEST_LOGICAL) {
+		pr_err("IPI target should be of PHYSICAL type\n");
+		return;
+	}
+
+	send_ipi_dest(icr_data);
+}
+
+static void send_ipi_allbut(u64 icr_data)
+{
+	const struct cpumask *self_cpu_mask = get_cpu_mask(smp_processor_id());
+	unsigned long flags;
+	int vector, cpu;
+
+	vector = icr_data & APIC_VECTOR_MASK;
+	local_irq_save(flags);
+	for_each_cpu_andnot(cpu, cpu_present_mask, self_cpu_mask)
+		send_ipi(cpu, vector);
+	write_msr_to_hv(APIC_ICR, icr_data);
+	local_irq_restore(flags);
+}
+
+static void send_ipi_allinc(u64 icr_data)
+{
+	int vector;
+
+	send_ipi_allbut(icr_data);
+	vector = icr_data & APIC_VECTOR_MASK;
+	native_x2apic_icr_write(APIC_DEST_SELF | vector, 0);
+}
+
+static void x2apic_savic_icr_write(u32 icr_low, u32 icr_high)
+{
+	int dsh, vector;
+	u64 icr_data;
+
+	icr_data = ((u64)icr_high) << 32 | icr_low;
+	dsh = icr_low & APIC_DEST_ALLBUT;
+
+	switch (dsh) {
+	case APIC_DEST_SELF:
+		vector = icr_data & APIC_VECTOR_MASK;
+		x2apic_savic_write(APIC_SELF_IPI, vector);
+		break;
+	case APIC_DEST_ALLINC:
+		send_ipi_allinc(icr_data);
+		break;
+	case APIC_DEST_ALLBUT:
+		send_ipi_allbut(icr_data);
+		break;
+	default:
+		send_ipi_target(icr_data);
+		write_msr_to_hv(APIC_ICR, icr_data);
+	}
+}
+
+static void __send_IPI_dest(unsigned int apicid, int vector, unsigned int dest)
+{
+	unsigned int cfg = __prepare_ICR(0, vector, dest);
+
+	x2apic_savic_icr_write(cfg, apicid);
+}
+
 static void x2apic_savic_send_IPI(int cpu, int vector)
 {
 	u32 dest = per_cpu(x86_cpu_to_apicid, cpu);
 
-	/* x2apic MSRs are special and need a special fence: */
-	weak_wrmsr_fence();
-	__x2apic_send_IPI_dest(dest, vector, APIC_DEST_PHYSICAL);
+	__send_IPI_dest(dest, vector, APIC_DEST_PHYSICAL);
 }
 
 static void
@@ -177,18 +283,16 @@ __send_IPI_mask(const struct cpumask *mask, int vector, int apic_dest)
 	unsigned long this_cpu;
 	unsigned long flags;
 
-	/* x2apic MSRs are special and need a special fence: */
-	weak_wrmsr_fence();
-
 	local_irq_save(flags);
 
 	this_cpu = smp_processor_id();
 	for_each_cpu(query_cpu, mask) {
 		if (apic_dest == APIC_DEST_ALLBUT && this_cpu == query_cpu)
 			continue;
-		__x2apic_send_IPI_dest(per_cpu(x86_cpu_to_apicid, query_cpu),
-				       vector, APIC_DEST_PHYSICAL);
+		__send_IPI_dest(per_cpu(x86_cpu_to_apicid, query_cpu), vector,
+				      APIC_DEST_PHYSICAL);
 	}
+
 	local_irq_restore(flags);
 }
 
@@ -200,6 +304,28 @@ static void x2apic_savic_send_IPI_mask(const struct cpumask *mask, int vector)
 static void x2apic_savic_send_IPI_mask_allbutself(const struct cpumask *mask, int vector)
 {
 	__send_IPI_mask(mask, vector, APIC_DEST_ALLBUT);
+}
+
+static void __send_IPI_shorthand(int vector, u32 which)
+{
+	unsigned int cfg = __prepare_ICR(which, vector, 0);
+
+	x2apic_savic_icr_write(cfg, 0);
+}
+
+static void x2apic_savic_send_IPI_allbutself(int vector)
+{
+	__send_IPI_shorthand(vector, APIC_DEST_ALLBUT);
+}
+
+static void x2apic_savic_send_IPI_all(int vector)
+{
+	__send_IPI_shorthand(vector, APIC_DEST_ALLINC);
+}
+
+static void x2apic_savic_send_IPI_self(int vector)
+{
+	__send_IPI_shorthand(vector, APIC_DEST_SELF);
 }
 
 static void x2apic_savic_update_vector(unsigned int cpu, unsigned int vector, bool set)
@@ -322,16 +448,16 @@ static struct apic apic_x2apic_savic __ro_after_init = {
 	.send_IPI			= x2apic_savic_send_IPI,
 	.send_IPI_mask			= x2apic_savic_send_IPI_mask,
 	.send_IPI_mask_allbutself	= x2apic_savic_send_IPI_mask_allbutself,
-	.send_IPI_allbutself		= x2apic_send_IPI_allbutself,
-	.send_IPI_all			= x2apic_send_IPI_all,
-	.send_IPI_self			= x2apic_send_IPI_self,
+	.send_IPI_allbutself		= x2apic_savic_send_IPI_allbutself,
+	.send_IPI_all			= x2apic_savic_send_IPI_all,
+	.send_IPI_self			= x2apic_savic_send_IPI_self,
 	.nmi_to_offline_cpu		= true,
 
 	.read				= x2apic_savic_read,
 	.write				= x2apic_savic_write,
 	.eoi				= native_apic_msr_eoi,
 	.icr_read			= native_x2apic_icr_read,
-	.icr_write			= native_x2apic_icr_write,
+	.icr_write			= x2apic_savic_icr_write,
 
 	.update_vector			= x2apic_savic_update_vector,
 };
