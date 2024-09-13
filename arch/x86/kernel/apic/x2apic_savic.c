@@ -183,7 +183,7 @@ static void x2apic_savic_write(u32 reg, u32 data)
 	}
 }
 
-static void send_ipi(int cpu, int vector)
+static void send_ipi(int cpu, int vector, bool nmi)
 {
 	void *backing_page;
 	int reg_off;
@@ -195,16 +195,20 @@ static void send_ipi(int cpu, int vector)
 	 * IRR updates such as during VMRUN and during CPU interrupt handling flow.
 	 */
 	test_and_set_bit(VEC_POS(vector), (unsigned long *)((char *)backing_page + reg_off));
+	if (nmi)
+		set_reg(backing_page, SAVIC_NMI_REQ_OFFSET, nmi);
 }
 
 static void send_ipi_dest(u64 icr_data)
 {
 	int vector, cpu;
+	bool nmi;
 
 	vector = icr_data & APIC_VECTOR_MASK;
 	cpu = icr_data >> 32;
+	nmi = ((icr_data & APIC_DM_FIXED_MASK) == APIC_DM_NMI);
 
-	send_ipi(cpu, vector);
+	send_ipi(cpu, vector, nmi);
 }
 
 static void send_ipi_target(u64 icr_data)
@@ -222,11 +226,13 @@ static void send_ipi_allbut(u64 icr_data)
 	const struct cpumask *self_cpu_mask = get_cpu_mask(smp_processor_id());
 	unsigned long flags;
 	int vector, cpu;
+	bool nmi;
 
 	vector = icr_data & APIC_VECTOR_MASK;
+	nmi = ((icr_data & APIC_DM_FIXED_MASK) == APIC_DM_NMI);
 	local_irq_save(flags);
 	for_each_cpu_andnot(cpu, cpu_present_mask, self_cpu_mask)
-		send_ipi(cpu, vector);
+		send_ipi(cpu, vector, nmi);
 	write_msr_to_hv(APIC_ICR, icr_data);
 	local_irq_restore(flags);
 }
