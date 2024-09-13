@@ -1392,6 +1392,31 @@ enum es_result sev_ghcb_msr_read(u64 msr, u64 *value)
 	return ret;
 }
 
+enum es_result sev_ghcb_msr_write(u64 msr, u64 value)
+{
+	struct pt_regs regs = {
+		.cx = msr,
+		.ax = lower_32_bits(value),
+		.dx = upper_32_bits(value)
+	};
+	struct es_em_ctxt ctxt = { .regs = &regs };
+	struct ghcb_state state;
+	unsigned long flags;
+	enum es_result ret;
+	struct ghcb *ghcb;
+
+	local_irq_save(flags);
+	ghcb = __sev_get_ghcb(&state);
+	vc_ghcb_invalidate(ghcb);
+
+	ret = __vc_handle_msr(ghcb, &ctxt, true);
+
+	__sev_put_ghcb(&state);
+	local_irq_restore(flags);
+
+	return ret;
+}
+
 enum es_result sev_notify_savic_gpa(u64 gpa)
 {
 	struct ghcb_state state;

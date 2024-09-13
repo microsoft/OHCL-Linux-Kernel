@@ -416,6 +416,7 @@ void snp_update_svsm_ca(void);
 void snp_mshv_vtl_return(u8 target_vtl);
 enum es_result sev_notify_savic_gpa(u64 gpa);
 enum es_result sev_ghcb_msr_read(u64 msr, u64 *value);
+enum es_result sev_ghcb_msr_write(u64 msr, u64 value);
 
 #else	/* !CONFIG_AMD_MEM_ENCRYPT */
 
@@ -455,6 +456,7 @@ static inline void snp_update_svsm_ca(void) { }
 static inline void snp_mshv_vtl_return(u8 input_vtl) { }
 static inline enum es_result sev_notify_savic_gpa(u64 gpa) { return ES_UNSUPPORTED; }
 static inline enum es_result sev_ghcb_msr_read(u64 msr, u64 *value) { return ES_UNSUPPORTED; }
+static inline enum es_result sev_ghcb_msr_write(u64 msr, u64 value) { return ES_UNSUPPORTED; }
 
 #endif	/* CONFIG_AMD_MEM_ENCRYPT */
 
