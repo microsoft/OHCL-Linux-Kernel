@@ -10,6 +10,7 @@
 #include <linux/cpumask.h>
 #include <linux/cc_platform.h>
 #include <linux/percpu-defs.h>
+#include <linux/align.h>
 
 #include <asm/apic.h>
 #include <asm/sev.h>
@@ -22,6 +23,108 @@ static DEFINE_PER_CPU(bool, savic_setup_done);
 static int x2apic_savic_acpi_madt_oem_check(char *oem_id, char *oem_table_id)
 {
 	return x2apic_enabled() && cc_platform_has(CC_ATTR_SNP_SECURE_AVIC);
+}
+
+static inline u32 get_reg(char *page, int reg_off)
+{
+	return READ_ONCE(*((u32 *)(page + reg_off)));
+}
+
+static inline void set_reg(char *page, int reg_off, u32 val)
+{
+	WRITE_ONCE(*((u32 *)(page + reg_off)), val);
+}
+
+#define SAVIC_ALLOWED_IRR_OFFSET	0x204
+
+static u32 x2apic_savic_read(u32 reg)
+{
+	void *backing_page = this_cpu_read(apic_backing_page);
+
+	switch (reg) {
+	case APIC_LVTT:
+	case APIC_TMICT:
+	case APIC_TMCCT:
+	case APIC_TDCR:
+	case APIC_ID:
+	case APIC_LVR:
+	case APIC_TASKPRI:
+	case APIC_ARBPRI:
+	case APIC_PROCPRI:
+	case APIC_LDR:
+	case APIC_SPIV:
+	case APIC_ESR:
+	case APIC_ICR:
+	case APIC_LVTTHMR:
+	case APIC_LVTPC:
+	case APIC_LVT0:
+	case APIC_LVT1:
+	case APIC_LVTERR:
+	case APIC_EFEAT:
+	case APIC_ECTRL:
+	case APIC_SEOI:
+	case APIC_IER:
+	case APIC_EILVTn(0) ... APIC_EILVTn(3):
+		return get_reg(backing_page, reg);
+	case APIC_ISR ... APIC_ISR + 0x70:
+	case APIC_TMR ... APIC_TMR + 0x70:
+		WARN_ONCE(!IS_ALIGNED(reg, 16), "Reg offset %#x not aligned at 16 bytes", reg);
+		return get_reg(backing_page, reg);
+	/* IRR and ALLOWED_IRR offset range */
+	case APIC_IRR ... APIC_IRR + 0x74:
+		/*
+		 * Either aligned at 16 bytes for valid IRR reg offset or a
+		 * valid Secure AVIC ALLOWED_IRR offset.
+		 */
+		WARN_ONCE(!(IS_ALIGNED(reg, 16) || IS_ALIGNED(reg - SAVIC_ALLOWED_IRR_OFFSET, 16)),
+			  "Misaligned IRR/ALLOWED_IRR reg offset %#x", reg);
+		return get_reg(backing_page, reg);
+	default:
+		pr_err("Permission denied: read of Secure AVIC reg offset %#x\n", reg);
+		return 0;
+	}
+}
+
+#define SAVIC_NMI_REQ_OFFSET		0x278
+
+static void x2apic_savic_write(u32 reg, u32 data)
+{
+	void *backing_page = this_cpu_read(apic_backing_page);
+
+	switch (reg) {
+	case APIC_LVTT:
+	case APIC_LVT0:
+	case APIC_LVT1:
+	case APIC_TMICT:
+	case APIC_TDCR:
+	case APIC_SELF_IPI:
+	/* APIC_ID is writable and configured by guest for Secure AVIC */
+	case APIC_ID:
+	case APIC_TASKPRI:
+	case APIC_EOI:
+	case APIC_SPIV:
+	case SAVIC_NMI_REQ_OFFSET:
+	case APIC_ESR:
+	case APIC_ICR:
+	case APIC_LVTTHMR:
+	case APIC_LVTPC:
+	case APIC_LVTERR:
+	case APIC_ECTRL:
+	case APIC_SEOI:
+	case APIC_IER:
+	case APIC_EILVTn(0) ... APIC_EILVTn(3):
+		set_reg(backing_page, reg, data);
+		break;
+	/* ALLOWED_IRR offsets are writable */
+	case SAVIC_ALLOWED_IRR_OFFSET ... SAVIC_ALLOWED_IRR_OFFSET + 0x70:
+		if (IS_ALIGNED(reg - SAVIC_ALLOWED_IRR_OFFSET, 16)) {
+			set_reg(backing_page, reg, data);
+			break;
+		}
+		fallthrough;
+	default:
+		pr_err("Permission denied: write to Secure AVIC reg offset %#x\n", reg);
+	}
 }
 
 static void x2apic_savic_send_IPI(int cpu, int vector)
@@ -140,8 +243,8 @@ static struct apic apic_x2apic_savic __ro_after_init = {
 	.send_IPI_self			= x2apic_send_IPI_self,
 	.nmi_to_offline_cpu		= true,
 
-	.read				= native_apic_msr_read,
-	.write				= native_apic_msr_write,
+	.read				= x2apic_savic_read,
+	.write				= x2apic_savic_write,
 	.eoi				= native_apic_msr_eoi,
 	.icr_read			= native_x2apic_icr_read,
 	.icr_write			= native_x2apic_icr_write,
