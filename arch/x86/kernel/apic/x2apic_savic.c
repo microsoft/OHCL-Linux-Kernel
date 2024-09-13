@@ -406,7 +406,7 @@ static void x2apic_savic_setup(void)
 	ret = sev_notify_savic_gpa(gpa);
 	if (ret != ES_OK)
 		snp_abort();
-	savic_wr_control_msr(gpa | MSR_AMD64_SECURE_AVIC_ALLOWEDNMI);
+	savic_wr_control_msr(gpa | MSR_AMD64_SECURE_AVIC_EN | MSR_AMD64_SECURE_AVIC_ALLOWEDNMI);
 	this_cpu_write(savic_setup_done, true);
 }
 
