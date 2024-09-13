@@ -11,6 +11,7 @@
 #include <linux/cc_platform.h>
 #include <linux/percpu-defs.h>
 #include <linux/align.h>
+#include <linux/sizes.h>
 
 #include <asm/apic.h>
 #include <asm/sev.h>
@@ -19,6 +20,19 @@
 
 static DEFINE_PER_CPU(void *, apic_backing_page);
 static DEFINE_PER_CPU(bool, savic_setup_done);
+
+enum lapic_lvt_entry {
+	LVT_TIMER,
+	LVT_THERMAL_MONITOR,
+	LVT_PERFORMANCE_COUNTER,
+	LVT_LINT0,
+	LVT_LINT1,
+	LVT_ERROR,
+
+	APIC_MAX_NR_LVT_ENTRIES,
+};
+
+#define APIC_LVTx(x) (APIC_LVTT + 0x10 * (x))
 
 static int x2apic_savic_acpi_madt_oem_check(char *oem_id, char *oem_table_id)
 {
@@ -33,6 +47,22 @@ static inline u32 get_reg(char *page, int reg_off)
 static inline void set_reg(char *page, int reg_off, u32 val)
 {
 	WRITE_ONCE(*((u32 *)(page + reg_off)), val);
+}
+
+static u32 read_msr_from_hv(u32 reg)
+{
+	u64 data, msr;
+	int ret;
+
+	msr = APIC_BASE_MSR + (reg >> 4);
+	ret = sev_ghcb_msr_read(msr, &data);
+	if (ret != ES_OK) {
+		pr_err("Secure AVIC msr (%#llx) read returned error (%d)\n", msr, ret);
+		/* MSR read failures are treated as fatal errors */
+		snp_abort();
+	}
+
+	return lower_32_bits(data);
 }
 
 #define SAVIC_ALLOWED_IRR_OFFSET	0x204
@@ -168,6 +198,30 @@ static void x2apic_savic_send_IPI_mask_allbutself(const struct cpumask *mask, in
 	__send_IPI_mask(mask, vector, APIC_DEST_ALLBUT);
 }
 
+static void init_backing_page(void *backing_page)
+{
+	u32 val;
+	int i;
+
+	val = read_msr_from_hv(APIC_LVR);
+	set_reg(backing_page, APIC_LVR, val);
+
+	/*
+	 * Hypervisor is used for all timer related functions,
+	 * so don't copy those values.
+	 */
+	for (i = LVT_THERMAL_MONITOR; i < APIC_MAX_NR_LVT_ENTRIES; i++) {
+		val = read_msr_from_hv(APIC_LVTx(i));
+		set_reg(backing_page, APIC_LVTx(i), val);
+	}
+
+	val = read_msr_from_hv(APIC_LVT0);
+	set_reg(backing_page, APIC_LVT0, val);
+
+	val = read_msr_from_hv(APIC_LDR);
+	set_reg(backing_page, APIC_LDR, val);
+}
+
 static void x2apic_savic_setup(void)
 {
 	void *backing_page;
@@ -178,6 +232,7 @@ static void x2apic_savic_setup(void)
 		return;
 
 	backing_page = this_cpu_read(apic_backing_page);
+	init_backing_page(backing_page);
 	gpa = __pa(backing_page);
 	ret = sev_notify_savic_gpa(gpa);
 	if (ret != ES_OK)
