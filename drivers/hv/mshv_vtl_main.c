@@ -1334,14 +1334,15 @@ noinline static void mshv_vtl_return_tdx(void)
 	r14 = 0;
 	r15 = 0;
 
-	/* TODO TDX: pushq popq causes some build complaints unclear why when mshv uses
-	it also. alignment checks even though tdcall has no alignment reqs? */
+	/* TODO TDX alignment checks even though tdcall has no alignment reqs? */
 	asm __volatile__ (\
 	/* save rbp onto the stack, since it will be clobbered and inline asm will not save it */
+		UNWIND_HINT_SAVE
 		"pushq	%%rbp\n"
 		"tdcall\n"
 	/* restore rbp from the stack */
 		"popq	%%rbp\n"
+		UNWIND_HINT_RESTORE
 		: "=a"(tdx_exit_info->rax), "=c"(tdx_exit_info->rcx),
 		  "=d"(tdx_exit_info->rdx), "=S"(tdx_exit_info->rsi), "=D"(tdx_exit_info->rdi),
 		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11), "=r"(r12), "=r"(r13), "=r"(r14), "=r"(r15), "+r" (__sp)
