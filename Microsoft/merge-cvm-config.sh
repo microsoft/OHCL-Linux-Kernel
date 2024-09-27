@@ -11,7 +11,7 @@ KERNEL_ROOT_DIR=$(dirname "$SCRIPT_DIR")
 
 # Ensure the script is being run from the kernel root directory
 if [[ "$(pwd)" != "$KERNEL_ROOT_DIR" ]]; then
-    echo "Error: Please run this script from the top-level (kernel root) folder."
+	echo "Error: Please run this script from the top-level ${KERNEL_ROOT_DIR} folder."
     exit 1
 fi
 
