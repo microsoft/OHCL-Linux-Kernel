@@ -1,13 +1,25 @@
 #!/bin/bash -e
 
 set -o pipefail
-set -x
+# set -x
+
+#Get the script's directory (M folder)
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+
+# Kernel root is assumed to be the parent directory of the M folder
+KERNEL_ROOT_DIR=$(dirname "$SCRIPT_DIR")
+
+# Ensure the script is being run from the kernel root directory
+if [[ "$(pwd)" != "$KERNEL_ROOT_DIR" ]]; then
+    echo "Error: Please run this script from the top-level (kernel root) folder."
+    exit 1
+fi
 
 # Define paths to configurations
-BASE_CONFIG_X64="Microsoft/hcl-x64.config"
-FRAGMENT_CONFIG_X64="Microsoft/x64-cvm.config"
-BASE_CONFIG_ARM64="Microsoft/hcl-arm64.config"
-FRAGMENT_CONFIG_ARM64="Microsoft/arm64-cvm.config"
+BASE_CONFIG_X64="${SCRIPT_DIR}/hcl-x64.config"
+FRAGMENT_CONFIG_X64="${SCRIPT_DIR}/x64-cvm.config"
+BASE_CONFIG_ARM64="${SCRIPT_DIR}/hcl-arm64.config"
+FRAGMENT_CONFIG_ARM64="${SCRIPT_DIR}/arm64-cvm.config"
 
 # Determine the architecture
 ARCH=$(uname -m)
