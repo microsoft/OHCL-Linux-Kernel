@@ -4,11 +4,10 @@ set -o pipefail
 set -x
 
 # Define paths to configurations
-KERNEL_SRC_PATH="../"
-BASE_CONFIG_X64="hcl-x64.config"
-FRAGMENT_CONFIG_X64="x64-cvm.config"
-BASE_CONFIG_ARM64="hcl-arm64.config"
-FRAGMENT_CONFIG_ARM64="arm64-cvm.config"
+BASE_CONFIG_X64="Microsoft/hcl-x64.config"
+FRAGMENT_CONFIG_X64="Microsoft/x64-cvm.config"
+BASE_CONFIG_ARM64="Microsoft/hcl-arm64.config"
+FRAGMENT_CONFIG_ARM64="Microsoft/arm64-cvm.config"
 
 # Determine the architecture
 ARCH=$(uname -m)
@@ -50,11 +49,12 @@ fi
 cp "$BASE_CONFIG" "$KERNEL_SRC_PATH.config"
 
 # Merge the fragment configuration into the .config file
-cd "$KERNEL_SRC_PATH"
-./scripts/kconfig/merge_config.sh -m .config "Microsoft/$FRAGMENT_CONFIG"
+./scripts/kconfig/merge_config.sh -m .config "$FRAGMENT_CONFIG"
 
 # Ensure the merged configuration is valid
 make olddefconfig
 
 mv .config Microsoft/hcl-$ARCH.config
 echo "Merged configuration created at Microsoft/hcl-$ARCH-config"
+
+make mrproper
