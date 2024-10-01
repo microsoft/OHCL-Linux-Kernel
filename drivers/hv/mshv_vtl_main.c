@@ -156,6 +156,7 @@ struct mshv_vtl_per_cpu {
 	u64 l1_msr_star;
 	u64 l1_msr_lstar;
 	u64 l1_msr_sfmask;
+	u64 l1_msr_tsc_aux;
 #endif
 };
 
@@ -805,6 +806,14 @@ noinline void mshv_vtl_return_tdx(void)
 	u64 input_rcx = vtl_run->tdx_context.entry_rcx;
 	u64 input_rdx = virt_to_phys((void*) &vtl_run->tdx_context.l2_enter_guest_state);
 
+	/*
+	 * TODO TDX: KVM has some code and paths that seem like there is a way to
+	 * defer TSC_AUX saving until usermode starts. For now, save/restore VTL2's
+	 * view of TSC_AUX across every VP.ENTER call until we can do the same
+	 * thing.
+	*/
+	rdmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
+
 	kernel_fpu_begin_mask(0);
 	fxrstor(&vtl_run->tdx_context.fx_state); // restore FP reg and XMM regs
 	native_write_cr2(tdx_vp_state->cr2);
@@ -814,6 +823,7 @@ noinline void mshv_vtl_return_tdx(void)
 	wrmsrl(MSR_STAR, tdx_vp_state->msr_star);
 	wrmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
 	wrmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+	wrmsrl(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
 
 	if (tdx_vp_state->msr_xss != per_cpu->xss)
 		wrmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
@@ -859,12 +869,14 @@ noinline void mshv_vtl_return_tdx(void)
 	rdmsrl(MSR_STAR, tdx_vp_state->msr_star);
 	rdmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
 	rdmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+	rdmsrl(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
 
 	/* Restore VTL2's syscall registers & MSRs */
 	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
 	wrmsrl(MSR_STAR, per_cpu->l1_msr_star);
 	wrmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
 	wrmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+	wrmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
 
 	fxsave(&vtl_run->tdx_context.fx_state);
 	kernel_fpu_end();
