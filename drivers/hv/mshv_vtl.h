@@ -35,6 +35,7 @@ struct tdx_vp_state {
 	u64 msr_sfmask;
 	u64 msr_xss;
 	u64 cr2;
+	u64 msr_tsc_aux;
 };
 
 /*
@@ -76,7 +77,7 @@ struct tdx_vp_context {
 	struct tdx_tdg_vp_enter_exit_info exit_info;
 	__u8 pad1[48];
 	struct tdx_vp_state vp_state;
-	__u8 pad2[48];
+	__u8 pad2[40];
 	/* Contains the VM index and the TLB flush bit */
 	__u64 entry_rcx;
 	/* Must be on 256 byte boundary. */
