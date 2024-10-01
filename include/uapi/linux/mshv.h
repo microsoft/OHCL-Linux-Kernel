@@ -355,8 +355,6 @@ struct mshv_vtl_sidecar_info {
 #define MSHV_VTL_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
 #define MSHV_VTL_PVALIDATE	_IOW(MSHV_IOCTL, 0x28, struct mshv_pvalidate)
 #define MSHV_VTL_RMPADJUST	_IOW(MSHV_IOCTL, 0x29, struct mshv_rmpadjust)
-#define MSHV_VTL_HOST_VISIBILITY	_IOW(MSHV_IOCTL, 0x30, struct mshv_host_visibility)
-#define MSHV_VTL_HOST_VISIBILITY_V	_IOW(MSHV_IOCTL, 0x31, struct mshv_host_visibility_v)
 #define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
 #define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
 #define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)

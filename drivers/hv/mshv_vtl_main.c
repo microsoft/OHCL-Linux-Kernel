@@ -2008,116 +2008,6 @@ static long mshv_vtl_ioctl_tdcall(void __user* user_tdcall)
 	return copy_to_user(user_tdcall, &tdcall, sizeof(tdcall)) ? -EFAULT : 0;
 }
 
-static long __mshv_vtl_ioctl_host_visibility(void __user *user_visibility)
-{
-	size_t num_pages;
-	struct mshv_host_visibility visibility = {};
-
-	pr_info("%s: user pointer: %#llx\n", __func__, (u64)user_visibility);
-
-	if (copy_from_user(&visibility, user_visibility, sizeof(visibility)))
-		return -EFAULT;
-
-	pr_info("%s: start_user_va: %#llx\n", __func__, (u64)visibility.start_user_va);
-	pr_info("%s: end_user_va: %#llx\n", __func__, (u64)visibility.end_user_va);
-	pr_info("%s: visible: %#llx\n", __func__, (u64)visibility.visible);
-	pr_info("%s: padding: %#llx %#llx %#llx %#llx %#llx %#llx %#llx\n", __func__,
-		(u64)visibility.padding[0],
-		(u64)visibility.padding[1],
-		(u64)visibility.padding[2],
-		(u64)visibility.padding[3],
-		(u64)visibility.padding[4],
-		(u64)visibility.padding[5],
-		(u64)visibility.padding[6]);
-
-	/* Require the addresses be page-aligned */
-	if ((visibility.start_user_va & (PAGE_SIZE - 1)) || (visibility.end_user_va & (PAGE_SIZE - 1))) {
-		pr_err("%s: Not page aligned [%#llx; %#llx)\n", __func__, visibility.start_user_va, visibility.end_user_va);
-		return -EINVAL;
-	}
-
-	/* Require the addresses be user-mode ones */
-	if ((visibility.start_user_va >> 48) || (visibility.end_user_va >> 48)) {
-		pr_err("%s: Not user mode addresses [%#llx; %#llx)\n", __func__, visibility.start_user_va, visibility.end_user_va);
-		return -EINVAL;
-	}
-
-	/* Require a valid range */
-	if (visibility.start_user_va >= visibility.end_user_va) {
-		pr_err("%s: Invalid range [%#llx; %#llx)\n", __func__, visibility.start_user_va, visibility.end_user_va);
-		return -EINVAL;
-	}
-
-	num_pages = (visibility.end_user_va - visibility.start_user_va) >> PAGE_SHIFT;
-	if (visibility.visible)
-		return set_memory_decrypted(visibility.start_user_va, num_pages);
-	else
-		return set_memory_encrypted(visibility.start_user_va, num_pages);
-}
-
-static long mshv_vtl_ioctl_host_visibility(void __user *user_visibility)
-{
-	unsigned long flags;
-	long rc;
-
-	if (!hv_isolation_type_en_snp())
-		return -EINVAL;
-
-	flags = mshv_vtl_smap_save();
-	rc = __mshv_vtl_ioctl_host_visibility(user_visibility);
-	mshv_vtl_smap_restore(flags);
-
-	return rc;
-}
-
-static long mshv_vtl_ioctl_host_visibility_v(void __user *user_visibility_v)
-{
-	int i;
-	long rc;
-	unsigned long flags;
-	size_t size_v = 0;
-	struct mshv_host_visibility_v visibility_v = {};
-	struct mshv_host_visibility** visibility = NULL;
-
-	if (!hv_isolation_type_en_snp())
-		return -EINVAL;
-
-	pr_info("%s: user mode pointer: %#llx\n", __func__, (u64)user_visibility_v);
-	if (copy_from_user(&visibility_v, user_visibility_v, sizeof(visibility_v)))
-		return -EFAULT;
-
-	pr_info("%s: visibility count: %#llx\n", __func__, (u64)visibility_v.visibility_count);
-	pr_info("%s: user mode pointer **visibility: %#llx\n", __func__, (u64)visibility_v.visibility);
-
-	if (!visibility_v.visibility_count) {
-		pr_err("%s: empty visibility array\n", __func__);
-		return -EINVAL;
-	}
-
-	size_v = sizeof(struct mshv_host_visibility*)*visibility_v.visibility_count;
-	visibility = kmalloc(size_v, GFP_KERNEL);
-	if (!visibility)
-		return -ENOMEM;
-
-	if (copy_from_user(visibility, visibility_v.visibility, size_v)) {
-		kfree(visibility);
-		return -EFAULT;
-	}
-
-	flags = mshv_vtl_smap_save();
-
-	for (i = 0; i < visibility_v.visibility_count; ++i) {
-		rc = __mshv_vtl_ioctl_host_visibility(visibility[i]);
-		if (rc)
-			break;
-	}
-
-	mshv_vtl_smap_restore(flags);
-	kfree(visibility);
-
-	return rc;
-}
-
 static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
 {
 	u64 value;
@@ -2207,12 +2097,6 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;
 	case MSHV_VTL_TLBSYNC:
 		ret = mshv_vtl_ioctl_tlbsync();
-		break;
-	case MSHV_VTL_HOST_VISIBILITY:
-		ret = mshv_vtl_ioctl_host_visibility((void __user *)arg);
-		break;
-	case MSHV_VTL_HOST_VISIBILITY_V:
-		ret = mshv_vtl_ioctl_host_visibility_v((void __user *)arg);
 		break;
 	case MSHV_VTL_TDCALL:
 		ret = mshv_vtl_ioctl_tdcall((void __user *)arg);
