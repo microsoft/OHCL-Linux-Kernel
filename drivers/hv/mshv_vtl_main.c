@@ -272,14 +272,15 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 }
 
 #ifdef CONFIG_X86_64
-static int mshv_configure_vmsa_page(u8 target_vtl, struct mshv_vtl_per_cpu *per_cpu)
+static int mshv_configure_vmsa_page(u8 target_vtl, struct page** vmsa_page)
 {
 	struct page *page;
 	struct hv_register_assoc reg_assoc = {};
 	union hv_input_vtl vtl = {};
 	int ret;
 
-	page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+	/* Might be called from the page fault handling code hence GFP_ATOMIC */
+	page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
 	if (!page)
 		return -ENOMEM;
 
@@ -290,7 +291,7 @@ static int mshv_configure_vmsa_page(u8 target_vtl, struct mshv_vtl_per_cpu *per_
 		vtl.use_target_vtl = 1;
 		vtl.target_vtl = 0;
 		ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-					       1, vtl, &reg_assoc);
+						1, vtl, &reg_assoc);
 
 		if (ret) {
 			pr_err("failed to set VMSA page for VTL %d in hypervisor: %d\n",
@@ -305,13 +306,13 @@ static int mshv_configure_vmsa_page(u8 target_vtl, struct mshv_vtl_per_cpu *per_
 	 * required by AMD.
 	 */
 	ret = rmpadjust((unsigned long)page_address(page),
-		       RMP_PG_SIZE_4K, 1 | RMPADJUST_VMSA_PAGE_BIT);
+				RMP_PG_SIZE_4K, 1 | RMPADJUST_VMSA_PAGE_BIT);
 	if (ret) {
 		pr_emerg("failed to set VMSA page bit: %d\n", ret);
 		return ret;
 	}
 
-	per_cpu->vmsa_page = page;
+	*vmsa_page = page;
 	return 0;
 }
 
@@ -592,7 +593,7 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 #ifdef CONFIG_X86_64
 		int ret;
 
-		ret = mshv_configure_vmsa_page(0, per_cpu);
+		ret = mshv_configure_vmsa_page(0, &per_cpu->vmsa_page);
 		if (ret < 0)
 			return ret;
 #endif
@@ -1397,7 +1398,7 @@ static long mshv_vtl_ioctl_invlpgb(void __user *invlpgb_user)
 	 * `invlpgb` might not be supported by an older toolchain.
 	 * Use the raw encoding instead of the mnemonic not to break
 	 * the build on the older systems.
-	 */
+	*/
 	asm volatile(".byte 0x0F,0x01,0xFE\n\t"
 			:
 			: "a"(invlpgb.rax), "c"(invlpgb.ecx), "d"(invlpgb.edx)
@@ -1412,7 +1413,7 @@ static long mshv_vtl_ioctl_tlbsync(void)
 	 * `tlbsync` might not be supported by an older toolchain.
 	 * Use the raw encoding instead of the mnemonic not to break
 	 * the build on the older systems.
-	 */
+	*/
 	asm volatile(".byte 0x0F,0x01,0xFF\n\t"
 			:
 			:
@@ -1430,7 +1431,7 @@ static void guest_vsm_vmsa_pfn_this_cpu(void *arg)
 	cpu = get_cpu();
 	vmsa_guest_vsm_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page);
 	if (!vmsa_guest_vsm_page) {
-		if (mshv_configure_vmsa_page(1, per_cpu_ptr(&mshv_vtl_per_cpu, cpu)))
+		if (mshv_configure_vmsa_page(1, per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page, cpu)))
 			*pfn = -ENOMEM;
 		else
 			vmsa_guest_vsm_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page);
@@ -1527,10 +1528,6 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 {
 	struct page *page;
-#ifdef CONFIG_X86_64
-	struct page **page_ptr_ptr;
-	struct mshv_vtl_per_cpu *per_cpu;
-#endif
 	int cpu = vmf->pgoff & MSHV_PG_OFF_CPU_MASK;
 	int real_off = vmf->pgoff >> MSHV_REAL_OFF_SHIFT;
 
@@ -1549,14 +1546,13 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 			return VM_FAULT_SIGBUS;
 		page = *per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page, cpu);
 	} else if (real_off == MSHV_VMSA_GUEST_VSM_PAGE_OFFSET) {
+		struct page **page_ptr_ptr;
 		if (!hv_isolation_type_snp())
 			return VM_FAULT_SIGBUS;
 		page_ptr_ptr = per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page, cpu);
 		if (!*page_ptr_ptr) {
-			per_cpu = (struct mshv_vtl_per_cpu *)per_cpu_ptr(&mshv_vtl_per_cpu, cpu);
-			if (mshv_configure_vmsa_page(1, per_cpu) < 0)
+			if (mshv_configure_vmsa_page(1, page_ptr_ptr) < 0)
 				return VM_FAULT_SIGBUS;
-			page_ptr_ptr = &per_cpu->vmsa_page;
 		}
 		page = *page_ptr_ptr;
 	} else if (real_off == MSHV_VMSA_PAGE_OFFSET) {
