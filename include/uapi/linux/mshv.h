@@ -335,18 +335,22 @@ struct mshv_invlpgb {
 #define MSHV_VTL_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_vtl_ram_disposition)
 #define MSHV_VTL_SET_POLL_FILE		_IOW(MSHV_IOCTL, 0x25, struct mshv_vtl_set_poll_file)
 #define MSHV_VTL_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
+
+/* For x86-64 SEV-SNP only */
 #define MSHV_VTL_PVALIDATE	_IOW(MSHV_IOCTL, 0x28, struct mshv_pvalidate)
 #define MSHV_VTL_RMPADJUST	_IOW(MSHV_IOCTL, 0x29, struct mshv_rmpadjust)
-#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
-#define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
-#define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
-#define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
-#define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
-
 
 /* For x86-64 TDX only */
 #define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
 #define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
+
+/* For x86-64 only */
+#define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
+
+/* For x86-64 SEV-SNP only */
+#define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
+#define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
+#define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
