@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2023, Microsoft Corporation.
+ * Copyright (c) 2024, Microsoft Corporation.
  *
  */
 #include <linux/platform_device.h>
@@ -9,13 +9,8 @@
 #include <linux/mod_devicetable.h>
 #include <linux/mm.h>
 #include <uapi/linux/mshv.h>
-
-#ifdef CONFIG_X86_64
 #include <asm/apic.h>
 #include <asm/irq_vectors.h>
-#else
-#error "Unsupported architecture"
-#endif
 
 struct sidecar_control {
 	u32 index;
