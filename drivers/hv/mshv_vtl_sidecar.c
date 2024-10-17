@@ -112,6 +112,7 @@ static int sidecar_remove(unsigned int cpu)
 {
 	struct sidecar_dev *dev;
 	u8 *slot;
+	u8 last;
 	int ret;
 	int cpu_index;
 
@@ -136,12 +137,13 @@ static int sidecar_remove(unsigned int cpu)
 
 	dev_info(dev->dev, "removing sidecar cpu %d", cpu);
 	slot = &dev->control->cpu_status[cpu_index];
-	if (cmpxchg(slot, CPU_STATUS_IDLE, CPU_STATUS_REMOVE) != CPU_STATUS_IDLE)
-		BUG();
+	last = cmpxchg(slot, CPU_STATUS_IDLE, CPU_STATUS_REMOVE);
+	WARN(last != CPU_STATUS_IDLE, "unexpected cpu status %d", last);
 
 	sidecar_signal(dev, cpu);
 	wait_event(dev->wait, READ_ONCE(*slot) == CPU_STATUS_REMOVE);
-	BUG_ON(READ_ONCE(dev->vp_state[cpu_index]) != VP_STATE_REMOVED);
+	last = READ_ONCE(dev->vp_state[cpu_index]);
+	WARN(last != VP_STATE_REMOVED, "unexpected vp state %d", last);
 	return 0;
 
 }
@@ -213,10 +215,11 @@ static __poll_t sidecar_poll(struct file *filp, poll_table *wait)
 static void sidecar_start(struct sidecar_dev *dev, u32 cpu)
 {
 	u8 *slot;
+	u8 last;
 
 	slot = &dev->control->cpu_status[cpu - dev->base_cpu];
-	if (cmpxchg(slot, CPU_STATUS_IDLE, CPU_STATUS_RUN) != CPU_STATUS_IDLE)
-		BUG();
+	last = cmpxchg(slot, CPU_STATUS_IDLE, CPU_STATUS_RUN);
+	WARN(last != CPU_STATUS_IDLE, "unexpected cpu status %d", last);
 
 	sidecar_signal(dev, cpu);
 }
@@ -250,7 +253,9 @@ static int sidecar_ioctl_run(struct sidecar_dev *dev, u32 cpu)
 			cmpxchg(slot, status, CPU_STATUS_STOP);
 			break;
 		default:
-			BUG();
+			WARN(1, "unexpected cpu status %d", status);
+			ret = -EIO;
+			goto release;
 		}
 	}
 
@@ -294,7 +299,8 @@ static int sidecar_ioctl_stop(struct sidecar_dev *dev, u32 cpu)
 	case VP_STATE_ASYNC_STOPPING:
 		return 0;
 	default:
-		BUG();
+		WARN(1, "unexpected vp state %d", state);
+		return -EIO;
 	}
 
 	slot = &dev->control->cpu_status[cpu_index];
@@ -307,7 +313,10 @@ static int sidecar_ioctl_stop(struct sidecar_dev *dev, u32 cpu)
 		}
 	}
 
-	BUG_ON(status != CPU_STATUS_IDLE);
+	if (status != CPU_STATUS_IDLE) {
+		WARN(1, "unexpected cpu status %d", status);
+		return -EIO;
+	}
 	return 0;
 }
 
