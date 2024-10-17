@@ -100,6 +100,12 @@ static struct sidecar_dev *sidecar_dev_for_cpu(unsigned int cpu)
 {
 	struct sidecar_dev *dev;
 
+	/*
+	 * This list is only added to during probe, which, as this is a platform
+	 * device, should only be called during boot. So, we should not expect any
+	 * concurrent modifications to the list and do not require synchronization
+	 * here.
+	 */
 	list_for_each_entry(dev, &sidecar_dev_list, list) {
 		if (cpu >= dev->base_cpu && cpu - dev->base_cpu < dev->cpu_count)
 			return dev;
