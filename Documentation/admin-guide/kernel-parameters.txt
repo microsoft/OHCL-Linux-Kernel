@@ -558,6 +558,10 @@
 
 			See Documentation/admin-guide/bootconfig.rst
 
+	boot_cpus=	Bitmask for specifying the set of CPUs to online during
+			boot. CPUs that are not specified are still marked present
+			and can be onlined separately after boot.
+
 	bttv.card=	[HW,V4L] bttv (bt848 + bt878 based grabber cards)
 	bttv.radio=	Most important insmod options are available as
 			kernel args too.
