@@ -2,14 +2,14 @@
 /*
  * include/linux/cpu.h - generic cpu definition
  *
- * This is mainly for topological representation. We define the 
- * basic 'struct cpu' here, which can be embedded in per-arch 
+ * This is mainly for topological representation. We define the
+ * basic 'struct cpu' here, which can be embedded in per-arch
  * definitions of processors.
  *
  * Basic handling of the devices is done in drivers/base/cpu.c
  *
  * CPUs are exported via sysfs in the devices/system/cpu
- * directory. 
+ * directory.
  */
 #ifndef _LINUX_CPU_H_
 #define _LINUX_CPU_H_
@@ -109,7 +109,7 @@ void notify_cpu_starting(unsigned int cpu);
 extern void cpu_maps_update_begin(void);
 extern void cpu_maps_update_done(void);
 int bringup_hibernate_cpu(unsigned int sleep_cpu);
-void bringup_nonboot_cpus(unsigned int setup_max_cpus);
+void bringup_nonboot_cpus(unsigned int setup_max_cpus, const struct cpumask *boot_cpus);
 
 #else	/* CONFIG_SMP */
 #define cpuhp_tasks_frozen	0

@@ -955,6 +955,28 @@ static int __init maxcpus(char *str)
 
 early_param("maxcpus", maxcpus);
 
+static cpumask_var_t cpu_boot_mask;
+
+static int __init boot_cpus(char *str)
+{
+	int r;
+	cpumask_var_t mask;
+
+	alloc_bootmem_cpumask_var(&mask);
+	r = cpulist_parse(str, mask);
+	if (r < 0) {
+		pr_warn("Invalid boot_cpus parameter\n");
+		goto ret;
+	}
+	cpu_boot_mask = mask;
+	mask = NULL;
+ret:
+	free_bootmem_cpumask_var(mask);
+	return 1;
+}
+
+__setup("boot_cpus=", boot_cpus);
+
 #if (NR_CPUS > 1) && !defined(CONFIG_FORCE_NR_CPUS)
 /* Setup number of possible processor ids */
 unsigned int nr_cpu_ids __read_mostly = NR_CPUS;
@@ -977,7 +999,7 @@ void __init smp_init(void)
 
 	pr_info("Bringing up secondary CPUs ...\n");
 
-	bringup_nonboot_cpus(setup_max_cpus);
+	bringup_nonboot_cpus(setup_max_cpus, cpu_boot_mask);
 
 	num_nodes = num_online_nodes();
 	num_cpus  = num_online_cpus();
