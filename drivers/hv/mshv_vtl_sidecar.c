@@ -385,7 +385,7 @@ static ssize_t sidecar_read(struct file *filp, char __user *buf, size_t count, l
 			return ret;
 	}
 
-	if (put_user(cpu, buf))
+	if (put_user(cpu, (u32 __user *)buf))
 		return -EFAULT;
 
 	return sizeof(u32);
