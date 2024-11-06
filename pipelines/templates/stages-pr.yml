@@ -5,11 +5,12 @@ stages:
       parameters:
         jobName: arm64
         hostArch: arm64
+        kernelType: 'none'
+        kernelTypeList: 'none,cvm'
         config: 'Microsoft/hcl-arm64.config'
         product: hcl
         package: nuget
         archList: 'arm64,amd64'
-        nuget_id: 'not-set'
         triggerPipeline: 'PR'
         # gitRef is initialized to '' by default which will fail kernel checkout in msft-lkt's jobs.yaml.
         # Initialize gitRef with a valid underhill kernel branch instead to avoid checkout error.
@@ -23,11 +24,12 @@ stages:
       parameters:
         jobName: amd64
         hostArch: amd64
+        kernelType: 'none'
+        kernelTypeList: 'none,cvm'
         config: 'Microsoft/hcl-x64.config'
         product: hcl
         package: nuget
         archList: 'arm64,amd64'
-        nuget_id: 'not-set'
         triggerPipeline: 'PR'
         # gitRef is initialized to '' by default which will fail kernel checkout in msft-lkt's jobs.yaml.
         # Initialize gitRef with a valid underhill kernel branch instead to avoid checkout error.
@@ -35,10 +37,30 @@ stages:
         # to System.PullRequest.SourceBranch in msft-lkt's jobs.yaml.
         gitRef: 'product/underhill-main/6.6'
 
+  - stage: 'hcl_amd64_cvm'
+    jobs:
+    - template: pipelines/kernel-build/templates/jobs.yml@msft-lkt
+      parameters:
+        jobName: amd64_cvm
+        hostArch: amd64
+        config: 'Microsoft/hcl-x64.config'
+        kernelType: 'cvm'
+        kernelTypeList: 'none,cvm'
+        product: hcl
+        package: nuget
+        archList: 'arm64,amd64'
+        triggerPipeline: 'PR'
+        # gitRef is initialized to '' by default which will fail kernel checkout in msft-lkt's jobs.yaml.
+        # Initialize gitRef with a valid underhill kernel branch instead to avoid checkout error.
+        # Once a valid kernel branch is checked out, we subsequently checkout kernel branch corresponding
+        # to System.PullRequest.SourceBranch in msft-lkt's jobs.yaml.
+        gitRef: 'product/underhill-main/6.6'
+        
   - stage: 'nupkg'
     dependsOn:
     - 'hcl_amd64'
     - 'hcl_arm64'
+    - 'hcl_amd64_cvm'
     jobs:
     - template: pipelines/kernel-build/templates/jobs-package.yml@msft-lkt
       parameters:
