@@ -1900,7 +1900,7 @@ static bool __init cpuhp_bringup_cpus_parallel(const struct cpumask *mask, unsig
 	return true;
 }
 #else
-static inline bool cpuhp_bringup_cpus_parallel(unsigned int ncpus) { return false; }
+static inline bool cpuhp_bringup_cpus_parallel(const struct cpumask *mask, unsigned int ncpus) { return false; }
 #endif /* CONFIG_HOTPLUG_PARALLEL */
 
 void __init bringup_nonboot_cpus(unsigned int setup_max_cpus, const struct cpumask *boot_cpus)
