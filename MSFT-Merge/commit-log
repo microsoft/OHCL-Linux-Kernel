@@ -1,7 +1,88 @@
 
 Commit Hash     Date                    Commit Message/[Author]
 -------------   ----------              ---------------------------------------------------------------------------------
-
+41fb4eeed48fb   2024-06-13 		vfio/pci: Add ioctl to keep VF alive
+f50c827057447   2024-11-06		add hcl cvm kernel build support
+e132227c9e2b9   2024-11-04		drivers/hv: add tdx support for handling wbinvd
+ab1b244bc2654   2024-05-16		vfio/pci: hack to fix broken 64 bit detection on x86-64
+424a3732847d7   2024-04-25		vfio/pci: Continue to refactor vfio_pci_core_do_io_rw
+e2f43b2cdbf2c   2024-04-25		vfio/pci: Support 8-byte PCI loads and stores
+2e351814a0335   2024-04-25		vfio/pci: Extract duplicated code into macro
+d54a378990073   2024-02-20		vfio/pci: rename and export do_io_rw()
+9382e293cbfd3   2023-12-19		vfio/pci: Expose vfio_pci_core_iowrite/read##size()
+1c583f2c5a253   2023-12-19		vfio/pci: Expose vfio_pci_core_setup_barmap()
+844e871b41972   2024-10-01		mshv_vtl/tdx: preserve TSC_AUX across VP.ENTER
+588939cbd8ea3   2024-08-01		mshv_vtl/tdx: Let the user mode control the RCX on guest entry
+0a64dd247852f   2024-10-04		mshv_vtl: Correctly set Guest VSM VMSA page (VTL1)
+405948e6bf7db   2024-10-04		mshv_vtl: Allow specifying target_vtl
+b9b2edb928957   2024-10-04		mshv: Sort VTL IOCTLs, add comments
+e226d9261cf3d   2024-09-19		Add kernel option for SEV-SNP guest support
+b62125c7ed753   2024-09-18		x86/sev: Not use write-protected mapping in the __sme_early_enc_dec()
+03aa6b1a94f9a   2024-09-26		hyperv/mshv_vtl: Add SEV SNP guest support
+94ba8512d6899   2024-09-10		Kconfig: Decouple the dependency between UEFI and SEV-SNP support
+56b1987c3e72f   2024-04-29		x86/Hyperv: Fix check of return value from snp_set_vmsa()
+2162914bdcaef   2024-10-01		x86/sev: Use hvcall to convert apic id to vpid
+3dc8dfe39dd61   2024-07-12		x86/sev: Get cc blob information via boot param
+2ad3b9d4d3fda   2024-09-11		x86/sev: expose Hyper-V CPUID to SEV-SNP guest
+3a9a73ff8e07d   2024-09-11		x86: Enable x2apic function
+7c8c4a1645acb   2024-09-27		script: improve error reporting
+9c14c77661f7b   2024-09-27		script: Improve path handling and enforce correct execution directory
+13f08eb0c6513   2024-09-27		scripts: Rename and Update merge-config.sh Script for  Clean Kernel Build
+72a9baba00be2   2024-08-29		Drivers: hv: vmbus: Fix rescind handling in uio_hv_generic
+ac63e45f702b8   2024-08-29		uio_hv_generic: Fix kernel NULL pointer dereference in hv_uio_rescind
+de0c0f5cf9d05   2024-09-06		Revert "uio_hv_generic: Fix kernel NULL pointer dereference in hv_uio_rescind"
+f27a73929a26d   2024-08-28		Don't include auto config changes
+b08995c67fb6d   2024-08-20		Update the hyperv-pci driver to get vPCI MSI IRQ domain in the DeviceTree
+57b8473b1936a   2024-08-22		Add boilerplate SECURITY.md
+120f264e8da2d   2024-08-01		redirects the output of echo to stderr
+d14553cca7a61   2024-07-30		Address review comments
+a957c576275d2   2024-07-29		[RFC] Add script to merge kernel configurations based on architecture type
+7b9dce5f2090a   2024-08-01		Drivers: hv: enable the VP assist page for the root partition 
+5cb78f1159f21   2024-06-24		Fix TDX build by not depending on EFI
+ce38371cd9c93   2024-06-30		drivers/hv/mshv_vtl_main.c: handle DECRYPTED_MASK for CVMs
+9c32607a0911d   2024-07-16		drivers/hv/mshv_vtl_main.c: Fixed the crash in mshv_vtl_switch_to_vtl0_irqoff for TDX
+3a02e3e12db14   2024-06-26		uio: CVM: Add the pgprot_decrypted for UIO_MEM_IOVA in mmap
+9772e86fb0b0c   2024-05-17		coco/tdx: reflect faulting va back to usermode
+770475bfc8134   2024-04-04		x86/hyperv: Use Hyper-V reset page to boot tdx APs
+a6b6319a1694b   2024-04-04		drivers/hv: Add support for mshv_vtl on TDX
+70a2764460ff0   2024-06-25		Drivers: hv: vmbus: Allow more VMBus devices for a CVM UH kernel
+6215ec5c689e7   2024-04-09		uio_hv_generic: Fix the send_buf_size in hv_uio_probe()
+80776dd730507   2024-05-20		x86/tdx: Support vmalloc() for tdx_enc_status_changed()
+67e7a664ea6d1   2023-08-10		x86/tdx: Retry partially-completed page conversion hypercalls 
+0f04010af95e7   2024-06-20		clocksource: hyper-v: Use lapic timer in a TDX VM without paravisor
+b8f4a97c7331b   2024-07-01		binfmt_elf, coredump: Log the reason for the failed core dumps
+56ac865d1a14f   2024-06-05		hyperv/arm64: Use PSCI to start processors.
+46b6155834309   2024-05-29		drivers/hv: Account for various page sizes on ARM64
+4a30be4e2a33b   2024-05-29		mshv_vtl: Initialize the assist page pointer
+f9af2095b021a   2024-05-17		hcl: Update Kernel Configuration
+622c20bc46476   2024-05-17		drivers/hv: Enable MSHV_VTL_MODE for arm64
+c180b46896d3d   2024-05-24		hv/mshv_vtl: Port and Support arm64 Architecture
+1dd2f205c9193   2024-05-17		pci/hyperv: Manage Interrupt Domains
+99345377a1eef   2024-05-22		arm64/hyperv, kernel: Support Idle State Functions
+ffd331c8f8ad2   2024-05-17		arm64/hyperv: Enable Multiprocessor Boot
+603f48918d404   2024-05-17		drivers/vmbus: Enhance Interrupt Management
+c474351d19a40   2024-05-17		arm64/hyperv: Enable VTL Boot Support
+3f4da41b9794b   2024-05-22		hv: Refactor Code to Be Architecture-Neutral
+b1b44a5a1b72d   2024-05-17		arm64/hyperv: Add Device Tree Support
+440f0c790984c   2024-05-28		UH: fallback to older known working mariner 2.0 build container image
+9df3acf5d1856   2024-05-08		UH: Config: optmize kernel config for v6.6
+da694253c5112   2024-04-25		[hyperv][vpci] - Support for dynamic MSI allocation
+fc52269b7fc15   2024-04-23		arm64: Adjust CONFIG_ARCH_FORCE_MAX_ORDER from 11 to 10
+e4197632be751   2024-04-17		PCI: Add a mutex to protect the global list pci_domain_busn_res_list
+a485022e7d61a   2024-04-16		Drivers: hv: vmbus: Deferring per cpu tasks
+e3addda7543d7   2024-01-29		Enable automatic PR builds for underhill kernel 
+5bc29aedb621e   2024-04-08		Fix definition of HV_EVENT_FLAGS_LONG_COUNT to always be the count of the number of 64-bit entries in HV_EVENT_FLAGS
+4547d777b3737   2024-04-05		sched/topology: Enable topology_span_sane check only for Debug builds
+11a1cdad5a3a0   2024-04-01		MSR driver compiled-in
+685cb43ebb067   2024-03-29		mm/vmstat: Defer the refresh_zone_stat_thresholds after all CPUs bringup
+2118a04306a12   2024-03-29		Enable building the MSR module 
+8aad1ce6c322a   2024-03-13		x86/hyperv: Use per cpu initial stack for vtl context
+0cab6c7ffdee7   2024-03-13		Revert "x86/hyperv: Disable parallel cpu bringup for VTL"
+4e32eb97fce29   2024-02-29		config: Switch to 100 HZ value
+c900b67794ea1   2024-02-14		x86/numa: Map NUMA node to CPUs as per DeviceTree
+168e6807f877e   2024-02-27		Disable P2P DMA as we don't use it and it causes crashes in 6.6
+917d0ce05872e   2023-11-08		uio_hv_generic: Remove module params for custom ring buffer sizes
+77a4c3c8de01a   2024-02-01		uh-config: bump kernel version to v6.6
 8328403da5648   2024-02-01              x86/hyperv: Disable parallel cpu bringup for VTL [Allen Pais]
 90dc8f005b4e4   2023-11-02              Drivers: hv: vmbus: Log on missing offers [Allen Pais]
 6a09ba823f2df   2023-11-01              Drivers: hv: vmbus: Wait for offers during boot [Allen Pais]
