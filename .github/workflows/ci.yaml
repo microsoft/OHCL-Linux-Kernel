@@ -1,0 +1,193 @@
+name: OHCL Build and Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    tags:
+      - 'rolling-lts/hcl-main/*'
+      - 'rolling-lts/hcl-dev/*'
+
+jobs:
+  build_linux:
+    name: Build Linux kernel
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: ['x64', 'cvm-x64', 'arm64']
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev
+          [ "${{ matrix.arch }}" == "arm64" ] && sudo apt-get install -y gcc-aarch64-linux-gnu || true
+
+      - name: Build kernel
+        run: |
+          if [ "${{ matrix.arch }}" == "x64" ] || [ "${{ matrix.arch }}" == "cvm-x64" ]; then
+            export makeargs="ARCH=x86_64 KCONFIG_CONFIG=Microsoft/hcl-x64.config INSTALL_MOD_PATH=$PWD/out/modules"
+            export targets="olddefconfig vmlinux modules modules_install"
+          elif [ "${{ matrix.arch }}" == "arm64" ]; then
+            export makeargs="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- KCONFIG_CONFIG=Microsoft/hcl-arm64.config INSTALL_MOD_PATH=$PWD/out/modules"
+            export targets="olddefconfig vmlinux Image modules modules_install"
+          fi
+
+          [ "${{ matrix.arch }}" == "cvm-x64" ] && ./Microsoft/merge-cvm-config.sh
+          make $makeargs -j$(nproc) $targets
+
+      - name: Prepare for packaging
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          export artifacts_dir="release_artifacts/${{ matrix.arch }}"
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            export objcopy="aarch64-linux-gnu-objcopy"
+          else
+            export objcopy="objcopy"
+          fi
+
+          mkdir -p $artifacts_dir
+          cp vmlinux $artifacts_dir
+          $objcopy --only-keep-debug --compress-debug-sections $artifacts_dir/vmlinux $artifacts_dir/vmlinux.dbg
+          $objcopy --strip-all --add-gnu-debuglink=$artifacts_dir/vmlinux.dbg $artifacts_dir/vmlinux
+          [ "${{ matrix.arch }}" == "arm64" ] && cp arch/arm64/boot/Image $artifacts_dir/Image || true
+
+          if [ "${{ matrix.arch }}" == "cvm-x64" ]; then
+            cp Microsoft/hcl-x64.config $artifacts_dir/kernel_config
+          else
+            cp Microsoft/hcl-${{ matrix.arch }}.config $artifacts_dir/kernel_config
+          fi
+
+          echo "{" > $artifacts_dir/kernel_build_metadata.json
+          echo "  \"git_branch\": \"${{ github.ref_name }}\"," >> $artifacts_dir/kernel_build_metadata.json
+          echo "  \"git_revision\": \"${{ github.sha }}\"," >> $artifacts_dir/kernel_build_metadata.json
+          echo "  \"build_id\": \"${{ github.run_id }}\"," >> $artifacts_dir/kernel_build_metadata.json
+          echo "  \"build_name\": \"$(date +"%Y%m%d")\"" >> $artifacts_dir/kernel_build_metadata.json
+          echo "}" >> $artifacts_dir/kernel_build_metadata.json
+
+          mv out/modules/lib/modules/*/ $artifacts_dir/modules
+          rm $artifacts_dir/modules/build
+          mkdir $artifacts_dir/modules/debug-files/
+          find $artifacts_dir/modules -name '*.ko' | while read -r mod; do
+            export outmod="$artifacts_dir/modules/debug-files/$(basename $mod)"
+            $objcopy --only-keep-debug --compress-debug-sections "$mod" "$outmod.dbg"
+            $objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod"
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: ${{ matrix.arch }}-build
+          path: release_artifacts/${{ matrix.arch }}/
+
+  build_perf:
+    name: Build Perf
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      matrix:
+        arch: ['x64', 'arm64']
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev
+          [ "${{ matrix.arch }}" == "arm64" ] && sudo apt-get install -y g++-aarch64-linux-gnu || true
+
+      - name: Run build script
+        run: |
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            export makeargs="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
+            export strip="aarch64-linux-gnu-strip"
+          elif [ "${{ matrix.arch }}" == "x64" ]; then
+            export makeargs="ARCH=x86_64"
+            export strip="strip"
+          fi
+          make $makeargs \
+            NO_ZLIB=1 NO_LIBELF=1 NO_LIBCRYPTO=1 NO_LIBPYTHON=1 NO_JEVENTS=1 NO_LIBTRACEEVENT=1 \
+            LDFLAGS=-static -C tools DESTDIR="$PWD/perf-"${{ matrix.arch }}"" perf_install
+
+          $strip perf-"${{ matrix.arch }}"/bin/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ matrix.arch }}
+          path: perf-${{ matrix.arch }}/
+
+  create_release:
+    name: Create GitHub Release
+    needs: [build_linux, build_perf]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: x64-build
+          path: release_artifacts/x64/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cvm-x64-build
+          path: release_artifacts/cvm-x64/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: arm64-build
+          path: release_artifacts/arm64/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: perf-x64
+          path: perf-x64/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: perf-arm64
+          path: perf-arm64/
+
+      - name: Archive artifacts
+        run: |
+          # Install perf
+          mkdir release_artifacts/x64/tools
+          mkdir release_artifacts/cvm-x64/tools
+          mkdir release_artifacts/arm64/tools
+          cp -r perf-x64/ release_artifacts/x64/tools/perf/
+          cp -r perf-x64/ release_artifacts/cvm-x64/tools/perf/
+          cp -r perf-arm64/ release_artifacts/arm64/tools/perf/
+
+          # Archive repo
+          kernel_tag="$(echo ${{ github.ref_name }} | sed 's:.*/::g')"
+          kern="Kernel"
+          echo ${{ github.ref_name }} | grep -q "dev" && kern="Kernel.Dev"
+          tar czvf Microsoft.OHCL.$kern.$kernel_tag-x64.tar.gz -C release_artifacts/x64/ .
+          tar czvf Microsoft.OHCL.$kern.$kernel_tag-cvm-x64.tar.gz -C release_artifacts/cvm-x64/ .
+          tar czvf Microsoft.OHCL.$kern.$kernel_tag-arm64.tar.gz -C release_artifacts/arm64/ .
+
+      - name: Update release notes
+        run: |
+          rolling_tag="${{ github.ref_name }}"
+          kernel_tag="$(make kernelversion)"
+          date="$(date +"%B %d %Y")"
+          sed -i "s:{{rolling lts tag}}:${rolling_tag}:g" Microsoft/release-notes.md
+          sed -i "s:{{LTS Tag}}:${kernel_tag}:g" Microsoft/release-notes.md
+          sed -i "s:{{Date}}:${date}:g" Microsoft/release-notes.md
+
+      - name: Create a GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ github.workspace }}/Microsoft/release-notes.md
+          draft: false
+          files: |
+            Microsoft.OHCL.Kernel.*.tar.gz
+          token: ${{ secrets.RELEASE_TOKEN }}
