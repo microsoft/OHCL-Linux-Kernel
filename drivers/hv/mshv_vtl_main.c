@@ -7,6 +7,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/hashtable.h>
 #include <linux/module.h>
 #include <linux/miscdevice.h>
 #include <linux/anon_inodes.h>
@@ -27,11 +28,13 @@
 
 #ifdef CONFIG_X86_64
 
+#include <asm/apic.h>
 #include <uapi/asm/mtrr.h>
 #include <asm/sev.h>
 #include <asm/tdx.h>
 #include <asm/fpu/xcr.h>
 #include <asm/debugreg.h>
+#include <asm/vmx.h>
 
 #include "../../kernel/fpu/legacy.h"
 
@@ -186,6 +189,43 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 static struct page *tdx_apic_page(int cpu)
 {
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
+}
+
+static struct page *tdx_this_apic_page(void)
+{
+	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page);
+}
+
+/*
+ * For ICR emulation on TDX, we need a fast way to map APICIDs to CPUIDs.
+ * Instead of iterating through all CPUs for each target in the ICR destination field
+ * precompute a mapping. APICIDs can be sparse so we have to use a hash table.
+ * Note: CPU hotplug is not supported (both by this code and by the paravisor in general)
+ */
+static DEFINE_HASHTABLE(apicid_to_cpuid, bits_per(NR_CPUS));
+struct apicid_to_cpuid_entry {
+	int apicid;
+	unsigned int cpuid;
+	struct hlist_node node;
+};
+
+/*
+ * Sets the cpu described by apicid in cpu_mask.
+ * Returns 0 on success, -EINVAL if no cpu matches the apicid.
+ */
+static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask)
+{
+	struct apicid_to_cpuid_entry *found;
+
+	hash_for_each_possible(apicid_to_cpuid, found, node, apicid) {
+		if (found->apicid != apicid)
+			continue;
+
+		cpumask_set_cpu(found->cpuid, cpu_mask);
+		return 0;
+	}
+
+	return -EINVAL;
 }
 #endif
 
@@ -982,11 +1022,359 @@ static void mshv_vtl_idle(void)
 #define enter_mode(mode) ((mode) & MODE_MASK)
 #define reenter_mode(mode) (((mode) >> REENTER_SHIFT) & MODE_MASK)
 
+/*
+ * Interrupt handling (particularly sending (via ICR writes) and receiving interrupts),
+ * is a hot path on TDX. By performing some of the common functionality entirely in-kernel
+ * we eliminate costly user<->kernel transitions.
+ */
+#ifndef CONFIG_INTEL_TDX_GUEST
+static bool mshv_tdx_virtual_interrupt_delivery_enabled(void) { return false; }
+static void mshv_tdx_free_apicid_to_cpuid_mapping(void) {}
+static int mshv_tdx_create_apicid_to_cpuid_mapping(struct device *) { return 0; }
+static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *) { return false; }
+#else
+static bool mshv_tdx_virtual_interrupt_delivery_enabled(void)
+{
+	const u64 VP_READ = 9;
+	struct tdx_extended_field_code ext_field_code = {};
+	struct tdx_module_output out = {};
+	u64 status;
+
+	ext_field_code.field_code    = SECONDARY_VM_EXEC_CONTROL;
+	ext_field_code.field_size    = 2;  /* TDX_FIELD_SIZE_32_BIT */
+	ext_field_code.context_code  = 2;  /* TDX_CONTEXT_CODE_VP_SCOPE */
+	ext_field_code.class_code    = 36; /* L2_VM1 (VTL0) */
+
+	status = __tdx_module_call(VP_READ, 0, ext_field_code.as_u64, 0, 0, &out);
+
+	if (status != 0)
+		panic("tdcall vmcs read failed with code: %llx", status);
+
+	return (out.r8 & SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY) != 0;
+}
+
+static void mshv_tdx_free_apicid_to_cpuid_mapping(void)
+{
+	int bkt;
+	struct apicid_to_cpuid_entry *entry;
+	struct hlist_node *tmp;
+
+	hash_for_each_safe(apicid_to_cpuid, bkt, tmp, entry, node) {
+		hash_del(&entry->node);
+		kfree(entry);
+	}
+}
+
+/*
+ * Creates and populates the apicid_to_cpuid hash table.
+ * This mapping is used for fast ICR emulation on TDX.
+ * Returns 0 on success.
+ */
+static int mshv_tdx_create_apicid_to_cpuid_mapping(struct device *dev)
+{
+	int cpu, ret = 0;
+
+	for_each_online_cpu(cpu) {
+		struct apicid_to_cpuid_entry *entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+
+		if (!entry) {
+			ret = -ENOMEM;
+			break;
+		}
+
+		entry->apicid = cpuid_to_apicid[cpu];
+		entry->cpuid = cpu;
+
+		if (entry->apicid == BAD_APICID) {
+			dev_emerg(dev, "Bad APICID: %d !!\n", entry->apicid);
+			ret = -ENODEV;
+			break;
+		}
+
+		hash_add(apicid_to_cpuid, &entry->node, entry->apicid);
+	}
+
+	if (ret)
+		mshv_tdx_free_apicid_to_cpuid_mapping();
+
+	return ret;
+}
+
+static void mshv_tdx_advance_to_next_instruction(struct tdx_vp_context *context)
+{
+	const u32 instr_length = context->exit_info.r11 >> 32ULL;
+
+	context->l2_enter_guest_state.rip += instr_length;
+}
+
+static void mshv_tdx_clear_exit_reason(struct tdx_vp_context *context)
+{
+	const u64 TDX_PENDING_INTERRUPT = 0x00001120ULL << 32ULL;
+
+	context->exit_info.rax = TDX_PENDING_INTERRUPT;
+}
+
+static bool mshv_tdx_is_simple_icr_write(const struct tdx_vp_context *context)
+{
+	u64 msr_addr;
+	u32 icr_lo;
+	bool fixed;
+	bool edge;
+
+	if (((u32)context->exit_info.rax) != EXIT_REASON_MSR_WRITE)
+		return false;
+
+	msr_addr = context->l2_enter_guest_state.rcx;
+
+	if (msr_addr != (APIC_BASE_MSR + (APIC_ICR >> 4)) && msr_addr != HV_X64_MSR_ICR)
+		return false;
+
+	icr_lo = context->l2_enter_guest_state.rax;
+	fixed = !(icr_lo & (0b111 << 8));
+	edge = !(icr_lo & BIT(15));
+
+	return fixed && edge;
+}
+
+/*
+ * Returns the cpumask described by dest, where dest is a logical destination.
+ * cpu_mask should have no CPUs set.
+ * Returns 0 on success
+ */
+static int mshv_tdx_get_logical_cpumask(u32 dest, struct cpumask *cpu_mask)
+{
+	int ret = 0;
+
+	while ((u16)dest) {
+		const u16 i = fls((u16)dest) - 1;
+		const u32 physical_id = (dest >> 16 << 4) | i;
+
+		ret = mshv_tdx_set_cpumask_from_apicid(physical_id, cpu_mask);
+		dest &= ~BIT(i);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
+/*
+ * Attempts to handle an ICR write. Returns 0 if successful, other values
+ * indicate user-space should be invoked to gracefully handle the error.
+ */
+static int mshv_tdx_handle_simple_icr_write(struct tdx_vp_context *context)
+{
+	const u32 icr_lo = context->l2_enter_guest_state.rax;
+	const u32 dest = context->l2_enter_guest_state.rdx;
+	const u8 shorthand = (icr_lo >> 18) & 0b11;
+	const u8 vector = icr_lo;
+	const u64 bank = vector / 32;
+	const u32 mask = BIT(vector % 32);
+	const u32 self = smp_processor_id();
+
+	bool send_ipi = false;
+	struct cpumask local_mask = {};
+	unsigned int cpu = 0;
+	int ret = 0;
+
+	if (shorthand == 0b10 || dest == (u32)-1) { /* shorthand all or destination id == all */
+		cpumask_copy(&local_mask, cpu_online_mask);
+	} else if (shorthand == 0b11) { /* shorthand all but self */
+		cpumask_copy(&local_mask, cpu_online_mask);
+		cpumask_clear_cpu(self, &local_mask);
+	} else if (shorthand == 0b01) { /* shorthand self */
+		cpumask_set_cpu(self, &local_mask);
+	} else if (icr_lo & BIT(11)) { /* logical */
+		ret = mshv_tdx_get_logical_cpumask(dest, &local_mask);
+	} else { /* physical */
+		ret = mshv_tdx_set_cpumask_from_apicid(dest, &local_mask);
+	}
+
+	if (ret)
+		return ret;
+
+	for_each_cpu(cpu, &local_mask) {
+		/*
+		 * The kernel doesn't provide an atomic_or which operates on u32,
+		 * so cast to atomic_t, which should have the same layout
+		 */
+		static_assert(sizeof(atomic_t) == sizeof(u32));
+		atomic_or(mask, (atomic_t *)
+				(&(mshv_vtl_cpu_run(cpu)->tdx_context.ipi_offload_irr[bank])));
+		send_ipi |= cpu != self;
+	}
+
+	if (send_ipi) {
+		cpumask_clear_cpu(self, &local_mask);
+		__apic_send_IPI_mask(&local_mask, RESCHEDULE_VECTOR);
+	}
+
+	mshv_tdx_advance_to_next_instruction(context);
+	mshv_tdx_clear_exit_reason(context);
+
+	return 0;
+}
+
+static u32 *mshv_tdx_vapic_irr(void)
+{
+	return (u32 *)((char *)page_address(tdx_this_apic_page()) + APIC_IRR);
+}
+
+/*
+ * Pull the interrupts in the `ipi_offload_irr` field into the VAPIC page
+ * Returns true if an exit to user-space is required (sync tmr state)
+ */
+static bool mshv_tdx_pull_ipi_offload_irr(struct tdx_vp_context *context)
+{
+	u32 *apic_page_irr = mshv_tdx_vapic_irr();
+
+	for (int i = 0; i < 8; i++) {
+		const u32 val = xchg(&context->ipi_offload_irr[i], 0);
+
+		if (!val)
+			continue;
+
+		if (context->ipi_offload_tmr[i] & val) {
+			/*
+			 * This vector was previously used for a level-triggered interrupt.
+			 * An edge-triggered interrupt has now arrived, so we need to involve
+			 * user-space to clear its copy of the tmr.
+			 * Put the interrupt(s) back on the run page so it can do so.
+			 * nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write
+			 */
+			atomic_or(val, (atomic_t *)(&context->ipi_offload_irr[i]));
+			return true;
+		}
+
+		/*
+		 * IRR is non-contiguous.
+		 * Each bank is 4 bytes with 12 bytes of padding between banks.
+		 */
+		apic_page_irr[i * 4] |= val;
+	}
+
+	return false;
+}
+
+/*
+ * Checks if exit reason is due:
+ * - An interrupt for the L1
+ * - An interrupt pending for the L2 while trying to enter L1
+ * - An exit from idle (same exit code as above)
+ */
+static bool mshv_tdx_is_intr(const struct tdx_vp_context *context)
+{
+	const u32 TDX_L2_EXIT_PENDING_INTERRUPT = 0x00001102;
+	const u32 TDX_EXIT_PENDING_INTERRUPT = 0x00001120;
+	const u32 tdx_exit = context->exit_info.rax >> 32ULL;
+
+	return tdx_exit == TDX_L2_EXIT_PENDING_INTERRUPT ||
+		tdx_exit == TDX_EXIT_PENDING_INTERRUPT;
+}
+
+static bool mshv_tdx_next_intr_exists(const struct tdx_vp_context *context)
+{
+	const u32 next_intr = (context->exit_info.r10 >> 32ULL);
+
+	return next_intr & BIT(31);
+}
+
+static void mshv_tdx_update_rvi_halt(struct mshv_vtl_run *run)
+{
+	u32 *apic_page_irr = mshv_tdx_vapic_irr();
+	struct tdx_l2_enter_guest_state *enter_state = &run->tdx_context.l2_enter_guest_state;
+
+	enter_state->rvi = 0;
+	for (int i = 7; i >= 0; i--) {
+		if (apic_page_irr[i * 4]) {
+			enter_state->rvi = i * 32 + fls(apic_page_irr[i * 4]) - 1;
+			break;
+		}
+	}
+
+	if (enter_state->rvi) {
+		u8 *offload_flags = &run->tdx_context.ipi_offload_flags;
+		(*offload_flags) &= ~MSHV_VTL_TDX_VP_CONTEXT_IPI_FLAG_HALT_HLT;
+		(*offload_flags) &= ~MSHV_VTL_TDX_VP_CONTEXT_IPI_FLAG_HALT_IDLE;
+		if (!(*offload_flags & MSHV_VTL_TDX_VP_CONTEXT_IPI_FLAG_HALT_OTHER))
+			run->flags &= ~MSHV_VTL_RUN_FLAG_HALTED;
+	}
+}
+
+static bool mshv_tdx_is_hlt(const struct tdx_vp_context *context)
+{
+	return ((u32)context->exit_info.rax) == EXIT_REASON_HLT;
+}
+
+static bool mshv_tdx_is_idle(const struct tdx_vp_context *context)
+{
+	return ((u32)context->exit_info.rax) == EXIT_REASON_MSR_READ &&
+		(u32)context->l2_enter_guest_state.rcx == HV_X64_MSR_GUEST_IDLE;
+}
+
+static void mshv_tdx_handle_hlt_idle(struct tdx_vp_context *context)
+{
+	const u64 VP_WRITE = 10;
+	struct tdx_extended_field_code ext_field_code = {};
+	u64 status;
+
+	ext_field_code.field_code    = GUEST_INTERRUPTIBILITY_INFO;
+	ext_field_code.field_size    = 2;  /* TDX_FIELD_SIZE_32_BIT */
+	ext_field_code.context_code  = 2;  /* TDX_CONTEXT_CODE_VP_SCOPE */
+	ext_field_code.class_code    = 36; /* L2_VM1 (VTL0) */
+
+	/* Clear interrupt shadow */
+	status = __tdx_module_call(VP_WRITE, 0, ext_field_code.as_u64, 0, 1, NULL);
+
+	if (status != 0)
+		panic("tdcall vmcs write failed with code: %llx", status);
+
+	mshv_tdx_advance_to_next_instruction(context);
+	mshv_tdx_clear_exit_reason(context);
+	mshv_vtl_this_run()->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+}
+
+/*
+ * Try to handle a TDX exit entirely in kernel, to avoid the overhead of a
+ * user<->kernel transition. Currently handles ICR writes, HLT, idle, and interrupt injection.
+ * Returns true if the exit was handled entirely in kernel, and the L2 should be re-entered.
+ * Returns false if the exit must be handled by user-space.
+ */
+static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *run)
+{
+	struct tdx_vp_context *context = &run->tdx_context;
+	bool ret_to_user = true;
+
+	if (mshv_tdx_is_intr(context)) {
+		ret_to_user = false;
+	} else if (mshv_tdx_is_simple_icr_write(context)) {
+		ret_to_user = mshv_tdx_handle_simple_icr_write(context);
+	} else if (mshv_tdx_is_hlt(context)) {
+		ret_to_user = false;
+		mshv_tdx_handle_hlt_idle(context);
+		context->ipi_offload_flags |= MSHV_VTL_TDX_VP_CONTEXT_IPI_FLAG_HALT_HLT;
+	} else if (mshv_tdx_is_idle(context)) {
+		ret_to_user = false;
+		mshv_tdx_handle_hlt_idle(context);
+		context->ipi_offload_flags |= MSHV_VTL_TDX_VP_CONTEXT_IPI_FLAG_HALT_IDLE;
+	}
+
+	ret_to_user |= mshv_tdx_pull_ipi_offload_irr(context);
+	ret_to_user |= mshv_tdx_next_intr_exists(context);
+	mshv_tdx_update_rvi_halt(run);
+
+	return !ret_to_user;
+}
+#endif /* CONFIG_INTEL_TDX_GUEST */
+
 static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 {
 	u32 mode, enter, reenter;
+	bool offload_enable;
 
 	preempt_disable();
+	/* This can only be disabled by user-mode, so we only need to check once per ioctl */
+	offload_enable = mshv_tdx_virtual_interrupt_delivery_enabled();
 	mode = READ_ONCE(mshv_vtl_this_run()->enter_mode);
 	enter = enter_mode(mode);
 	reenter = reenter_mode(mode);
@@ -1047,8 +1435,10 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		}
 
 		if (hv_isolation_type_tdx()) {
-			/* Go to usermode for every exit. */
-			goto done;
+			if (offload_enable && mshv_tdx_try_handle_exit(mshv_vtl_this_run()))
+				continue; /* Exit handled entirely in kernel */
+			else
+				goto done;
 		}
 
 		hvp = hv_vp_assist_page[smp_processor_id()];
@@ -2175,6 +2565,9 @@ static int __init mshv_vtl_init(void)
 		}
 	}
 #endif
+	ret = mshv_tdx_create_apicid_to_cpuid_mapping(dev);
+	if (ret)
+		goto unset_func;
 
 	ret = hv_vtl_setup_synic();
 	if (ret)
@@ -2235,6 +2628,7 @@ unset_func:
 static void __exit mshv_vtl_exit(void)
 {
 	mshv_setup_vtl_func(NULL, NULL, NULL);
+	mshv_tdx_free_apicid_to_cpuid_mapping();
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
 	misc_deregister(&mshv_vtl_low);

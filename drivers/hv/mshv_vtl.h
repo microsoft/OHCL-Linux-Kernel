@@ -90,12 +90,27 @@ struct tdx_vp_context {
 	__u64 entry_rcx;
 	/* Must be on 256 byte boundary. */
 	struct tdx_l2_enter_guest_state l2_enter_guest_state;
+	/* Used to handle IPIs (ICR write and interrupt injection) in kernel */
+	__u32 ipi_offload_irr[8];
+	/*
+	 * To handle edge-triggered interrupts on a vector previously used for level-triggered
+	 * interrupts, we must share the tmr
+	 */
+	__u32 ipi_offload_tmr[8];
+	__u8  ipi_offload_flags;
 	/* Pad space until the next 256 byte boundary. */
-	__u8 pad3[96];
+	__u8 pad3[31];
 	/* Must be 16 byte aligned. */
 	struct fxregs_state fx_state;
 	__u8 pad4[16];
 };
+
+/* Halted due to an unspecified reason. Kernel cannot clear this state. */
+#define MSHV_VTL_TDX_VP_CONTEXT_IPI_FLAG_HALT_OTHER BIT(0)
+/* Halted due to HLT. Kernel can clear this state. */
+#define MSHV_VTL_TDX_VP_CONTEXT_IPI_FLAG_HALT_HLT BIT(1)
+/* Halted due to guest idle. Kernel can clear this state. */
+#define MSHV_VTL_TDX_VP_CONTEXT_IPI_FLAG_HALT_IDLE BIT(2)
 
 static_assert(offsetof(struct tdx_vp_context, l2_enter_guest_state) + 272 == 512);
 static_assert(sizeof(struct tdx_vp_context) == 1024);
@@ -130,6 +145,8 @@ struct mshv_vtl_run {
 #ifdef CONFIG_X86_64
 static_assert(offsetof(struct mshv_vtl_run, tdx_context) == 272);
 #endif
+
+static_assert(sizeof(struct mshv_vtl_run) <= 4096);
 
 #define SEV_GHCB_VERSION        1
 #define SEV_GHCB_FORMAT_BASE        0
