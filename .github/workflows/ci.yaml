@@ -3,7 +3,8 @@ name: OHCL Build and Validation
 on:
   pull_request:
     branches:
-      - main
+      - 'product/hcl-main/*'
+      - 'product/hcl-dev/*'
   push:
     tags:
       - 'rolling-lts/hcl-main/*'
