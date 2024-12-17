@@ -124,11 +124,34 @@ struct mshv_vtl_run {
 	char vtl_ret_actions[MSHV_MAX_RUN_MSG_SIZE];
 	__u32 proxy_irr[8];
 	union hv_input_vtl target_vtl;
+	/* Block bitmask of host interrupts */
+	__u32 proxy_irr_blocked[8];
+	/* Bitmask of interrupts that case exits to user-space */
+	__u32 proxy_irr_exit_mask[8];
 };
+
+/* offload_flags possible values */
+/*
+ * vAPIC is enabled, and user-space has requested we accelerate interrupt injection.
+ * This enables HLT and idle handling in kernel. It also allows directly returning to VTL0
+ * from the halted state in certain conditions, and will directly inject proxy_irr into the
+ * vAPIC.
+ */
+#define MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT BIT(0)
+/* Enable X2APIC ICR write handling in kernel */
+#define MSHV_VTL_OFFLOAD_FLAG_X2APIC BIT(1)
+/* Halted due to an unspecified reason. Kernel cannot clear this state. */
+#define MSHV_VTL_OFFLOAD_FLAG_HALT_OTHER BIT(5)
+/* Halted due to HLT. Kernel can clear this state. */
+#define MSHV_VTL_OFFLOAD_FLAG_HALT_HLT BIT(6)
+/* Halted due to guest idle. Kernel can clear this state. */
+#define MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE BIT(7)
 
 #ifdef CONFIG_X86_64
 static_assert(offsetof(struct mshv_vtl_run, tdx_context) == 272);
 #endif
+
+static_assert(sizeof(struct mshv_vtl_run) <= 4096);
 
 #define SEV_GHCB_VERSION        1
 #define SEV_GHCB_FORMAT_BASE        0
