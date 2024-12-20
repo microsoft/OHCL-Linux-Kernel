@@ -180,14 +180,14 @@ jobs:
           rolling_tag="${{ github.ref_name }}"
           kernel_tag="$(make kernelversion)"
           date="$(date +"%B %d %Y")"
-          sed -i "s:{{rolling lts tag}}:${rolling_tag}:g" Microsoft/release-notes.md
-          sed -i "s:{{LTS Tag}}:${kernel_tag}:g" Microsoft/release-notes.md
-          sed -i "s:{{Date}}:${date}:g" Microsoft/release-notes.md
+          sed -i "s:{{rolling lts tag}}:${rolling_tag}:g" MSFT-Merge/release-notes.md
+          sed -i "s:{{LTS Tag}}:${kernel_tag}:g" MSFT-Merge/release-notes.md
+          sed -i "s:{{Date}}:${date}:g" MSFT-Merge/release-notes.md
 
       - name: Create a GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: ${{ github.workspace }}/Microsoft/release-notes.md
+          body_path: ${{ github.workspace }}/MSFT-Merge/release-notes.md
           draft: false
           files: |
             Microsoft.OHCL.Kernel.*.tar.gz
