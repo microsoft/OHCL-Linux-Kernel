@@ -219,14 +219,13 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 	sint.masked = false;
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
-	/* Setup VTL2 Host VSP SINT. */
-	hv_set_msr(HV_MSR_SINT0 + VTL2_VMBUS_SINT_INDEX,
-		   sint.as_uint64);
-
 	/* Enable intercepts */
 	if (!mshv_vsm_capabilities.intercept_page_available)
 		hv_set_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
 			   sint.as_uint64);
+
+	/* VTL2 Host VSP SINT is (un)masked when the user mode requests that */
+
 }
 
 static int mshv_vtl_get_vsm_regs(void)
@@ -1171,6 +1170,24 @@ static long __mshv_ioctl_create_vtl(void __user *user_arg, struct device *module
 	return fd;
 }
 
+static void mshv_vtl_synic_mask_vmbus_sint(const u8 *mask)
+{
+	union hv_synic_sint sint;
+
+	sint.as_uint64 = 0;
+	sint.vector = HYPERVISOR_CALLBACK_VECTOR;
+	sint.masked = (*mask != 0);
+	sint.auto_eoi = hv_recommend_using_aeoi();
+
+	hv_set_msr(HV_MSR_SINT0 + VTL2_VMBUS_SINT_INDEX,
+		sint.as_uint64);
+
+	if (!sint.masked)
+		pr_debug("%s: Unmasking VTL2 VMBUS SINT on VP %d\n", __func__, smp_processor_id());
+	else
+		pr_debug("%s: Masking VTL2 VMBUS SINT on VP %d\n", __func__, smp_processor_id());
+}
+
 static void mshv_vtl_read_remote(void *buffer)
 {
 	struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
@@ -1186,6 +1203,8 @@ static void mshv_vtl_read_remote(void *buffer)
 	vmbus_signal_eom(msg, message_type);
 }
 
+static bool vtl_synic_mask_vmbus_sint_masked = true;
+
 static ssize_t mshv_vtl_sint_read(struct file *filp, char __user *arg, size_t size, loff_t *offset)
 {
 	struct hv_message msg = {};
@@ -1199,10 +1218,14 @@ static ssize_t mshv_vtl_sint_read(struct file *filp, char __user *arg, size_t si
 		if (msg.header.message_type != HVMSG_NONE)
 			break;
 
+		if (READ_ONCE(vtl_synic_mask_vmbus_sint_masked))
+			return 0; /* EOF */
+
 		if (filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
-		ret = wait_event_interruptible(fd_wait_queue, READ_ONCE(has_message));
+		ret = wait_event_interruptible(fd_wait_queue,
+			READ_ONCE(has_message) || READ_ONCE(vtl_synic_mask_vmbus_sint_masked));
 		if (ret)
 			return ret;
 	}
@@ -1218,7 +1241,7 @@ static __poll_t mshv_vtl_sint_poll(struct file *filp, poll_table *wait)
 	__poll_t mask = 0;
 
 	poll_wait(filp, &fd_wait_queue, wait);
-	if (READ_ONCE(has_message))
+	if (READ_ONCE(has_message) || READ_ONCE(vtl_synic_mask_vmbus_sint_masked))
 		mask |= EPOLLIN | EPOLLRDNORM;
 
 	return mask;
@@ -1290,6 +1313,23 @@ static int mshv_vtl_sint_ioctl_set_eventfd(struct mshv_vtl_set_eventfd __user *a
 	return 0;
 }
 
+static int mshv_vtl_sint_ioctl_pause_message_stream(struct mshv_sint_mask __user *arg)
+{
+	static DEFINE_MUTEX(vtl2_vmbus_sint_mask_mutex);
+	struct mshv_sint_mask mask;
+
+	if (copy_from_user(&mask, arg, sizeof(mask)))
+		return -EFAULT;
+	mutex_lock(&vtl2_vmbus_sint_mask_mutex);
+	on_each_cpu((smp_call_func_t)mshv_vtl_synic_mask_vmbus_sint, &mask.mask, 1);
+	WRITE_ONCE(vtl_synic_mask_vmbus_sint_masked, mask.mask != 0);
+	mutex_unlock(&vtl2_vmbus_sint_mask_mutex);
+	if (mask.mask)
+		wake_up_interruptible_poll(&fd_wait_queue, EPOLLIN);
+
+	return 0;
+}
+
 static long mshv_vtl_sint_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
 	switch (cmd) {
@@ -1299,6 +1339,8 @@ static long mshv_vtl_sint_ioctl(struct file *f, unsigned int cmd, unsigned long 
 		return mshv_vtl_sint_ioctl_signal_event((struct mshv_vtl_signal_event *)arg);
 	case MSHV_SINT_SET_EVENTFD:
 		return mshv_vtl_sint_ioctl_set_eventfd((struct mshv_vtl_set_eventfd *)arg);
+	case MSHV_SINT_PAUSE_MESSAGE_STREAM:
+		return mshv_vtl_sint_ioctl_pause_message_stream((struct mshv_sint_mask *)arg);
 	default:
 		return -ENOIOCTLCMD;
 	}
