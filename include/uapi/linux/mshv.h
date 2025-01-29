@@ -234,6 +234,11 @@ struct mshv_vtl_hvcall {
 	__u64 output_ptr; /* pointer to output struct */
 };
 
+struct mshv_sint_mask {
+	__u8 mask;
+	__u8 reserved[7];
+};
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -288,6 +293,7 @@ struct mshv_vtl_hvcall {
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
 #define MSHV_SINT_POST_MESSAGE    _IOW(MSHV_IOCTL, 0x23, struct mshv_vtl_sint_post_msg)
 #define MSHV_SINT_SET_EVENTFD     _IOW(MSHV_IOCTL, 0x24, struct mshv_vtl_set_eventfd)
+#define MSHV_SINT_PAUSE_MESSAGE_STREAM     _IOW(MSHV_IOCTL, 0x25, struct mshv_sint_mask)
 
 /* hv_hvcall device */
 #define MSHV_HVCALL_SETUP        _IOW(MSHV_IOCTL, 0x1E, struct mshv_vtl_hvcall_setup)
