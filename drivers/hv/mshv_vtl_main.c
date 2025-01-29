@@ -19,7 +19,9 @@
 #include <linux/poll.h>
 #include <linux/file.h>
 #include <linux/vmalloc.h>
+#include <asm/boot.h>
 #include <asm/debugreg.h>
+#include <asm/pgalloc.h>
 #include <asm/mshyperv.h>
 #include <trace/events/ipi.h>
 #include <uapi/asm/mtrr.h>
@@ -1284,6 +1286,47 @@ static struct miscdevice mshv_vtl_low = {
 	.minor = MISC_DYNAMIC_MINOR,
 };
 
+static void __init hv_mshv_init_dev_memory(u64 addr)
+{
+	pgd_t	*pgd;
+	p4d_t	*p4d;
+
+	pgd = pgd_offset_k(addr);
+	if (pgd_none(*pgd)) {
+		void *p = (void *)get_zeroed_page(GFP_KERNEL);
+
+		BUG_ON(!p);
+		pgd_populate(&init_mm, pgd, p);
+	}
+
+	p4d = p4d_offset(pgd, addr);
+	if (p4d_none(*p4d)) {
+		void *p = (void *)get_zeroed_page(GFP_KERNEL);
+
+		BUG_ON(!p);
+		p4d_populate(&init_mm, p4d, p);
+	}
+
+}
+
+static int __init mshv_vmbus_mod_init(void)
+{
+	u64 addr;
+
+	pr_debug("CONFIG_PHYSICAL_START: %#016x\n", CONFIG_PHYSICAL_START);
+	pr_debug("LOAD_PHYSICAL_ADDR: %#016x\n", LOAD_PHYSICAL_ADDR);
+
+	/*
+	 * Add additional PML4 entries to vmmemmap to create struct page*'s
+	 * for the sparse memory model and the memory added above 32TiB.
+	 */
+	BUILD_BUG_ON(IS_ENABLED(CONFIG_KASAN));
+	for (addr = 0xffffea8000000000ULL; addr < 0xfffffc0000000000ULL; addr += 0x8000000000ULL)
+		hv_mshv_init_dev_memory(addr);
+
+	return 0;
+}
+
 static int __init mshv_vtl_init(void)
 {
 	int ret;
@@ -1358,6 +1401,8 @@ static int __init mshv_vtl_init(void)
 		dev_err(dev, "mshv vtl mem dev add: %d\n", ret);
 		goto free_mem;
 	}
+
+	mshv_vmbus_mod_init();
 
 	return 0;
 
