@@ -39,6 +39,10 @@
 #define SEND_BUFFER_SIZE (16 * 1024 * 1024)
 #define RECV_BUFFER_SIZE (31 * 1024 * 1024)
 
+static bool no_mask = false;
+module_param(no_mask, bool, 0644);
+MODULE_PARM_DESC(no_mask, "do not manipulate the interrupt mask flag from kernel mode");
+
 /*
  * List of resources to be mapped to user space
  * can be extended up to MAX_UIO_MAPS(5) items
@@ -80,8 +84,10 @@ hv_uio_irqcontrol(struct uio_info *info, s32 irq_state)
 	struct hv_uio_private_data *pdata = info->priv;
 	struct hv_device *dev = pdata->device;
 
-	dev->channel->inbound.ring_buffer->interrupt_mask = !irq_state;
-	virt_mb();
+	if (!no_mask) {
+		dev->channel->inbound.ring_buffer->interrupt_mask = !irq_state;
+		virt_mb();
+	}
 
 	if (!dev->channel->offermsg.monitor_allocated && irq_state)
 		vmbus_setevent(dev->channel);
@@ -98,8 +104,10 @@ static void hv_uio_channel_cb(void *context)
 	struct hv_device *hv_dev = chan->device_obj;
 	struct hv_uio_private_data *pdata = hv_get_drvdata(hv_dev);
 
-	chan->inbound.ring_buffer->interrupt_mask = 1;
-	virt_mb();
+	if (!no_mask) {
+		chan->inbound.ring_buffer->interrupt_mask = 1;
+		virt_mb();
+	}
 
 	uio_event_notify(&pdata->info);
 }
@@ -176,7 +184,8 @@ hv_uio_new_channel(struct vmbus_channel *new_sc)
 	}
 
 	/* Disable interrupts on sub channel */
-	new_sc->inbound.ring_buffer->interrupt_mask = 1;
+	if (!no_mask)
+		new_sc->inbound.ring_buffer->interrupt_mask = 1;
 	set_channel_read_mode(new_sc, HV_CALL_ISR);
 
 	ret = sysfs_create_bin_file(&new_sc->kobj, &ring_buffer_bin_attr);
@@ -220,9 +229,10 @@ hv_uio_open(struct uio_info *info, struct inode *inode)
 
 	ret = vmbus_connect_ring(dev->channel,
 				 hv_uio_channel_cb, dev->channel);
-	if (ret == 0)
-		dev->channel->inbound.ring_buffer->interrupt_mask = 1;
-	else
+	if (ret == 0) {
+		if (!no_mask)
+			dev->channel->inbound.ring_buffer->interrupt_mask = 1;
+	} else
 		atomic_dec(&pdata->refcnt);
 
 	return ret;
