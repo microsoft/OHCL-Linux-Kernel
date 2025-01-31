@@ -2,6 +2,7 @@
 #ifndef _MSHV_VTL_H
 #define _MSHV_VTL_H
 
+#include <linux/kernel.h>
 #include <linux/mshv.h>
 #include <linux/types.h>
 #include <asm/mshyperv.h>
@@ -151,6 +152,8 @@ struct mshv_vtl_run {
 
 #ifdef CONFIG_X86_64
 static_assert(offsetof(struct mshv_vtl_run, tdx_context) == 272);
+u64 __tdg_vp_enter(u64 rcx, u64 rdx,
+		struct tdx_tdg_vp_enter_exit_info *tdg_exit_info);
 #endif
 
 static_assert(sizeof(struct mshv_vtl_run) <= 4096);
@@ -158,8 +161,5 @@ static_assert(sizeof(struct mshv_vtl_run) <= 4096);
 #define SEV_GHCB_VERSION        1
 #define SEV_GHCB_FORMAT_BASE        0
 #define SEV_GHCB_FORMAT_VTL_RETURN  2
-
-/* TDCALL Instruction Leaf Numbers */
-#define TDG_VP_ENTER 25
 
 #endif /* _MSHV_VTL_H */
