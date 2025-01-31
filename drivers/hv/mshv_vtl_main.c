@@ -814,34 +814,17 @@ void mshv_tdx_request_cache_flush(bool wbnoinvd)
 	__tdx_hypercall(&args);
 }
 
-#define TDCALL_ASM	".byte 0x66,0x0f,0x01,0xcc"
-
-/* TODO TDX: Confirm noinline produces the right asm for saving register state */
-noinline void mshv_vtl_return_tdx(void)
+void mshv_vtl_return_tdx(void)
 {
 	struct tdx_tdg_vp_enter_exit_info *tdx_exit_info;
 	struct tdx_vp_state *tdx_vp_state;
 	struct mshv_vtl_run *vtl_run;
 	struct mshv_vtl_per_cpu *per_cpu;
 
-	register void *__sp asm("rsp");
-	register u64 r8 asm("r8");
-	register u64 r9 asm("r9");
-	register u64 r10 asm("r10");
-	register u64 r11 asm("r11");
-	register u64 r12 asm("r12");
-	register u64 r13 asm("r13");
-	register u64 r14 asm("r14");
-	register u64 r15 asm("r15");
-
 	vtl_run = mshv_vtl_this_run();
 	tdx_exit_info = &vtl_run->tdx_context.exit_info;
 	tdx_vp_state = &vtl_run->tdx_context.vp_state;
 	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
-
-	u64 input_rax = TDG_VP_ENTER;
-	u64 input_rcx = vtl_run->tdx_context.entry_rcx;
-	u64 input_rdx = virt_to_phys((void*) &vtl_run->tdx_context.l2_enter_guest_state);
 
 	/*
 	 * TODO TDX: KVM has some code and paths that seem like there is a way to
@@ -865,39 +848,10 @@ noinline void mshv_vtl_return_tdx(void)
 	if (tdx_vp_state->msr_xss != per_cpu->xss)
 		wrmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
 
-	r8 = 0;
-	r9 = 0;
-	r10 = 0;
-	r11 = 0;
-	r12 = 0;
-	r13 = 0;
-	r14 = 0;
-	r15 = 0;
+	__tdg_vp_enter(vtl_run->tdx_context.entry_rcx,
+			virt_to_phys((void *) &vtl_run->tdx_context.l2_enter_guest_state),
+			tdx_exit_info);
 
-	/*
-	 * TODO TDX: pushq popq causes some build complaints unclear why when
-	 * mshv uses it also. Alignment checks even though tdcall has no alignment reqs?
-	 */
-	asm __volatile__ (\
-		/* Save RBP onto the stack since it'll be clobbered and inline asm won't save it. */
-		"pushq	%%rbp\n"
-		TDCALL_ASM "\n"
-		/* restore rbp from the stack */
-		"popq	%%rbp\n"
-		: "=a"(tdx_exit_info->rax), "=c"(tdx_exit_info->rcx),
-		  "=d"(tdx_exit_info->rdx), "=S"(tdx_exit_info->rsi), "=D"(tdx_exit_info->rdi),
-		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11), "=r"(r12), "=r"(r13), "=r"(r14),
-		  "=r"(r15), "+r" (__sp)
-		: "a"(input_rax), "c"(input_rcx), "d"(input_rdx)
-		: "rbx", "cc", "memory" /* TODO: is the "cc" necessary? */
-	);
-
-	tdx_exit_info->r8 = r8;
-	tdx_exit_info->r9 = r9;
-	tdx_exit_info->r10 = r10;
-	tdx_exit_info->r11 = r11;
-	tdx_exit_info->r12 = r12;
-	tdx_exit_info->r13 = r13;
 	tdx_vp_state->cr2 = native_read_cr2();
 	rdmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
 	per_cpu->xss = tdx_vp_state->msr_xss;
