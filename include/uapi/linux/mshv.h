@@ -292,6 +292,15 @@ struct mshv_vtl_sidecar_info {
 	__u32 per_cpu_shmem;
 };
 
+struct mshv_kick_cpus {
+	__u64 len;
+	__u64 cpu_mask_ptr;	/* pointer to cpu mask bits */
+	__u64 flags;
+} __packed;
+
+#define MSHV_KICK_CPUS_FLAG_WAIT_FOR_CPUS	(1 << 0)
+#define MSHV_KICK_CPUS_FLAG_CANCEL_CPU_RUN	(1 << 1)
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -341,6 +350,7 @@ struct mshv_vtl_sidecar_info {
 #define MSHV_VTL_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_vtl_ram_disposition)
 #define MSHV_VTL_SET_POLL_FILE		_IOW(MSHV_IOCTL, 0x25, struct mshv_vtl_set_poll_file)
 #define MSHV_VTL_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
+#define MSHV_VTL_KICK_CPU 		_IOW(MSHV_IOCTL, 0x38, struct mshv_kick_cpus)
 
 /* For x86-64 SEV-SNP only */
 #define MSHV_VTL_PVALIDATE	_IOW(MSHV_IOCTL, 0x28, struct mshv_pvalidate)
@@ -357,6 +367,7 @@ struct mshv_vtl_sidecar_info {
 #define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
 #define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
 #define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
+
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
