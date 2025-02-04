@@ -1836,6 +1836,85 @@ static long mshv_vtl_ioctl_guest_vsm_vmsa_pfn(void __user *user_arg)
 }
 #endif
 
+static void ack_kick(void *cancel_cpu_run)
+{
+	bool cancel = (bool)cancel_cpu_run;
+
+	if (cancel)
+		WRITE_ONCE(mshv_vtl_this_run()->cancel, 1);
+}
+
+static int get_user_cpu_mask(void __user *user_mask_ptr, unsigned long long len,
+			     struct cpumask *new_mask)
+{
+	if (len < cpumask_size())
+		cpumask_clear(new_mask);
+	else if (len > cpumask_size())
+		len = cpumask_size();
+
+	return copy_from_user(new_mask, user_mask_ptr, len) ? -EFAULT : 0;
+}
+
+static inline long mshv_vtl_ioctl_kick_cpu(void __user *user_arg)
+{
+	struct mshv_kick_cpus args = {};
+	struct cpumask cpus = {};
+	long ret;
+	int self;
+	bool wait_for_cpus = false;
+	bool cancel_cpu_run = false;
+
+	ret = copy_from_user(&args, user_arg, sizeof(args)) ? -EFAULT : 0;
+	if (ret)
+		return ret;
+
+	ret = get_user_cpu_mask((void __user *)args.cpu_mask_ptr, args.len, &cpus);
+	if (ret)
+		return ret;
+
+	if (cpumask_empty(&cpus))
+		return 0;
+
+	if (args.flags & MSHV_KICK_CPUS_FLAG_WAIT_FOR_CPUS)
+		wait_for_cpus = true;
+
+	if (args.flags & MSHV_KICK_CPUS_FLAG_CANCEL_CPU_RUN)
+		cancel_cpu_run = true;
+
+	self = get_cpu();
+	cpumask_clear_cpu(self, &cpus);
+
+#if defined(CONFIG_X86_64)
+	if (wait_for_cpus) {
+		smp_call_function_many(&cpus, ack_kick, (void *) cancel_cpu_run, wait_for_cpus);
+	} else {
+		if (cancel_cpu_run) {
+			int cpu;
+
+			for_each_cpu(cpu, &cpus) {
+				/*
+				 * Memory barrier required due to the reschedule vector usage
+				 * below, since we're not waiting for each cpu to acknowledge
+				 * the kick.
+				 */
+				smp_store_release(&mshv_vtl_cpu_run(cpu)->cancel, 1);
+			}
+		}
+
+		__apic_send_IPI_mask(&cpus, RESCHEDULE_VECTOR);
+	}
+#else
+	/*
+	 * On non X64 platforms, there's no simple way to broadcast a reschedule,
+	 * so just always use the generic function.
+	 */
+	smp_call_function_many(&cpus, ack_kick, (void *) cancel_cpu_run, wait_for_cpus);
+#endif
+
+	put_cpu();
+	return 0;
+}
+
 static long
 mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
@@ -1888,6 +1967,10 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		ret = mshv_vtl_ioctl_guest_vsm_vmsa_pfn((void __user *)arg);
 		break;
 #endif
+
+	case MSHV_VTL_KICK_CPU:
+		ret = mshv_vtl_ioctl_kick_cpu((void __user *)arg);
+		break;
 
 	default:
 		dev_err(vtl->module_dev, "invalid vtl ioctl: %#x\n", ioctl);
