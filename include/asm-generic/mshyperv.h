@@ -23,6 +23,7 @@
 #include <linux/bitops.h>
 #include <acpi/acpi_numa.h>
 #include <linux/cpumask.h>
+#include <linux/interrupt.h>
 #include <linux/nmi.h>
 #include <asm/ptrace.h>
 #include <asm-generic/hyperv-defs.h>
@@ -193,6 +194,8 @@ static inline void vmbus_signal_eom(struct hv_message *msg, u32 old_msg_type)
 int hv_get_hypervisor_version(union hv_hypervisor_version_info *info);
 
 void hv_setup_vmbus_handler(void (*handler)(void));
+void hv_setup_percpu_vmbus_handler(void (*handler)(void));
+irqreturn_t vmbus_percpu_isr(int irq, void *dev_id);
 void hv_remove_vmbus_handler(void);
 void hv_setup_stimer0_handler(void (*handler)(void));
 void hv_remove_stimer0_handler(void);
@@ -342,6 +345,16 @@ static inline const char *hv_status_to_string(u64 hv_status)
 	}
 }
 
+extern struct hv_vp_assist_page **hv_vp_assist_page;
+
+static inline struct hv_vp_assist_page *hv_get_vp_assist_page(unsigned int cpu)
+{
+	if (!hv_vp_assist_page)
+		return NULL;
+
+	return hv_vp_assist_page[cpu];
+}
+
 void hyperv_report_panic(struct pt_regs *regs, long err, bool in_die);
 bool hv_is_hyperv_initialized(void);
 bool hv_is_hibernation_supported(void);
@@ -355,6 +368,7 @@ bool hv_query_ext_cap(u64 cap_query);
 void hv_setup_dma_ops(struct device *dev, bool coherent);
 int hv_call_create_vp(int node, u64 partition_id, u32 vp_index, u32 flags);
 int hv_call_deposit_pages(int node, u64 partition_id, u32 num_pages);
+u8 get_vtl(void);
 #else /* CONFIG_HYPERV */
 static inline bool hv_is_hyperv_initialized(void) { return false; }
 static inline bool hv_is_hibernation_supported(void) { return false; }
@@ -365,6 +379,7 @@ static inline enum hv_isolation_type hv_get_isolation_type(void)
 {
 	return HV_ISOLATION_TYPE_NONE;
 }
+static inline u8 get_vtl(void) { return 0; }
 #endif /* CONFIG_HYPERV */
 
 #endif

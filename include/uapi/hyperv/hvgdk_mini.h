@@ -191,8 +191,11 @@ union hv_hypervisor_version_info {
 
 /* HV_X64_ENLIGHTENMENT_INFORMATION */
 
+/* Auto EOI hints are not provided on architectures other than X64 */
+#if defined(__x86_64__)
 /* DeprecateAutoEoi */
 #define HV_DEPRECATING_AEOI_RECOMMENDED		BIT(9)
+#endif
 
 #define HV_MAXIMUM_PROCESSORS       2048
 
@@ -304,6 +307,10 @@ union hv_gpa_page_range {
 #define HV_SYNIC_DOORBELL_SINT_INDEX     HV_SYNIC_FIRST_UNUSED_SINT_INDEX
 
 enum hv_interrupt_type {
+#if defined(__aarch64__)
+	HV_ARM64_INTERRUPT_TYPE_FIXED		= 0x0000,
+	HV_ARM64_INTERRUPT_TYPE_MAXIMUM		= 0x0008,
+#elif defined(__x86_64__)
 	HV_X64_INTERRUPT_TYPE_FIXED		= 0x0000,
 	HV_X64_INTERRUPT_TYPE_LOWESTPRIORITY	= 0x0001,
 	HV_X64_INTERRUPT_TYPE_SMI		= 0x0002,
@@ -315,6 +322,7 @@ enum hv_interrupt_type {
 	HV_X64_INTERRUPT_TYPE_LOCALINT0		= 0x0008,
 	HV_X64_INTERRUPT_TYPE_LOCALINT1		= 0x0009,
 	HV_X64_INTERRUPT_TYPE_MAXIMUM		= 0x000A,
+#endif	
 };
 
 /* Define synthetic interrupt source. */
@@ -331,6 +339,16 @@ union hv_synic_sint {
 		__u64 reserved2 : 43;
 	} __packed;
 };
+
+
+static inline bool hv_should_clear_interrupt(enum hv_interrupt_type type)
+{
+#if defined(__aarch64__)
+	return false;
+#else
+	return type == HV_X64_INTERRUPT_TYPE_EXTINT;
+#endif
+}
 
 union hv_x64_xsave_xfem_register {
 	__u64 as_uint64;
@@ -425,6 +443,7 @@ enum hv_message_type {
 	HVMSG_X64_HALT				= 0x80010007,
 	HVMSG_X64_INTERRUPTION_DELIVERABLE	= 0x80010008,
 	HVMSG_X64_SIPI_INTERCEPT		= 0x80010009,
+	HVMSG_X64_PROXY_INTERRUPT_INTERCEPT	= 0x8001000f,
 };
 
 /* Define the format of the SIMP register */
@@ -462,6 +481,16 @@ struct hv_message_header {
  */
 struct hv_notification_message_payload {
 	__u32 sint_index;
+} __packed;
+
+struct hv_x64_proxy_interrupt_message_payload {
+	__u8 interrupt_vtl;
+	__u8 assert_multiple;
+	__u8 reserved[2];
+	union {
+		__u32 asserted_vector;
+		__u32 asserted_irr[8];
+	} u;
 } __packed;
 
 struct hv_message {
@@ -629,17 +658,19 @@ struct hv_vp_assist_page {
 } __packed;
 
 enum hv_register_name {
+
+	/* Synthetic VSM registers */
+	HV_REGISTER_VSM_CODE_PAGE_OFFSETS	= 0x000D0002,
+	HV_REGISTER_VSM_CAPABILITIES		= 0x000D0006,
+	HV_REGISTER_VSM_PARTITION_CONFIG	= 0x000D0007,
+
+#if defined(__x86_64__)
 	/* Suspend Registers */
 	HV_REGISTER_EXPLICIT_SUSPEND		= 0x00000000,
 	HV_REGISTER_INTERCEPT_SUSPEND		= 0x00000001,
 	HV_REGISTER_DISPATCH_SUSPEND		= 0x00000003,
 
 	HV_REGISTER_VP_ROOT_SIGNAL_COUNT        = 0x00090014,
-
-	/* Synthetic VSM registers */
-	HV_REGISTER_VSM_CODE_PAGE_OFFSETS	= 0x000D0002,
-	HV_REGISTER_VSM_CAPABILITIES		= 0x000D0006,
-	HV_REGISTER_VSM_PARTITION_CONFIG	= 0x000D0007,
 
 	/* Interruptible notification register */
 	HV_X64_REGISTER_DELIVERABILITY_NOTIFICATIONS	= 0x00010006,
@@ -824,23 +855,80 @@ enum hv_register_name {
 	HV_X64_REGISTER_IA32_VMX_TRUE_ENTRY_CTLS	= 0x000800B2,
 
 	HV_X64_REGISTER_REG_PAGE	= 0x0009001C,
+
+	/* Partition Timer Assist Registers */
+	HV_X64_REGISTER_EMULATED_TIMER_PERIOD	= 0x00090030,
+	HV_X64_REGISTER_EMULATED_TIMER_CONTROL	= 0x00090031,
+	HV_X64_REGISTER_PM_TIMER_ASSIST		= 0x00090032,
+
+	/* AMD SEV SNP configuration register */
+	HV_X64_REGISTER_SEV_CONTROL		= 0x00090040,
+
+	/* Intercept Control Registers */
+	HV_X64_REGISTER_CR_INTERCEPT_CONTROL			= 0x000E0000,
+	HV_X64_REGISTER_CR_INTERCEPT_CR0_MASK			= 0x000E0001,
+	HV_X64_REGISTER_CR_INTERCEPT_CR4_MASK			= 0x000E0002,
+	HV_X64_REGISTER_CR_INTERCEPT_IA32_MISC_ENABLE_MASK	= 0x000E0003,
+
+#elif defined(__aarch64__)
+
+	/* ARM64 GP registers*/
+
+	HV_ARM64_REGISTER_X0 =  		0x00020000,
+	HV_ARM64_REGISTER_X1 =  		0x00020001,
+	HV_ARM64_REGISTER_X2 =  		0x00020002,
+	HV_ARM64_REGISTER_X3 =  		0x00020003,
+	HV_ARM64_REGISTER_X4 =  		0x00020004,
+	HV_ARM64_REGISTER_X5 =  		0x00020005,
+	HV_ARM64_REGISTER_X6 =  		0x00020006,
+	HV_ARM64_REGISTER_X7 =  		0x00020007,
+	HV_ARM64_REGISTER_X8 =  		0x00020008,
+	HV_ARM64_REGISTER_X9 =  		0x00020009,
+	HV_ARM64_REGISTER_X10 =  		0x0002000A,
+	HV_ARM64_REGISTER_X11 =  		0x0002000B,
+	HV_ARM64_REGISTER_X12 =  		0x0002000C,
+	HV_ARM64_REGISTER_X13 =  		0x0002000D,
+	HV_ARM64_REGISTER_X14 =  		0x0002000E,
+	HV_ARM64_REGISTER_X15 =  		0x0002000F,
+	HV_ARM64_REGISTER_X16 =  		0x00020010,
+	HV_ARM64_REGISTER_X17 =  		0x00020011,
+	HV_ARM64_REGISTER_X18 =  		0x00020012,
+	HV_ARM64_REGISTER_X19 =  		0x00020013,
+	HV_ARM64_REGISTER_X20 =  		0x00020014,
+	HV_ARM64_REGISTER_X21 =  		0x00020015,
+	HV_ARM64_REGISTER_X22 =  		0x00020016,
+	HV_ARM64_REGISTER_X23 =  		0x00020017,
+	HV_ARM64_REGISTER_X24 =  		0x00020018,
+	HV_ARM64_REGISTER_X25 =  		0x00020019,
+	HV_ARM64_REGISTER_X26 =  		0x0002001A,
+	HV_ARM64_REGISTER_X27 =  		0x0002001B,
+	HV_ARM64_REGISTER_X28 =  		0x0002001C,
+	HV_ARM64_REGISTER_FP =  		0x0002001D,
+	HV_ARM64_REGISTER_LR =  		0x0002001E,
+	HV_ARM64_REGISTER_PC =  		0x00020022,
+
+	/* ARM64 System Registers */
+
+	HV_ARM64_REGISTER_SCTLR_EL1 =  0x00040002,
+	HV_ARM64_REGISTER_TTBR0_EL1 =  0x00040005,
+	HV_ARM64_REGISTER_TTBR1_EL1 =  0x00040006,
+	HV_ARM64_REGISTER_TCR_EL1 =    0x00040007,
+	HV_ARM64_REGISTER_MAIR_EL1 =   0x0004000B,
+	HV_ARM64_REGISTER_VBAR_EL1 =   0x0004000C,
+	HV_ARM64_REGISTER_SPSR_EL1 =   0x00040014,
+
+#endif
 };
 
 /*
  * Arch compatibility regs for use with hv_set/get_register
  */
 #define HV_MSR_VP_INDEX		(HV_X64_MSR_VP_INDEX)
-#define HV_MSR_TIME_REF_COUNT	(HV_X64_MSR_TIME_REF_COUNT)
 #define HV_MSR_REFERENCE_TSC	(HV_X64_MSR_REFERENCE_TSC)
-#define HV_MSR_STIMER0_CONFIG	(HV_X64_MSR_STIMER0_CONFIG)
-#define HV_MSR_STIMER0_COUNT	(HV_X64_MSR_STIMER0_COUNT)
 
 #define HV_MSR_SCONTROL		(HV_X64_MSR_SCONTROL)
 #define HV_MSR_SIEFP		(HV_X64_MSR_SIEFP)
-#define HV_MSR_SIMP		(HV_X64_MSR_SIMP)
 #define HV_MSR_SIRBP		(HV_X64_MSR_SIRBP)
-#define HV_MSR_EOM		(HV_X64_MSR_EOM)
-#define HV_MSR_SINT0		(HV_X64_MSR_SINT0)
 
 #define HV_MSR_NESTED_SCONTROL	(HV_X64_MSR_NESTED_SCONTROL)
 #define HV_MSR_NESTED_SIEFP	(HV_X64_MSR_NESTED_SIEFP)
@@ -854,6 +942,27 @@ enum hv_register_name {
 #define HV_MSR_CRASH_P3		(HV_X64_MSR_CRASH_P3)
 #define HV_MSR_CRASH_P4		(HV_X64_MSR_CRASH_P4)
 #define HV_MSR_CRASH_CTL	(HV_X64_MSR_CRASH_CTL)
+
+#if defined(__x86_64__)
+
+#define HV_MSR_EOM		(HV_X64_MSR_EOM)
+#define HV_MSR_TIME_REF_COUNT	(HV_X64_MSR_TIME_REF_COUNT)
+#define HV_MSR_STIMER0_CONFIG	(HV_X64_MSR_STIMER0_CONFIG)
+#define HV_MSR_STIMER0_COUNT	(HV_X64_MSR_STIMER0_COUNT)
+#define HV_MSR_SIMP		(HV_X64_MSR_SIMP)
+#define HV_MSR_SINT0		(HV_X64_MSR_SINT0)
+
+#elif defined(__aarch64__)
+
+#define HV_MSR_SINT0		0x000A0000
+#define HV_MSR_EOM		0x000A0014
+#define HV_MSR_TIME_REF_COUNT	0x00090004
+#define HV_MSR_STIMER0_CONFIG	0x000B0000
+#define HV_MSR_STIMER0_COUNT	0x000B0001
+#define HV_MSR_SIMP		0x000A0013
+
+#endif
+
 
 /* General Hypervisor Register Content Definitions */
 
@@ -889,6 +998,8 @@ union hv_x64_interrupt_state_register {
 		__u64 reserved : 62;
 	} __packed;
 };
+
+#if !defined(__aarch64__)
 
 union hv_x64_pending_exception_event {
 	__u64 as_uint64[2];
@@ -933,6 +1044,48 @@ union hv_x64_pending_interruption_register {
 	} __packed;
 };
 
+#else /* !defined(__aarch64__) */
+
+#define HV_ARM64_PENDING_EVENT_HEADER \
+	__u8 event_pending : 1; \
+	__u8 event_type : 3; \
+	__u8 reserved : 4
+
+union hv_arm64_pending_synthetic_exception_event {
+	__u64 as_uint64[2];
+	struct {
+		HV_ARM64_PENDING_EVENT_HEADER;
+
+		__u32 exception_type;
+		__u64 context;
+	};
+};
+
+union hv_arm64_interrupt_state_register {
+	__u64 as_uint64;
+	struct {
+		__u64 interrupt_shadow : 1;
+		__u64 reserved : 63;
+	};
+};
+
+enum hv_arm64_pending_interruption_type {
+	HV_ARM64_PENDING_INTERRUPT = 0,
+	HV_ARM64_PENDING_EXCEPTION = 1
+};
+
+union hv_arm64_pending_interruption_register {
+	__u64 as_uint64;
+	struct {
+		__u64 interruption_pending : 1;
+		__u64 interruption_type : 1;
+		__u64 reserved : 30;
+		__u64 error_code : 32;
+	};
+};
+
+#endif /* defined(__aarch64__) */
+
 union hv_register_value {
 	struct hv_u128 reg128;
 	__u64 reg64;
@@ -940,6 +1093,7 @@ union hv_register_value {
 	__u16 reg16;
 	__u8 reg8;
 
+#if defined(__x86_64__)
 	union hv_x64_fp_register fp;
 	union hv_x64_fp_control_status_register fp_control_status;
 	union hv_x64_xmm_control_status_register xmm_control_status;
@@ -954,6 +1108,12 @@ union hv_register_value {
 	union hv_x64_pending_exception_event pending_exception_event;
 	union hv_x64_pending_virtualization_fault_event
 		pending_virtualization_fault_event;
+#elif defined(__aarch64__)
+	union hv_arm64_pending_interruption_register pending_interruption;
+	union hv_arm64_interrupt_state_register interrupt_state;
+	union hv_arm64_pending_synthetic_exception_event
+		pending_synthetic_exception_event;
+#endif
 };
 
 struct hv_register_assoc {
@@ -982,11 +1142,20 @@ struct hv_input_set_vp_registers {
 } __packed;
 
 union hv_msi_entry {
+#if defined(__x86_64__)
 	u64 as_uint64;
 	struct {
 		u32 address;
 		u32 data;
 	} __packed;
+#elif defined(__aarch64__)
+	u64 as_uint64[2];
+	struct {
+		u64 address;
+		u32 data;
+		u32 reserved;
+	} __packed;
+#endif
 };
 
 enum hv_interrupt_source {
