@@ -15,6 +15,9 @@
 #include <linux/errno.h>
 #include <linux/version.h>
 #include <linux/cpuhotplug.h>
+#include <linux/libfdt.h>
+#include <linux/of.h>
+#include <linux/of_fdt.h>
 #include <asm/mshyperv.h>
 
 static bool hyperv_initialized;
@@ -27,6 +30,29 @@ int hv_get_hypervisor_version(union hv_hypervisor_version_info *info)
 	return 0;
 }
 
+static bool hyperv_detect_fdt(void)
+{
+#if IS_ENABLED(CONFIG_OF)
+	const unsigned long hyp_node = of_get_flat_dt_subnode_by_name(
+			of_get_flat_dt_root(), "hypervisor");
+
+	return (hyp_node != -FDT_ERR_NOTFOUND) &&
+			of_flat_dt_is_compatible(hyp_node, "microsoft,hyperv");
+#else
+	return false;
+#endif
+}
+
+static bool hyperv_detect_acpi(void)
+{
+#if IS_ENABLED(CONFIG_ACPI)
+	return !acpi_disabled &&
+			!strncmp((char *)&acpi_gbl_FADT.hypervisor_id, "MsHyperV", 8);
+#else
+	return false;
+#endif
+}
+
 static int __init hyperv_init(void)
 {
 	struct hv_get_vp_registers_output	result;
@@ -35,13 +61,11 @@ static int __init hyperv_init(void)
 
 	/*
 	 * Allow for a kernel built with CONFIG_HYPERV to be running in
-	 * a non-Hyper-V environment, including on DT instead of ACPI.
+	 * a non-Hyper-V environment.
+	 *
 	 * In such cases, do nothing and return success.
 	 */
-	if (acpi_disabled)
-		return 0;
-
-	if (strncmp((char *)&acpi_gbl_FADT.hypervisor_id, "MsHyperV", 8))
+	if (!hyperv_detect_fdt() && !hyperv_detect_acpi())
 		return 0;
 
 	/* Setup the guest ID */
