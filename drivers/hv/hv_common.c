@@ -18,6 +18,7 @@
 #include <linux/bitfield.h>
 #include <linux/cpumask.h>
 #include <linux/sched/task_stack.h>
+#include <linux/io.h>
 #include <linux/panic_notifier.h>
 #include <linux/ptrace.h>
 #include <linux/random.h>
@@ -28,6 +29,7 @@
 #include <linux/slab.h>
 #include <linux/dma-map-ops.h>
 #include <linux/set_memory.h>
+#include <linux/vmalloc.h>
 #include <asm/hyperv-tlfs.h>
 #include <asm/mshyperv.h>
 
@@ -86,6 +88,12 @@ static struct ctl_table_header *hv_ctl_table_hdr;
  */
 u8 __percpu **hv_synic_eventring_tail;
 EXPORT_SYMBOL_GPL(hv_synic_eventring_tail);
+
+u64 hv_current_partition_id = ~0ull;
+EXPORT_SYMBOL_GPL(hv_current_partition_id);
+
+struct hv_vp_assist_page **hv_vp_assist_page;
+EXPORT_SYMBOL_GPL(hv_vp_assist_page);
 
 /*
  * Hyper-V specific initialization and shutdown code that is
@@ -303,11 +311,49 @@ static void hv_kmsg_dump_register(void)
 	}
 }
 
+#if IS_ENABLED(CONFIG_HYPERV_VTL_MODE)
+u8 __init get_vtl(void)
+{
+	u64 control = HV_HYPERCALL_REP_COMP_1 | HVCALL_GET_VP_REGISTERS;
+	struct hv_get_vp_registers_input *input;
+	struct hv_get_vp_registers_output *output;
+	unsigned long flags;
+	u64 ret;
+
+	local_irq_save(flags);
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	output = (struct hv_get_vp_registers_output *)input;
+
+	memset(input, 0, struct_size(input, element, 1));
+	input->header.partitionid = HV_PARTITION_ID_SELF;
+	input->header.vpindex = HV_VP_INDEX_SELF;
+	input->header.inputvtl = 0;
+	input->element[0].name0 = HV_REGISTER_VSM_VP_STATUS;
+
+	// BUGBUG-ISOLATION: From discussions with Jon, HvRegisterVsmVpStatus is
+	// untrusted in an isolated guest as the hypervisor can lie. We should
+	// probably report this via underhill_boot instead, or modify some arch
+	// register.
+
+	ret = hv_do_hypercall(control, input, output);
+	if (hv_result_success(ret)) {
+		ret = output->as64.low & HV_VTL_MASK;
+	} else {
+		pr_err("Failed to get VTL(error: %lld) exiting...\n", ret);
+		BUG();
+	}
+
+	local_irq_restore(flags);
+	return ret;
+}
+#endif
+
 int __init hv_common_init(void)
 {
-	int i;
+	int cpu;
+	int ret = 0;
 	union hv_hypervisor_version_info version;
-
+	
 	/* Get information about the Hyper-V host version */
 	if (!hv_get_hypervisor_version(&version))
 		pr_info("Hyper-V: Host Build %d.%d.%d.%d-%d-%d\n",
@@ -381,10 +427,28 @@ int __init hv_common_init(void)
 		return -ENOMEM;
 	}
 
-	for (i = 0; i < num_possible_cpus(); i++)
-		hv_vp_index[i] = VP_INVAL;
+	for_each_possible_cpu(cpu)
+		hv_vp_index[cpu] = VP_INVAL;
 
-	return 0;
+	/*
+	 * The VP assist page is useless to a TDX guest: the only use we
+	 * would have for it is lazy EOI, which can not be used with TDX.
+	 *
+	 * TODO TDX: UH doens't require this on TDX right now, but we may
+	 * want it in the future?
+	 */
+	if (hv_isolation_type_tdx())
+		hv_vp_assist_page = NULL;
+	else {
+		hv_vp_assist_page = kcalloc(num_possible_cpus(),
+						sizeof(*hv_vp_assist_page), GFP_KERNEL);
+		if (!hv_vp_assist_page) {
+			hv_common_free();
+			ret = -ENOMEM;
+		}
+	}
+
+	return ret;
 }
 
 void __init ms_hyperv_late_init(void)
@@ -461,6 +525,9 @@ error:
 
 int hv_common_cpu_init(unsigned int cpu)
 {
+	union hv_vp_assist_reg_contents vp_assist_reg = { 0 };
+	struct hv_vp_assist_page **hvp = &hv_vp_assist_page[cpu];
+
 	void **inputarg, **outputarg;
 	u8 **synic_eventring_tail;
 	u64 msr_vp_index;
@@ -534,6 +601,39 @@ int hv_common_cpu_init(unsigned int cpu)
 	if (msr_vp_index > hv_max_vp_index)
 		hv_max_vp_index = msr_vp_index;
 
+	if (!hv_vp_assist_page)
+		return 0;
+
+	if (hv_root_partition) {
+		/*
+		 * For root partition we get the hypervisor provided VP assist
+		 * page, instead of allocating a new page.
+		 */
+		vp_assist_reg.as_uint64 = hv_get_msr(HV_SYN_REG_VP_ASSIST_PAGE);
+		*hvp = memremap(vp_assist_reg.pfn << HV_VP_ASSIST_PAGE_ADDRESS_SHIFT,
+				PAGE_SIZE, MEMREMAP_WB);
+	} else {
+		/*
+		 * The VP assist page is an "overlay" page (see Hyper-V TLFS's
+		 * Section 5.2.1 "GPA Overlay Pages"). Here it must be zeroed
+		 * out to make sure we always write the EOI MSR in
+		 * hv_apic_eoi_write() *after* the EOI optimization is disabled
+		 * in hv_cpu_die(), otherwise a CPU may not be stopped in the
+		 * case of CPU offlining and the VM will hang.
+		 */
+		if (!*hvp) {
+			*hvp = __vmalloc(PAGE_SIZE, GFP_KERNEL | __GFP_ZERO);
+			if (*hvp)
+				vp_assist_reg.pfn = vmalloc_to_pfn(*hvp);
+		}
+
+		WARN_ON(!(*hvp));
+		if (*hvp) {
+			vp_assist_reg.enable = 1;
+			hv_set_msr(HV_SYN_REG_VP_ASSIST_PAGE, vp_assist_reg.as_uint64);
+		}
+	}
+
 	return 0;
 }
 
@@ -550,6 +650,47 @@ int hv_common_cpu_die(unsigned int cpu)
 	 * If a previously offlined CPU is brought back online again, the
 	 * originally allocated memory is reused in hv_common_cpu_init().
 	 */
+	unsigned long flags;
+	void **inputarg, **outputarg;
+	u8 **synic_eventring_tail;
+	void *mem;
+
+	local_irq_save(flags);
+
+	inputarg = (void **)this_cpu_ptr(hyperv_pcpu_input_arg);
+	mem = *inputarg;
+	*inputarg = NULL;
+
+	outputarg = (void **)this_cpu_ptr(hyperv_pcpu_output_arg);
+	*outputarg = NULL;
+
+	if (hv_root_partition) {
+		synic_eventring_tail = (u8 **)this_cpu_ptr(hv_synic_eventring_tail);
+		kfree(*synic_eventring_tail);
+		*synic_eventring_tail = NULL;
+	}
+
+	local_irq_restore(flags);
+
+	kfree(mem);
+
+	if (hv_vp_assist_page && hv_vp_assist_page[cpu]) {
+		union hv_vp_assist_reg_contents vp_assist_reg = { 0 };
+
+		if (hv_root_partition) {
+			/*
+			 * For root partition the VP assist page is mapped to
+			 * hypervisor provided page, and thus we unmap the
+			 * page here and nullify it, so that in future we have
+			 * correct page address mapped in hv_cpu_init.
+			 */
+			memunmap(hv_vp_assist_page[cpu]);
+			hv_vp_assist_page[cpu] = NULL;
+			vp_assist_reg.as_uint64 = hv_get_msr(HV_SYN_REG_VP_ASSIST_PAGE);
+			vp_assist_reg.enable = 0;
+		}
+		hv_set_msr(HV_SYN_REG_VP_ASSIST_PAGE, vp_assist_reg.as_uint64);
+	}
 
 	return 0;
 }
@@ -655,6 +796,17 @@ void __weak hv_setup_vmbus_handler(void (*handler)(void))
 {
 }
 EXPORT_SYMBOL_GPL(hv_setup_vmbus_handler);
+
+irqreturn_t __weak vmbus_percpu_isr(int irq, void *dev_id)
+{
+	return IRQ_HANDLED;
+}
+EXPORT_SYMBOL_GPL(vmbus_percpu_isr);
+
+void __weak hv_setup_percpu_vmbus_handler(void (*handler)(void))
+{
+}
+EXPORT_SYMBOL_GPL(hv_setup_percpu_vmbus_handler);
 
 void __weak hv_remove_vmbus_handler(void)
 {

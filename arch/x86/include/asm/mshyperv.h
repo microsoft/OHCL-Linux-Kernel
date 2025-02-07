@@ -89,12 +89,12 @@ static inline u64 hv_do_hypercall(u64 control, void *input, void *output)
 		return U64_MAX;
 
 	__asm__ __volatile__("mov %4, %%r8\n"
-			     CALL_NOSPEC
-			     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
-			       "+c" (control), "+d" (input_address)
-			     :  "r" (output_address),
+			CALL_NOSPEC
+			: "=a" (hv_status), ASM_CALL_CONSTRAINT,
+			"+c" (control), "+d" (input_address)
+			:  "r" (output_address),
 				THUNK_TARGET(hv_hypercall_pg)
-			     : "cc", "memory", "r8", "r9", "r10", "r11");
+			: "cc", "memory", "r8", "r9", "r10", "r11");
 #else
 	u32 input_address_hi = upper_32_bits(input_address);
 	u32 input_address_lo = lower_32_bits(input_address);
@@ -139,10 +139,10 @@ static inline u64 _hv_do_fast_hypercall8(u64 control, u64 input1)
 				:: "cc", "r8", "r9", "r10", "r11");
 	} else {
 		__asm__ __volatile__(CALL_NOSPEC
-				     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
-				       "+c" (control), "+d" (input1)
-				     : THUNK_TARGET(hv_hypercall_pg)
-				     : "cc", "r8", "r9", "r10", "r11");
+				: "=a" (hv_status), ASM_CALL_CONSTRAINT,
+				"+c" (control), "+d" (input1)
+				: THUNK_TARGET(hv_hypercall_pg)
+				: "cc", "r8", "r9", "r10", "r11");
 	}
 #else
 	{
@@ -194,12 +194,12 @@ static inline u64 _hv_do_fast_hypercall16(u64 control, u64 input1, u64 input2)
 				     : "cc", "r8", "r9", "r10", "r11");
 	} else {
 		__asm__ __volatile__("mov %4, %%r8\n"
-				     CALL_NOSPEC
-				     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
-				       "+c" (control), "+d" (input1)
-				     : "r" (input2),
-				       THUNK_TARGET(hv_hypercall_pg)
-				     : "cc", "r8", "r9", "r10", "r11");
+				CALL_NOSPEC
+				: "=a" (hv_status), ASM_CALL_CONSTRAINT,
+				"+c" (control), "+d" (input1)
+				: "r" (input2),
+				THUNK_TARGET(hv_hypercall_pg)
+				: "cc", "r8", "r9", "r10", "r11");
 	}
 #else
 	{
@@ -232,16 +232,6 @@ static inline u64 hv_do_fast_nested_hypercall16(u16 code, u64 input1, u64 input2
 	u64 control = (u64)code | HV_HYPERCALL_FAST_BIT | HV_HYPERCALL_NESTED;
 
 	return _hv_do_fast_hypercall16(control, input1, input2);
-}
-
-extern struct hv_vp_assist_page **hv_vp_assist_page;
-
-static inline struct hv_vp_assist_page *hv_get_vp_assist_page(unsigned int cpu)
-{
-	if (!hv_vp_assist_page)
-		return NULL;
-
-	return hv_vp_assist_page[cpu];
 }
 
 void __init hyperv_init(void);
