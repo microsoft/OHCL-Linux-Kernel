@@ -532,7 +532,7 @@ static bool mshv_vtl_process_intercept(void)
 static bool in_idle_is_enabled;
 DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 
-void mshv_vtl_switch_to_vtl0_irqoff(void)
+static void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
 	struct hv_vp_assist_page *hvp;
 	struct mshv_vtl_run *this_run = mshv_vtl_this_run();

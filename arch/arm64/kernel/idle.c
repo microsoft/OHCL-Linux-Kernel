@@ -11,6 +11,7 @@
 #include <asm/cpuidle.h>
 #include <asm/cpufeature.h>
 #include <asm/sysreg.h>
+#include <asm/idle.h>
 
 /*
  *	cpu_do_idle()
