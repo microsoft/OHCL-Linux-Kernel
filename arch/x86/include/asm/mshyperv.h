@@ -326,8 +326,59 @@ static inline u64 hv_get_non_nested_msr(unsigned int reg) { return 0; }
 
 
 #ifdef CONFIG_HYPERV_VTL_MODE
+
+#include <asm/fpu/types.h>
+
+struct hv_vtl_cpu_context {
+	union {
+		struct {
+			u64 rax;
+			u64 rcx;
+			u64 rdx;
+			u64 rbx;
+			u64 cr2;
+			u64 rbp;
+			u64 rsi;
+			u64 rdi;
+			u64 r8;
+			u64 r9;
+			u64 r10;
+			u64 r11;
+			u64 r12;
+			u64 r13;
+			u64 r14;
+			u64 r15;
+		};
+		u64 gp_regs[16];
+	};
+
+	struct fxregs_state fx_state;
+
+};
+
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
+void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_offset);
+
+static inline void hv_vtl_idle(void)
+{
+	native_safe_halt();
+}
+
+struct hv_register_assoc;
+
+/*
+ * Set the register. If the function returns `1`, that must be done via
+ * a hypercall. Returning `0` means success.
+ */
+int hv_vtl_set_reg(struct hv_register_assoc *regs, bool shared);
+
+/*
+ * Get the register. If the function returns `1`, that must be done via
+ * a hypercall. Returning `0` means success.
+ */
+int hv_vtl_get_reg(struct hv_register_assoc *regs, bool shared);
+
 #else
 static inline void __init hv_vtl_init_platform(void) {}
 static inline int __init hv_vtl_early_init(void) { return 0; }
