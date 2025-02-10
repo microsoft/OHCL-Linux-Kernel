@@ -19,17 +19,13 @@
 #include <linux/file.h>
 #include <linux/vmalloc.h>
 #include <asm/boot.h>
-#include <asm/debugreg.h>
-#include <asm/mshyperv.h>
 #include <asm/trace/hyperv.h>
 #include <linux/tick.h>
 #include <asm/pgalloc.h>
 #include <asm/mshyperv.h>
 #include <trace/events/ipi.h>
-#include <uapi/asm/mtrr.h>
 #include <uapi/linux/mshv.h>
 
-#include "../../kernel/fpu/legacy.h"
 #include "mshv.h"
 #include "mshv_vtl.h"
 #include "hyperv_vmbus.h"
@@ -156,6 +152,7 @@ static long __mshv_vtl_ioctl_check_extension(u32 arg)
 
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
+#ifdef CONFIG_X86_64
 	struct hv_register_assoc reg_assoc = {};
 	union mshv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
@@ -212,6 +209,9 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 		per_cpu->reg_page = reg_page;
 		mshv_has_reg_page = true;
 	}
+#else
+	pr_debug("not using the register page");
+#endif
 }
 
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
@@ -219,7 +219,7 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 	union hv_synic_sint sint;
 
 	sint.as_uint64 = 0;
-	sint.vector = HYPERVISOR_CALLBACK_VECTOR;
+	sint.vector = vmbus_interrupt;
 	sint.masked = false;
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
@@ -236,24 +236,30 @@ static int mshv_vtl_get_vsm_regs(void)
 {
 	struct hv_register_assoc registers[2];
 	union hv_input_vtl input_vtl;
-	int ret, count = 2;
+	int ret, count = 0;
 
 	input_vtl.as_uint8 = 0;
-	registers[0].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
-	registers[1].name = HV_REGISTER_VSM_CAPABILITIES;
+	registers[count++].name = HV_REGISTER_VSM_CAPABILITIES;
+
+	/* Code page offset register is not supported on ARM */
+#ifdef CONFIG_X86_64
+	registers[count++].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
+#endif
 
 	ret = hv_call_get_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 				       count, input_vtl, registers);
 	if (ret)
 		return ret;
 
-	mshv_vsm_page_offsets.as_uint64 = registers[0].value.reg64;
-	mshv_vsm_capabilities.as_uint64 = registers[1].value.reg64;
+	mshv_vsm_capabilities.as_uint64 = registers[0].value.reg64;
+#ifdef CONFIG_X86_64
+	mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
+#endif
 
 	return ret;
 }
 
-static int mshv_vtl_configure_vsm_partition(struct device *dev)
+static int __maybe_unused mshv_vtl_configure_vsm_partition(struct device *dev)
 {
 	union hv_register_vsm_partition_config config;
 	struct hv_register_assoc reg_assoc;
@@ -339,6 +345,7 @@ static int hv_vtl_setup_synic(void)
 
 	/* Use our isr to first filter out packets destined for userspace */
 	hv_setup_vmbus_handler(mshv_vtl_vmbus_isr);
+	hv_setup_percpu_vmbus_handler(mshv_vtl_vmbus_isr);
 
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "hyperv/vtl:online",
 				mshv_vtl_alloc_context, NULL);
@@ -500,443 +507,6 @@ static int mshv_vtl_ioctl_set_poll_file(struct mshv_vtl_set_poll_file __user *us
 	return 0;
 }
 
-static int mshv_vtl_set_reg(struct hv_register_assoc *regs)
-{
-	u64 reg64;
-	enum hv_register_name gpr_name;
-
-	gpr_name = regs->name;
-	reg64 = regs->value.reg64;
-
-	switch (gpr_name) {
-	case HV_X64_REGISTER_DR0:
-		native_set_debugreg(0, reg64);
-		break;
-	case HV_X64_REGISTER_DR1:
-		native_set_debugreg(1, reg64);
-		break;
-	case HV_X64_REGISTER_DR2:
-		native_set_debugreg(2, reg64);
-		break;
-	case HV_X64_REGISTER_DR3:
-		native_set_debugreg(3, reg64);
-		break;
-	case HV_X64_REGISTER_DR6:
-		if (!mshv_vsm_capabilities.dr6_shared)
-			goto hypercall;
-		native_set_debugreg(6, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_CAP:
-		wrmsrl(MSR_MTRRcap, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_DEF_TYPE:
-		wrmsrl(MSR_MTRRdefType, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE0:
-		wrmsrl(MTRRphysBase_MSR(0), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE1:
-		wrmsrl(MTRRphysBase_MSR(1), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE2:
-		wrmsrl(MTRRphysBase_MSR(2), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE3:
-		wrmsrl(MTRRphysBase_MSR(3), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE4:
-		wrmsrl(MTRRphysBase_MSR(4), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE5:
-		wrmsrl(MTRRphysBase_MSR(5), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE6:
-		wrmsrl(MTRRphysBase_MSR(6), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE7:
-		wrmsrl(MTRRphysBase_MSR(7), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE8:
-		wrmsrl(MTRRphysBase_MSR(8), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE9:
-		wrmsrl(MTRRphysBase_MSR(9), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEA:
-		wrmsrl(MTRRphysBase_MSR(0xa), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEB:
-		wrmsrl(MTRRphysBase_MSR(0xb), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEC:
-		wrmsrl(MTRRphysBase_MSR(0xc), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASED:
-		wrmsrl(MTRRphysBase_MSR(0xd), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEE:
-		wrmsrl(MTRRphysBase_MSR(0xe), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEF:
-		wrmsrl(MTRRphysBase_MSR(0xf), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK0:
-		wrmsrl(MTRRphysMask_MSR(0), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK1:
-		wrmsrl(MTRRphysMask_MSR(1), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK2:
-		wrmsrl(MTRRphysMask_MSR(2), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK3:
-		wrmsrl(MTRRphysMask_MSR(3), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK4:
-		wrmsrl(MTRRphysMask_MSR(4), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK5:
-		wrmsrl(MTRRphysMask_MSR(5), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK6:
-		wrmsrl(MTRRphysMask_MSR(6), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK7:
-		wrmsrl(MTRRphysMask_MSR(7), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK8:
-		wrmsrl(MTRRphysMask_MSR(8), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK9:
-		wrmsrl(MTRRphysMask_MSR(9), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKA:
-		wrmsrl(MTRRphysMask_MSR(0xa), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKB:
-		wrmsrl(MTRRphysMask_MSR(0xa), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKC:
-		wrmsrl(MTRRphysMask_MSR(0xc), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKD:
-		wrmsrl(MTRRphysMask_MSR(0xd), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKE:
-		wrmsrl(MTRRphysMask_MSR(0xe), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKF:
-		wrmsrl(MTRRphysMask_MSR(0xf), reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX64K00000:
-		wrmsrl(MSR_MTRRfix64K_00000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX16K80000:
-		wrmsrl(MSR_MTRRfix16K_80000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX16KA0000:
-		wrmsrl(MSR_MTRRfix16K_A0000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KC0000:
-		wrmsrl(MSR_MTRRfix4K_C0000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KC8000:
-		wrmsrl(MSR_MTRRfix4K_C8000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KD0000:
-		wrmsrl(MSR_MTRRfix4K_D0000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KD8000:
-		wrmsrl(MSR_MTRRfix4K_D8000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KE0000:
-		wrmsrl(MSR_MTRRfix4K_E0000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KE8000:
-		wrmsrl(MSR_MTRRfix4K_E8000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KF0000:
-		wrmsrl(MSR_MTRRfix4K_F0000, reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KF8000:
-		wrmsrl(MSR_MTRRfix4K_F8000, reg64);
-		break;
-
-	default:
-		goto hypercall;
-	}
-
-	return 0;
-
-hypercall:
-	return 1;
-}
-
-static int mshv_vtl_get_reg(struct hv_register_assoc *regs)
-{
-	u64 *reg64;
-	enum hv_register_name gpr_name;
-
-	gpr_name = regs->name;
-	reg64 = (u64 *)&regs->value.reg64;
-
-	switch (gpr_name) {
-	case HV_X64_REGISTER_DR0:
-		*reg64 = native_get_debugreg(0);
-		break;
-	case HV_X64_REGISTER_DR1:
-		*reg64 = native_get_debugreg(1);
-		break;
-	case HV_X64_REGISTER_DR2:
-		*reg64 = native_get_debugreg(2);
-		break;
-	case HV_X64_REGISTER_DR3:
-		*reg64 = native_get_debugreg(3);
-		break;
-	case HV_X64_REGISTER_DR6:
-		if (!mshv_vsm_capabilities.dr6_shared)
-			goto hypercall;
-		*reg64 = native_get_debugreg(6);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_CAP:
-		rdmsrl(MSR_MTRRcap, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_DEF_TYPE:
-		rdmsrl(MSR_MTRRdefType, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE0:
-		rdmsrl(MTRRphysBase_MSR(0), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE1:
-		rdmsrl(MTRRphysBase_MSR(1), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE2:
-		rdmsrl(MTRRphysBase_MSR(2), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE3:
-		rdmsrl(MTRRphysBase_MSR(3), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE4:
-		rdmsrl(MTRRphysBase_MSR(4), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE5:
-		rdmsrl(MTRRphysBase_MSR(5), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE6:
-		rdmsrl(MTRRphysBase_MSR(6), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE7:
-		rdmsrl(MTRRphysBase_MSR(7), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE8:
-		rdmsrl(MTRRphysBase_MSR(8), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASE9:
-		rdmsrl(MTRRphysBase_MSR(9), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEA:
-		rdmsrl(MTRRphysBase_MSR(0xa), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEB:
-		rdmsrl(MTRRphysBase_MSR(0xb), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEC:
-		rdmsrl(MTRRphysBase_MSR(0xc), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASED:
-		rdmsrl(MTRRphysBase_MSR(0xd), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEE:
-		rdmsrl(MTRRphysBase_MSR(0xe), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_BASEF:
-		rdmsrl(MTRRphysBase_MSR(0xf), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK0:
-		rdmsrl(MTRRphysMask_MSR(0), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK1:
-		rdmsrl(MTRRphysMask_MSR(1), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK2:
-		rdmsrl(MTRRphysMask_MSR(2), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK3:
-		rdmsrl(MTRRphysMask_MSR(3), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK4:
-		rdmsrl(MTRRphysMask_MSR(4), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK5:
-		rdmsrl(MTRRphysMask_MSR(5), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK6:
-		rdmsrl(MTRRphysMask_MSR(6), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK7:
-		rdmsrl(MTRRphysMask_MSR(7), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK8:
-		rdmsrl(MTRRphysMask_MSR(8), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASK9:
-		rdmsrl(MTRRphysMask_MSR(9), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKA:
-		rdmsrl(MTRRphysMask_MSR(0xa), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKB:
-		rdmsrl(MTRRphysMask_MSR(0xb), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKC:
-		rdmsrl(MTRRphysMask_MSR(0xc), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKD:
-		rdmsrl(MTRRphysMask_MSR(0xd), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKE:
-		rdmsrl(MTRRphysMask_MSR(0xe), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_PHYS_MASKF:
-		rdmsrl(MTRRphysMask_MSR(0xf), *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX64K00000:
-		rdmsrl(MSR_MTRRfix64K_00000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX16K80000:
-		rdmsrl(MSR_MTRRfix16K_80000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX16KA0000:
-		rdmsrl(MSR_MTRRfix16K_A0000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KC0000:
-		rdmsrl(MSR_MTRRfix4K_C0000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KC8000:
-		rdmsrl(MSR_MTRRfix4K_C8000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KD0000:
-		rdmsrl(MSR_MTRRfix4K_D0000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KD8000:
-		rdmsrl(MSR_MTRRfix4K_D8000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KE0000:
-		rdmsrl(MSR_MTRRfix4K_E0000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KE8000:
-		rdmsrl(MSR_MTRRfix4K_E8000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KF0000:
-		rdmsrl(MSR_MTRRfix4K_F0000, *reg64);
-		break;
-	case HV_X64_REGISTER_MSR_MTRR_FIX4KF8000:
-		rdmsrl(MSR_MTRRfix4K_F8000, *reg64);
-		break;
-
-	default:
-		goto hypercall;
-	}
-
-	return 0;
-
-hypercall:
-	return 1;
-}
-
-static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
-{
-	struct hv_vp_assist_page *hvp;
-	u64 hypercall_addr;
-
-	register u64 r8 asm("r8");
-	register u64 r9 asm("r9");
-	register u64 r10 asm("r10");
-	register u64 r11 asm("r11");
-	register u64 r12 asm("r12");
-	register u64 r13 asm("r13");
-	register u64 r14 asm("r14");
-	register u64 r15 asm("r15");
-
-	hvp = hv_vp_assist_page[smp_processor_id()];
-
-	/*
-	 * Process signal event direct set in the run page, if any.
-	 */
-	if (mshv_vsm_capabilities.return_action_available) {
-		u32 offset = READ_ONCE(mshv_vtl_this_run()->vtl_ret_action_size);
-
-		WRITE_ONCE(mshv_vtl_this_run()->vtl_ret_action_size, 0);
-
-		/*
-		 * Hypervisor will take care of clearing out the actions
-		 * set in the assist page.
-		 */
-		memcpy(hvp->vtl_ret_actions,
-		       mshv_vtl_this_run()->vtl_ret_actions,
-		       min_t(u32, offset, sizeof(hvp->vtl_ret_actions)));
-	}
-
-	hvp->vtl_ret_x64rax = vtl0->rax;
-	hvp->vtl_ret_x64rcx = vtl0->rcx;
-
-	hypercall_addr = (u64)((u8 *)hv_hypercall_pg + mshv_vsm_page_offsets.vtl_return_offset);
-
-	kernel_fpu_begin_mask(0);
-	fxrstor(&vtl0->fx_state);
-	native_write_cr2(vtl0->cr2);
-	r8 = vtl0->r8;
-	r9 = vtl0->r9;
-	r10 = vtl0->r10;
-	r11 = vtl0->r11;
-	r12 = vtl0->r12;
-	r13 = vtl0->r13;
-	r14 = vtl0->r14;
-	r15 = vtl0->r15;
-
-	asm __volatile__ (	\
-	/* Save rbp pointer to the lower VTL, keep the stack 16-byte aligned */
-		"pushq	%%rbp\n"
-		"pushq	%%rcx\n"
-	/* Restore the lower VTL's rbp */
-		"movq	(%%rcx), %%rbp\n"
-	/* Load return kind into rcx (HV_VTL_RETURN_INPUT_NORMAL_RETURN == 0) */
-		"xorl	%%ecx, %%ecx\n"
-	/* Transition to the lower VTL */
-		CALL_NOSPEC
-	/* Save VTL0's rax and rcx temporarily on 16-byte aligned stack */
-		"pushq	%%rax\n"
-		"pushq	%%rcx\n"
-	/* Restore pointer to lower VTL rbp */
-		"movq	16(%%rsp), %%rax\n"
-	/* Save the lower VTL's rbp */
-		"movq	%%rbp, (%%rax)\n"
-	/* Restore saved registers */
-		"movq	8(%%rsp), %%rax\n"
-		"movq	24(%%rsp), %%rbp\n"
-		"addq	$32, %%rsp\n"
-
-		: "=a"(vtl0->rax), "=c"(vtl0->rcx),
-		  "+d"(vtl0->rdx), "+b"(vtl0->rbx), "+S"(vtl0->rsi), "+D"(vtl0->rdi),
-		  "+r"(r8), "+r"(r9), "+r"(r10), "+r"(r11),
-		  "+r"(r12), "+r"(r13), "+r"(r14), "+r"(r15)
-		: THUNK_TARGET(hypercall_addr), "c"(&vtl0->rbp)
-		: "cc", "memory");
-
-	vtl0->r8 = r8;
-	vtl0->r9 = r9;
-	vtl0->r10 = r10;
-	vtl0->r11 = r11;
-	vtl0->r12 = r12;
-	vtl0->r13 = r13;
-	vtl0->r14 = r14;
-	vtl0->r15 = r15;
-	vtl0->cr2 = native_read_cr2();
-
-	fxsave(&vtl0->fx_state);
-	kernel_fpu_end();
-}
-
 static bool mshv_vtl_process_intercept(void)
 {
 	struct hv_per_cpu_context *mshv_cpu;
@@ -965,11 +535,30 @@ DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
 	struct hv_vp_assist_page *hvp;
-	struct mshv_vtl_cpu_context *cpu_ctx = &mshv_vtl_this_run()->cpu_context;
+	struct mshv_vtl_run *this_run = mshv_vtl_this_run();
+	struct hv_vtl_cpu_context *cpu_ctx = &this_run->cpu_context;
+	u32 flags = READ_ONCE(this_run->flags);
 
 	trace_mshv_vtl_enter_vtl0_rcuidle(cpu_ctx);
 
-	mshv_vtl_return(cpu_ctx);
+	/*
+	 * Process signal event direct set in the run page, if any.
+	 */
+	if (mshv_vsm_capabilities.return_action_available) {
+		u32 offset = READ_ONCE(mshv_vtl_this_run()->vtl_ret_action_size);
+
+		WRITE_ONCE(mshv_vtl_this_run()->vtl_ret_action_size, 0);
+
+		/*
+		 * Hypervisor will take care of clearing out the actions
+		 * set in the assist page.
+		 */
+		memcpy(hvp->vtl_ret_actions,
+		       mshv_vtl_this_run()->vtl_ret_actions,
+		       min_t(u32, offset, sizeof(hvp->vtl_ret_actions)));
+	}
+
+	hv_vtl_return(cpu_ctx, flags, mshv_vsm_page_offsets.vtl_return_offset);
 	hvp = hv_vp_assist_page[smp_processor_id()];
 
 	trace_mshv_vtl_exit_vtl0_rcuidle(hvp->vtl_entry_reason, cpu_ctx);
@@ -998,7 +587,7 @@ static void mshv_vtl_idle(void)
 		}
 		raw_local_irq_enable();
 	} else {
-		native_safe_halt();
+		hv_vtl_idle();
 	}
 }
 
@@ -1130,13 +719,13 @@ mshv_vtl_ioctl_get_set_regs(void __user *user_args, bool set)
 	}
 
 	if (set) {
-		ret = mshv_vtl_set_reg(registers);
+		ret = hv_vtl_set_reg(registers, mshv_vsm_capabilities.dr6_shared);
 		if (!ret)
 			goto free_return; /* No need of hypercall */
 		ret = vtl_set_vp_registers(args.count, registers);
 
 	} else {
-		ret = mshv_vtl_get_reg(registers);
+		ret = hv_vtl_get_reg(registers, mshv_vsm_capabilities.dr6_shared);
 		if (!ret)
 			goto copy_args; /* No need of hypercall */
 		ret = vtl_get_vp_registers(args.count, registers);
@@ -1277,7 +866,7 @@ static void mshv_vtl_synic_mask_vmbus_sint(const u8 *mask)
 	union hv_synic_sint sint;
 
 	sint.as_uint64 = 0;
-	sint.vector = HYPERVISOR_CALLBACK_VECTOR;
+	sint.vector = vmbus_interrupt;
 	sint.masked = (*mask != 0);
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
@@ -1285,9 +874,9 @@ static void mshv_vtl_synic_mask_vmbus_sint(const u8 *mask)
 		sint.as_uint64);
 
 	if (!sint.masked)
-		pr_debug("%s: Unmasking VTL2 VMBUS SINT on VP %d\n", __func__, smp_processor_id());
+		pr_debug("%s: Unmasking VTL2 VMBUS SINT\n", __func__);
 	else
-		pr_debug("%s: Masking VTL2 VMBUS SINT on VP %d\n", __func__, smp_processor_id());
+		pr_debug("%s: Masking VTL2 VMBUS SINT\n", __func__);
 }
 
 static void mshv_vtl_read_remote(void *buffer)
@@ -1673,10 +1262,12 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 			ret = vmf_insert_pfn_pmd(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
 		return ret;
 
+#if defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 	case PUD_ORDER:
 		if (can_fault(vmf, PUD_SIZE, &pfn))
 			ret = vmf_insert_pfn_pud(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
 		return ret;
+#endif
 
 	default:
 		return VM_FAULT_SIGBUS;
@@ -1740,7 +1331,7 @@ static struct miscdevice mshv_vtl_low = {
 	.minor = MISC_DYNAMIC_MINOR,
 };
 
-static void __init mshv_vtl_init_dev_memory(u64 addr)
+static void __init __maybe_unused mshv_vtl_init_dev_memory(u64 addr)
 {
 	pgd_t	*pgd;
 	p4d_t	*p4d;
@@ -1765,6 +1356,7 @@ static void __init mshv_vtl_init_dev_memory(u64 addr)
 
 static int __init mshv_vtl_init_memory(void)
 {
+#ifdef CONFIG_X86_64
 	u64 addr;
 
 	pr_debug("CONFIG_PHYSICAL_START: %#016x\n", CONFIG_PHYSICAL_START);
@@ -1778,6 +1370,7 @@ static int __init mshv_vtl_init_memory(void)
 	for (addr = 0xffffea8000000000ULL; addr < 0xfffffc0000000000ULL; addr += 0x8000000000ULL)
 		mshv_vtl_init_dev_memory(addr);
 
+#endif
 	return 0;
 }
 
@@ -1800,11 +1393,13 @@ static int __init mshv_vtl_init(void)
 		ret = -ENODEV;
 		goto unset_func;
 	}
+#ifdef CONFIG_X86_64
 	if (mshv_vtl_configure_vsm_partition(dev)) {
 		dev_emerg(dev, "VSM configuration failed !!\n");
 		ret = -ENODEV;
 		goto unset_func;
 	}
+#endif
 
 	ret = hv_vtl_setup_synic();
 	if (ret)

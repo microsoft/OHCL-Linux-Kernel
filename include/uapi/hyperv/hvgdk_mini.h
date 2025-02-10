@@ -44,7 +44,8 @@ struct hv_u128 {
 	OP(HV_STATUS_PROCESSOR_FEATURE_NOT_SUPPORTED,	0x20) \
 	OP(HV_STATUS_INVALID_LP_INDEX,			0x41) \
 	OP(HV_STATUS_INVALID_REGISTER_VALUE,		0x50) \
-	OP(HV_STATUS_CALL_PENDING,			0x79)
+	OP(HV_STATUS_CALL_PENDING,			0x79)	\
+	OP(HV_STATUS_VTL_ALREADY_ENABLED,		0x86)
 
 #define __HV_MAKE_HV_STATUS_ENUM(NAME, VAL) NAME = (VAL),
 #define __HV_MAKE_HV_STATUS_CASE(NAME, VAL) case (NAME): return (#NAME);
@@ -209,6 +210,7 @@ union hv_hypervisor_version_info {
 #define HVCALL_FLUSH_VIRTUAL_ADDRESS_LIST	0x0003
 #define HVCALL_NOTIFY_LONG_SPIN_WAIT		0x0008
 #define HVCALL_SEND_IPI				0x000b
+#define HVCALL_ENABLE_VP_VTL			0x000f
 #define HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE_EX	0x0013
 #define HVCALL_FLUSH_VIRTUAL_ADDRESS_LIST_EX	0x0014
 #define HVCALL_SEND_IPI_EX			0x0015
@@ -257,6 +259,8 @@ union hv_hypervisor_version_info {
 #define HVCALL_GET_VP_STATE			0x00e3
 #define HVCALL_SET_VP_STATE			0x00e4
 #define HVCALL_GET_VP_CPUID_VALUES		0x00f4
+#define HVCALL_START_VP				0x0099
+#define HVCALL_GET_VP_ID_FROM_APIC_ID		0x009a
 
 /*
  * Some macros - i.e. GENMASK_ULL and BIT_ULL - are not currently supported by
@@ -604,6 +608,64 @@ union hv_input_vtl {
 		__u8 use_target_vtl : 1;
 		__u8 reserved_z : 3;
 	};
+} __packed;
+
+struct hv_x64_init_vp_context {
+	__u64 rip;
+	__u64 rsp;
+	__u64 rflags;
+
+	struct hv_x64_segment_register cs;
+	struct hv_x64_segment_register ds;
+	struct hv_x64_segment_register es;
+	struct hv_x64_segment_register fs;
+	struct hv_x64_segment_register gs;
+	struct hv_x64_segment_register ss;
+	struct hv_x64_segment_register tr;
+	struct hv_x64_segment_register ldtr;
+
+	struct hv_x64_table_register idtr;
+	struct hv_x64_table_register gdtr;
+
+	__u64 efer;
+	__u64 cr0;
+	__u64 cr3;
+	__u64 cr4;
+	__u64 msr_cr_pat;
+} __packed;
+
+struct hv_arm64_init_vp_context {
+	u64 pc;
+	u64 sp_elh;
+	u64 spctlr_el1;
+	u64 mair_el1;
+	u64 tcr_el1;
+	u64 vbar_el1;
+	u64 ttbr0_el1;
+	u64 ttbr1_el1;
+	u64 x18;
+} __packed;
+
+struct hv_enable_vp_vtl {
+	__u64				partition_id;
+	__u32				vp_index;
+	union hv_input_vtl		target_vtl;
+	__u8				mbz0;
+	__u16				mbz1;
+#if defined(__x86_64__)	
+	struct hv_x64_init_vp_context	vp_context;
+#elif defined(__aarch64__)
+	struct hv_arm64_init_vp_context	vp_context;
+#else
+	#error "The architecture is not supported"
+#endif
+} __packed;
+
+struct hv_get_vp_from_apic_id_in {
+	__u64 partition_id;
+	union hv_input_vtl target_vtl;
+	__u8 res[7];
+	__u32 apic_ids[];
 } __packed;
 
 /* Note: not in hvgdk_mini.h */

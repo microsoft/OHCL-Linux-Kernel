@@ -20,12 +20,15 @@
 
 #include <linux/types.h>
 #include <linux/arm-smccc.h>
+#include <asm/idle.h>
 #include <asm-generic/hyperv-defs.h>
 
 /*
  * Declare calls to get and set Hyper-V VP register values on ARM64, which
  * requires a hypercall.
  */
+
+struct hv_get_vp_registers_output;
 
 void hv_set_vpreg(u32 reg, u64 value);
 u64 hv_get_vpreg(u32 reg);
@@ -52,8 +55,46 @@ extern u64 hv_current_partition_id;
 				HV_SMCCC_FUNC_NUMBER)
 
 #ifdef CONFIG_HYPERV_VTL_MODE
+
+struct hv_vtl_cpu_context {
+   /*
+	* NOTE: x18 is managed by the hypervisor. It won't be reloaded from this array.
+	* It is included here for convenience in the common case.
+	*/
+	__u64 x[31];
+	__u64 rsvd;
+	__uint128_t q[32];
+};
+
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
+void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_offset);
+
+static inline void hv_vtl_idle(void)
+{
+	default_idle();
+}
+
+struct hv_register_assoc;
+
+/*
+ * Set the register. If the function returns `1`, that must be done via
+ * a hypercall. Returning `0` means success.
+ */
+static inline int hv_vtl_set_reg(struct hv_register_assoc *regs, bool shared)
+{
+	return 1;
+}
+
+/*
+ * Get the register. If the function returns `1`, that must be done via
+ * a hypercall. Returning `0` means success.
+ */
+static inline int hv_vtl_get_reg(struct hv_register_assoc *regs, bool shared)
+{
+	return 1;
+}
+
 #else
 static inline void __init hv_vtl_init_platform(void) {}
 static inline int __init hv_vtl_early_init(void) { return 0; }
