@@ -1177,9 +1177,11 @@ enum hv_register_name {
 #define HV_MSR_CRASH_P4		(HV_REGISTER_GUEST_CRASH_P4)
 #define HV_MSR_CRASH_CTL	(HV_REGISTER_GUEST_CRASH_CTL)
 
+#define HV_MSR_GUEST_OS_ID     (HV_REGISTER_GUEST_OSID)
 #define HV_MSR_VP_INDEX		(HV_REGISTER_VP_INDEX)
 #define HV_MSR_TIME_REF_COUNT	(HV_REGISTER_TIME_REF_COUNT)
 #define HV_MSR_REFERENCE_TSC	(HV_REGISTER_REFERENCE_TSC)
+#define HV_SYN_REG_VP_ASSIST_PAGE              (HV_REGISTER_VP_ASSIST_PAGE)
 
 #define HV_MSR_SINT0		(HV_REGISTER_SINT0)
 #define HV_MSR_SCONTROL		(HV_REGISTER_SCONTROL)
@@ -1191,6 +1193,25 @@ enum hv_register_name {
 #define HV_MSR_STIMER0_CONFIG	(HV_REGISTER_STIMER0_CONFIG)
 #define HV_MSR_STIMER0_COUNT	(HV_REGISTER_STIMER0_COUNT)
 #define HV_SYN_REG_VP_ASSIST_PAGE              (HV_REGISTER_VP_ASSIST_PAGE)
+
+#define HV_ARM64_HVC_SMCCC_IMM16        0
+#define HV_ARM64_HVC_IMM16              1
+#define HV_ARM64_HVC_VTLENTRY_IMM16     2
+#define HV_ARM64_HVC_VTLEXIT_IMM16      3
+#define HV_ARM64_HVC_LAUNCH_IMM16       4
+
+struct hv_init_vp_context {
+	u64 pc;
+	u64 sp_elh;
+	u64 spctlr_el1;
+	u64 mair_el1;
+	u64 tcr_el1;
+	u64 vbar_el1;
+	u64 ttbr0_el1;
+	u64 ttbr1_el1;
+	u64 x18;
+} __packed;
+
 #endif /* CONFIG_ARM64 */
 
 union hv_explicit_suspend_register {

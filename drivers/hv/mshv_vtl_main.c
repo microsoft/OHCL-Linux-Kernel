@@ -21,10 +21,10 @@
 #include <linux/file.h>
 #include <linux/vmalloc.h>
 #include <asm/boot.h>
-#include <asm/trace/hyperv.h>
 #include <linux/tick.h>
 #include <asm/pgalloc.h>
 #include <asm/mshyperv.h>
+#include <asm/trace/hyperv.h>
 #include <trace/events/ipi.h>
 #include <uapi/linux/mshv.h>
 #include <hyperv/hvhdk.h>
@@ -641,7 +641,7 @@ static void mshv_vtl_idle(void)
 		}
 		raw_local_irq_enable();
 	} else {
-		native_safe_halt();
+		hv_vtl_idle();
 	}
 }
 

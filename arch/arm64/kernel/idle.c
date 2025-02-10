@@ -5,11 +5,13 @@
 
 #include <linux/cpu.h>
 #include <linux/irqflags.h>
+#include <linux/static_call.h>
 
 #include <asm/barrier.h>
 #include <asm/cpuidle.h>
 #include <asm/cpufeature.h>
 #include <asm/sysreg.h>
+#include <asm/idle.h>
 
 /*
  *	cpu_do_idle()
@@ -32,10 +34,7 @@ void __cpuidle cpu_do_idle(void)
 	arm_cpuidle_restore_irq_context(&context);
 }
 
-/*
- * This is our default idle handler.
- */
-void __cpuidle arch_cpu_idle(void)
+void noinstr default_idle(void)
 {
 	/*
 	 * This should do all the clock switching and wait for interrupt
@@ -43,3 +42,20 @@ void __cpuidle arch_cpu_idle(void)
 	 */
 	cpu_do_idle();
 }
+
+DEFINE_STATIC_CALL(arm64_idle, default_idle);
+
+/*
+ * This is our default idle handler.
+ */
+void noinstr arch_cpu_idle(void)
+{
+	static_call(arm64_idle)();
+}
+
+#ifdef CONFIG_MSHV_VTL
+void mshv_vtl_set_idle(void (*idle)(void))
+{
+	static_call_update(arm64_idle, idle);
+}
+#endif

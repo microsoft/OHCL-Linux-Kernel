@@ -283,6 +283,11 @@ struct mshv_vtl_cpu_context {
 	struct fxregs_state fx_state;
 };
 
+static inline void hv_vtl_idle(void)
+{
+       native_safe_halt();
+}
+
 #ifdef CONFIG_HYPERV_VTL_MODE
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
