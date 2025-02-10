@@ -20,6 +20,7 @@
 #include <linux/types.h>
 #include <linux/arm-smccc.h>
 #include <hyperv/hvhdk.h>
+#include <asm/idle.h>
 
 /*
  * Declare calls to get and set Hyper-V VP register values on ARM64, which
@@ -55,6 +56,8 @@ static inline u64 hv_get_non_nested_msr(unsigned int reg)
 	return hv_get_msr(reg);
 }
 
+extern u64 hv_current_partition_id;
+
 /* SMCCC hypercall parameters */
 #define HV_SMCCC_FUNC_NUMBER	1
 #define HV_FUNC_ID	ARM_SMCCC_CALL_VAL(			\
@@ -75,6 +78,11 @@ struct mshv_vtl_cpu_context {
 
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 
+static inline void hv_vtl_idle(void)
+{
+	default_idle();
+}
+
 struct hv_register_assoc;
 
 static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
@@ -82,6 +90,7 @@ static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set,
 	return 1;
 }
 static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
+
 #ifdef CONFIG_HYPERV_VTL_MODE
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
