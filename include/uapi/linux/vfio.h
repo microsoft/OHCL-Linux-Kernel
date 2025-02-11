@@ -69,6 +69,12 @@
 
 #define VFIO_TYPE	(';')
 #define VFIO_BASE	100
+/*
+ * This IOCTL is for OOT solution of VF keep alive, keeping
+ * a large value offset for avoiding any future conflicts with
+ * newly introduce IOCTLs in upstream code..
+ */
+#define VFIO_PRIVATE_BASE	200
 
 /*
  * For extension of INFO ioctls, VFIO makes use of a capability chain
@@ -1301,6 +1307,14 @@ struct vfio_precopy_info {
 };
 
 #define VFIO_MIG_GET_PRECOPY_INFO _IO(VFIO_TYPE, VFIO_BASE + 21)
+
+/**
+ * VFIO_GROUP_KEEP_ALIVE - _IOW(VFIO_TYPE, VFIO_PRIVATE_BASE + 0, char)
+ *
+ * This ioctl is used to set a flag indicating the device need not be
+ * brought down, and any further access to hw should be avoided.
+ */
+ #define VFIO_GROUP_KEEP_ALIVE _IO(VFIO_TYPE, VFIO_PRIVATE_BASE + 0)
 
 /*
  * Upon VFIO_DEVICE_FEATURE_SET, allow the device to be moved into a low power

@@ -476,16 +476,24 @@ int vfio_pci_core_enable(struct vfio_pci_core_device *vdev)
 	}
 
 	/* Don't allow our initial saved state to include busmaster */
-	pci_clear_master(pdev);
+	if (vdev->vdev.keep_alive) {
+		pci_master_bios_init(pdev);
+		/* Required to enable device's BARs */
+		ret = pci_enable_device(pdev);
+		if (ret)
+			goto out_power;
+	} else {
+		pci_clear_master(pdev);
 
-	ret = pci_enable_device(pdev);
-	if (ret)
-		goto out_power;
+		ret = pci_enable_device(pdev);
+		if (ret)
+			goto out_power;
 
-	/* If reset fails because of the device lock, fail this path entirely */
-	ret = pci_try_reset_function(pdev);
-	if (ret == -EAGAIN)
-		goto out_disable_device;
+		/* If reset fails because of the device lock, fail this path entirely */
+		ret = pci_try_reset_function(pdev);
+		if (ret == -EAGAIN)
+			goto out_disable_device;
+	}
 
 	vdev->reset_works = !ret;
 	pci_save_state(pdev);

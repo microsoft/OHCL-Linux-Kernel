@@ -4223,6 +4223,17 @@ void pci_unmap_iospace(struct resource *res)
 }
 EXPORT_SYMBOL(pci_unmap_iospace);
 
+/* populates the BME bit value set by BIOS in device object */
+void pci_master_bios_init(struct pci_dev *dev)
+{
+	u16 cmd;
+
+	pci_read_config_word(dev, PCI_COMMAND, &cmd);
+
+	dev->is_busmaster = !!(cmd & PCI_COMMAND_MASTER);
+}
+EXPORT_SYMBOL(pci_master_bios_init);
+
 static void __pci_set_master(struct pci_dev *dev, bool enable)
 {
 	u16 old_cmd, cmd;
