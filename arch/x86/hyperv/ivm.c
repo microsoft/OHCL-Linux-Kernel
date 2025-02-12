@@ -297,18 +297,33 @@ int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu)
 		__get_free_page(GFP_KERNEL | __GFP_ZERO);
 	struct sev_es_save_area *cur_vmsa;
 	struct desc_ptr gdtr;
-	u64 ret, retry = 5;
 	struct hv_enable_vp_vtl *start_vp_input;
+	int cpu_id = -EINVAL;
 	unsigned long flags;
-	int vp_index;
+	int vp_index = apic_id;
+	u64 ret, retry = 5;
 
 	if (!vmsa)
 		return -ENOMEM;
+
+#ifdef CONFIG_HYPERV_VTL_MODE
+	int i;
+
+	for_each_possible_cpu(i) {
+		if (per_cpu(x86_cpu_to_apicid, i) == apic_id) {
+			cpu_id = i;
+			break;
+		}
+	}
+
+	if (cpu_id == -EINVAL)
+		panic("%s: no cpu found for APIC ID %d\n", __func__, apic_id);
 
 	/* Find the Hyper-V VP index which might be not the same as APIC ID */
 	vp_index = hv_apicid_to_vp_index(apic_id);
 	if (vp_index < 0 || vp_index > ms_hyperv.max_vp_index)
 		return -EINVAL;
+#endif
 
 	native_store_gdt(&gdtr);
 
@@ -361,6 +376,20 @@ int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu)
 	start_vp_input->target_vtl.target_vtl = ms_hyperv.vtl;
 	*(u64 *)&start_vp_input->vp_context = __pa(vmsa) | 1;
 
+#ifdef CONFIG_HYPERV_VTL_MODE
+	if (ms_hyperv.vtl != 0) {
+		do {
+			ret = hv_do_hypercall(HVCALL_ENABLE_VP_VTL,
+					      start_vp_input, NULL);
+		} while (hv_result(ret) == HV_STATUS_TIME_OUT && retry--);
+
+		if (ret) {
+			pr_err("HvCallEnableVpVtl failed: %llx\n", ret);
+			return ret;
+		}
+	}
+#endif
+
 	do {
 		ret = hv_do_hypercall(HVCALL_START_VP,
 				      start_vp_input, NULL);
@@ -374,13 +403,13 @@ int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu)
 		vmsa = NULL;
 	}
 
-	cur_vmsa = per_cpu(hv_sev_vmsa, cpu);
+	cur_vmsa = per_cpu(hv_sev_vmsa, cpu_id);
 	/* Free up any previous VMSA page */
 	if (cur_vmsa)
 		snp_cleanup_vmsa(cur_vmsa);
 
 	/* Record the current VMSA page */
-	per_cpu(hv_sev_vmsa, cpu) = vmsa;
+	per_cpu(hv_sev_vmsa, cpu_id) = vmsa;
 
 	return ret;
 }
