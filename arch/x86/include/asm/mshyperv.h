@@ -304,6 +304,7 @@ static __always_inline u64 hv_raw_get_msr(unsigned int reg)
 }
 int hv_apicid_to_vp_index(u32 apic_id);
 
+int hv_vtl_apicid_to_vp_id(u32 apic_id);
 #else /* CONFIG_HYPERV */
 static inline void hyperv_init(void) {}
 static inline void hyperv_setup_mmu_ops(void) {}
@@ -368,7 +369,7 @@ void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_of
 static inline void hv_vtl_idle(void)
 {
 	if (hv_isolation_type_tdx())
-		tdx_safe_halt();
+		tdx_halt();
 	else
 		native_safe_halt();
 }
