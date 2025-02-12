@@ -2441,6 +2441,20 @@ int snp_issue_svsm_attest_req(u64 call_id, struct svsm_call *call,
 }
 EXPORT_SYMBOL_GPL(snp_issue_svsm_attest_req);
 
+void snp_mshv_vtl_return(u8 input_vtl)
+{
+	struct ghcb *ghcb;
+	struct ghcb_state state;
+
+	ghcb = __sev_get_ghcb(&state);
+	ghcb->protocol_version = ghcb_version;
+	ghcb->ghcb_usage = 2;
+	ghcb->save.reserved_0x0[0] = input_vtl;
+	sev_es_wr_ghcb_msr(__pa(ghcb));
+	VMGEXIT();
+	__sev_put_ghcb(&state);
+}
+
 int snp_issue_guest_request(u64 exit_code, struct snp_req_data *input, struct snp_guest_request_ioctl *rio)
 {
 	struct ghcb_state state;
