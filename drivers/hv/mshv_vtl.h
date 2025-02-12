@@ -28,7 +28,10 @@ struct tdx_tdg_vp_enter_exit_info {
 	u64 r13;
 };
 
-/* Register values that must be set by the kernel before entering lower VTLs. */
+/*
+ * Register values that must be set by the kernel or flags that must be handled
+ * before entering lower VTLs.
+ */
 struct tdx_vp_state {
 	u64 msr_kernel_gs_base;
 	u64 msr_star;
@@ -37,7 +40,11 @@ struct tdx_vp_state {
 	u64 msr_xss;
 	u64 cr2;
 	u64 msr_tsc_aux;
+	u64 flags;
 };
+
+#define MSHV_VTL_TDX_VP_STATE_FLAG_WBINVD BIT(0)
+#define MSHV_VTL_TDX_VP_STATE_FLAG_WBNOINVD BIT(1)
 
 /*
  * The GPR list for TDG.VP.ENTER.
@@ -78,7 +85,7 @@ struct tdx_vp_context {
 	struct tdx_tdg_vp_enter_exit_info exit_info;
 	__u8 pad1[48];
 	struct tdx_vp_state vp_state;
-	__u8 pad2[40];
+	__u8 pad2[32];
 	/* Contains the VM index and the TLB flush bit */
 	__u64 entry_rcx;
 	/* Must be on 256 byte boundary. */
