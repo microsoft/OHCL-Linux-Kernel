@@ -612,6 +612,8 @@ static inline void sev_evict_cache(void *va, int npages)
 		val = bytes[page_idx * PAGE_SIZE + PAGE_SIZE - 1];
 	}
 }
+void snp_update_svsm_ca(void);
+void snp_mshv_vtl_return(u8 target_vtl);
 
 #else	/* !CONFIG_AMD_MEM_ENCRYPT */
 

@@ -10,6 +10,7 @@
 #include <asm/cpu_ops.h>
 
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
+
 {
 	register u64 x18 asm("x18");
 
