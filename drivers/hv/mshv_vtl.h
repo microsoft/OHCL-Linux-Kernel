@@ -77,7 +77,9 @@ struct tdx_vp_context {
 	struct tdx_tdg_vp_enter_exit_info exit_info;
 	__u8 pad1[48];
 	struct tdx_vp_state vp_state;
-	__u8 pad2[56];
+	__u8 pad2[48];
+	/* Contains the VM index and the TLB flush bit */
+	__u64 entry_rcx;
 	/* Must be on 256 byte boundary. */
 	struct tdx_l2_enter_guest_state l2_enter_guest_state;
 	/* Pad space until the next 256 byte boundary. */
