@@ -430,6 +430,7 @@ int __init hv_vtl_early_init(void)
 	return 0;
 }
 
+void mshv_tdx_request_cache_flush(bool wbnoinvd);
 noinline void mshv_vtl_return_tdx(void);
 struct mshv_vtl_run *mshv_vtl_this_run(void);
 
@@ -449,11 +450,24 @@ void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, union hv_input_vtl target_vt
 
 	if (hv_isolation_type_tdx()) {
 #if defined(CONFIG_INTEL_TDX_GUEST)
+		/* Read and clear tdx specific flags set by usermode. */
+		u64 tdx_flags = READ_ONCE(mshv_vtl_this_run()->tdx_context.vp_state.flags);
+		mshv_vtl_this_run()->tdx_context.vp_state.flags = 0;
+
 		/*
 		 * Clear RAX to an exit (PENDING_INTERRUPT) that the usermode
 		 * VMM will do nothing, if we are halting.
 		 */
 		mshv_vtl_this_run()->tdx_context.exit_info.rax = 0x112000000000;
+
+		/* Handle any flags set by usermode. */
+		if (unlikely(tdx_flags)) {
+			/* Handle any cache invalidation requests from usermode. */
+			if (tdx_flags & MSHV_VTL_TDX_VP_STATE_FLAG_WBINVD)
+				mshv_tdx_request_cache_flush(false);
+			else if (tdx_flags & MSHV_VTL_TDX_VP_STATE_FLAG_WBNOINVD)
+				mshv_tdx_request_cache_flush(true);
+		}
 
 		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED)) {
 			tdx_safe_halt();
