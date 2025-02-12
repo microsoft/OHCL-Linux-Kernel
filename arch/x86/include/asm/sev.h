@@ -413,6 +413,7 @@ u64 snp_get_unsupported_features(u64 status);
 u64 sev_get_status(void);
 void sev_show_status(void);
 void snp_update_svsm_ca(void);
+void snp_mshv_vtl_return(u8 target_vtl);
 
 #else	/* !CONFIG_AMD_MEM_ENCRYPT */
 
