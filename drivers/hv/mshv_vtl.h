@@ -114,10 +114,15 @@ struct mshv_vtl_run {
 	};
 	char vtl_ret_actions[MAX_RUN_MSG_SIZE];
 	__u32 proxy_irr[8];
+	union hv_input_vtl vtl;
 };
 
 #ifdef CONFIG_X86_64
 static_assert(offsetof(struct mshv_vtl_run, tdx_context) == 272);
 #endif
+
+#define SEV_GHCB_VERSION        1
+#define SEV_GHCB_FORMAT_BASE        0
+#define SEV_GHCB_FORMAT_VTL_RETURN  2
 
 #endif /* _MSHV_VTL_H */
