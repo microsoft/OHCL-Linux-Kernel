@@ -287,6 +287,9 @@ struct mshv_vtl_cpu_context {
 
 #define MSHV_VTL_RUN_FLAG_HALTED BIT(0)
 
+void __init whv_vtl_init_platform(void);
+int __init hv_vtl_early_init(void);
+
 static inline void hv_vtl_idle(void)
 {
 	if (hv_isolation_type_tdx())
