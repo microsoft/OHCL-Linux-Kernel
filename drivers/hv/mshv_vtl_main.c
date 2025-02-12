@@ -25,11 +25,15 @@
 #include <asm/mshyperv.h>
 #include <trace/events/ipi.h>
 #include <uapi/linux/mshv.h>
+#include <asm/set_memory.h>
 
 #ifdef CONFIG_X86_64
 
+#include <uapi/asm/mtrr.h>
+#include <asm/sev.h>
 #include <asm/tdx.h>
 #include <asm/fpu/xcr.h>
+#include <asm/debugreg.h>
 
 #include "../../kernel/fpu/legacy.h"
 
@@ -51,8 +55,30 @@ MODULE_LICENSE("GPL");
 #define MSHV_REAL_OFF_SHIFT	16
 #define MSHV_RUN_PAGE_OFFSET	0
 #define MSHV_REG_PAGE_OFFSET	1
+#define MSHV_VMSA_PAGE_OFFSET	2
 #define MSHV_APIC_PAGE_OFFSET	3
+#define MSHV_VMSA_GUEST_VSM_PAGE_OFFSET	4
 #define VTL2_VMBUS_SINT_INDEX	7
+
+#ifdef CONFIG_X86_64
+
+static __always_inline unsigned long mshv_vtl_smap_save(void)
+{
+	unsigned long flags = 0;
+
+	if (boot_cpu_has(X86_FEATURE_SMAP))
+		asm volatile ("pushf; pop %0; stac\n\t" : "=rm" (flags) : : "memory", "cc");
+
+	return flags;
+}
+
+static __always_inline void mshv_vtl_smap_restore(unsigned long flags)
+{
+	if (boot_cpu_has(X86_FEATURE_SMAP))
+		asm volatile ("push %0; popf\n\t" : : "g" (flags) : "memory", "cc");
+}
+
+#endif
 
 static struct device *mem_dev;
 
@@ -121,6 +147,8 @@ union hv_register_vsm_page_offsets {
 struct mshv_vtl_per_cpu {
 	struct mshv_vtl_run *run;
 	struct page *reg_page;
+	struct page *vmsa_page;
+	struct page *vmsa_guest_vsm_page;
 #if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	struct page *tdx_apic_page;
 	u64 xss;
@@ -139,7 +167,10 @@ static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
 static DEFINE_PER_CPU(unsigned long long, num_vtl0_transitions);
 static DEFINE_PER_CPU(struct mshv_vtl_per_cpu, mshv_vtl_per_cpu);
 
-static struct mshv_vtl_run *mshv_vtl_this_run(void)
+noinline void mshv_vtl_return_tdx(void);
+struct mshv_vtl_run *mshv_vtl_this_run(void);
+
+struct mshv_vtl_run *mshv_vtl_this_run(void)
 {
 	return *this_cpu_ptr(&mshv_vtl_per_cpu.run);
 }
@@ -160,7 +191,6 @@ static struct page *tdx_apic_page(int cpu)
 {
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
 }
-
 #endif
 
 static long __mshv_vtl_ioctl_check_extension(u32 arg)
@@ -241,6 +271,52 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 #endif
 }
 
+#ifdef CONFIG_X86_64
+static int mshv_configure_vmsa_page(u8 target_vtl, struct mshv_vtl_per_cpu *per_cpu)
+{
+	struct page *page;
+	struct hv_register_assoc reg_assoc = {};
+	union hv_input_vtl vtl = {};
+	int ret;
+
+	page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+	if (!page)
+		return -ENOMEM;
+
+	if (target_vtl == 0) {
+		reg_assoc.name = HV_X64_REGISTER_SEV_CONTROL;
+		reg_assoc.value.reg64 = page_to_phys(page) | 1;
+
+		vtl.use_target_vtl = 1;
+		vtl.target_vtl = 0;
+		ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+					       1, vtl, &reg_assoc);
+
+		if (ret) {
+			pr_err("failed to set VMSA page for VTL %d in hypervisor: %d\n",
+			       target_vtl, ret);
+			__free_page(page);
+			return ret;
+		}
+	}
+
+	/*
+	 * Use VMPL1 as the target VMPL when setting a page bit, as
+	 * required by AMD.
+	 */
+	ret = rmpadjust((unsigned long)page_address(page),
+		       RMP_PG_SIZE_4K, 1 | RMPADJUST_VMSA_PAGE_BIT);
+	if (ret) {
+		pr_emerg("failed to set VMSA page bit: %d\n", ret);
+		return ret;
+	}
+
+	per_cpu->vmsa_page = page;
+	return 0;
+}
+
+#endif
+
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 {
 	union hv_synic_sint sint;
@@ -250,8 +326,13 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 	sint.masked = false;
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
-	/* Enable intercepts */
-	if (!mshv_vsm_capabilities.intercept_page_available || hv_isolation_type_tdx())
+	/*
+	 * Enable intercepts, used when there is no intercept page, or
+	 * for proxy interrupts for SNP.
+	 */
+	if (!mshv_vsm_capabilities.intercept_page_available
+	    || hv_isolation_type_tdx()
+	    || hv_isolation_type_snp())
 		hv_set_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
 				sint.as_uint64);
 
@@ -277,7 +358,7 @@ static int mshv_vtl_get_vsm_regs(void)
 
 	/* Code page offset register is not supported on ARM */
 #ifdef CONFIG_X86_64
-	if (!hv_isolation_type_tdx())
+	if (!hv_isolation_type_snp() && !hv_isolation_type_tdx())
 		registers[count++].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
 #endif
 
@@ -288,7 +369,9 @@ static int mshv_vtl_get_vsm_regs(void)
 
 	mshv_vsm_capabilities.as_uint64 = registers[0].value.reg64;
 #ifdef CONFIG_X86_64
-	if (hv_isolation_type_tdx()) {
+	if (hv_isolation_type_snp())
+		mshv_vsm_capabilities.dr6_shared = 0;
+	else if (hv_isolation_type_tdx()) {
 		mshv_vsm_capabilities.dr6_shared = 1;
 	} else {
 		mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
@@ -383,11 +466,12 @@ static void mshv_vtl_vmbus_isr(void)
 	}
 
 	/* Handle proxied interrupts from the host. */
-	if (hv_isolation_type_tdx())
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
 		mshv_vtl_scan_proxy_interrupts(per_cpu);
 
 	event_flags = (union hv_synic_event_flags *)per_cpu->synic_event_page +
 			VTL2_VMBUS_SINT_INDEX;
+
 	for (i = 0; i < HV_EVENT_FLAGS_LONG_COUNT; i++) {
 		if (READ_ONCE(event_flags->flags[i])) {
 			word = xchg(&event_flags->flags[i], 0);
@@ -504,9 +588,16 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		/* Enable the apic page. */
 		mshv_write_tdx_apic_page(page_to_phys(tdx_apic_page));
 #endif
-	} else if (mshv_vsm_capabilities.intercept_page_available) {
+	} else if (hv_isolation_type_snp()) {
+#ifdef CONFIG_X86_64
+		int ret;
+
+		ret = mshv_configure_vmsa_page(0, per_cpu);
+		if (ret < 0)
+			return ret;
+#endif
+	} else if (mshv_vsm_capabilities.intercept_page_available)
 		mshv_vtl_configure_reg_page(per_cpu);
-	}
 
 	mshv_vtl_synic_enable_regs(cpu);
 
@@ -780,7 +871,8 @@ noinline void mshv_vtl_return_tdx(void)
 	fxsave(&vtl_run->tdx_context.fx_state);
 	kernel_fpu_end();
 }
-
+#else
+noinline void mshv_vtl_return_tdx(void) { }
 #endif
 
 static bool mshv_vtl_process_intercept(void)
@@ -1086,7 +1178,288 @@ static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
 
 	return copy_to_user(user_arg, &value, sizeof(value)) ? -EFAULT : 0;
 }
+#endif
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+
+static void __noreturn mshv_sev_es_terminate(unsigned int set, unsigned int reason)
+{
+	native_wrmsrl(MSR_AMD64_SEV_ES_GHCB,
+		      GHCB_SEV_TERM_REASON(set, reason) | GHCB_MSR_TERM_REQ);
+	VMGEXIT();
+
+	while (true)
+		asm volatile("hlt\n" : : : "memory");
+}
+
+static long mshv_vtl_ioctl_pvalidate(void __user *pval_user)
+{
+	u64 pfn_end, pfn;
+	long rc;
+	struct mshv_pvalidate pval = {};
+
+	if (!hv_isolation_type_snp())
+		return -EINVAL;
+
+	if (copy_from_user(&pval, pval_user, sizeof(pval)))
+		return -EFAULT;
+
+	if (!pval.page_count)
+		return -ENODATA;
+
+	pfn = pval.start_pfn;
+	pfn_end = pfn + pval.page_count;
+
+	while (pfn < pfn_end) {
+		unsigned long pfns[1] = { pfn };
+		void *vaddr;
+
+		if (pval.ram)
+			vaddr = kmap_local_page(pfn_to_page(pfn));
+		else
+			vaddr = vmap_pfn(pfns, ARRAY_SIZE(pfns), PAGE_KERNEL);
+
+		if (!vaddr) {
+			rc = -EINVAL;
+			break;
+		}
+
+		rc = pvalidate((u64)vaddr, RMP_PG_SIZE_4K, pval.validate);
+		if (pval.ram)
+			kunmap_local(vaddr);
+		else
+			vunmap(vaddr);
+		if (WARN(rc, "Failed to pvalidate pfn %#llx, ret %ld", pfn, rc)) {
+			if (pval.terminate_on_failure)
+				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PVALIDATE);
+			else
+				break;
+		}
+
+		++pfn;
+	}
+
+	return rc;
+}
+
+static long mshv_vtl_ioctl_rmpadjust(void __user *rmpa_user)
+{
+	u64 pfn_end, pfn;
+	long rc;
+	struct mshv_rmpadjust rmpa = {};
+
+	if (!hv_isolation_type_snp())
+		return -EINVAL;
+
+	if (copy_from_user(&rmpa, rmpa_user, sizeof(rmpa)))
+		return -EFAULT;
+
+	if (!rmpa.page_count)
+		return -ENODATA;
+
+	pfn = rmpa.start_pfn;
+	pfn_end = pfn + rmpa.page_count;
+
+	while (pfn < pfn_end) {
+		unsigned long pfns[1] = { pfn };
+		void *vaddr;
+
+		if (rmpa.ram)
+			vaddr = kmap_local_page(pfn_to_page(pfn));
+		else
+			vaddr = vmap_pfn(pfns, ARRAY_SIZE(pfns), PAGE_KERNEL);
+
+		if (!vaddr) {
+			rc = -EINVAL;
+			break;
+		}
+
+		rc = rmpadjust((u64)vaddr, RMP_PG_SIZE_4K, rmpa.value);
+		if (rmpa.ram)
+			kunmap_local(vaddr);
+		else
+			vunmap(vaddr);
+		if (WARN(rc, "Failed to rmpadjust pfn %#llx, ret %ld", pfn, rc)) {
+			if (rmpa.terminate_on_failure)
+				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PSC);
+			else
+				break;
+		}
+
+		++pfn;
+	}
+
+	return rc;
+}
+
+static long mshv_vtl_ioctl_rmpquery(void __user *rmpq_user)
+{
+	u64 pfn_end, pfn;
+	long rc;
+	struct mshv_rmpquery rmpq = {};
+	u64 pages_processed;
+	u64 __user *user_flags_in_out;
+	u64 __user *user_page_size_out;
+
+	if (!hv_isolation_type_snp())
+		return -EINVAL;
+
+	if (copy_from_user(&rmpq, rmpq_user, sizeof(rmpq)))
+		return -EFAULT;
+
+	if (!rmpq.page_count)
+		return -ENODATA;
+
+	pfn = rmpq.start_pfn;
+	pfn_end = pfn + rmpq.page_count;
+	pages_processed = 0;
+	user_flags_in_out = rmpq.flags;
+	user_page_size_out = rmpq.page_size;
+	rc = 0;
+
+	while (pfn < pfn_end) {
+		unsigned long pfns[1] = { pfn };
+		void *vaddr = NULL;
+		u64 page_size = -1;
+		u64 flags = 0;
+
+		if (copy_from_user(&flags, user_flags_in_out, sizeof(flags))) {
+			pr_warn("Failed to copy flags in for pfn %#llx when querying RMP\n", pfn);
+			rc = -EFAULT;
+			break;
+		}
+
+		if (rmpq.ram)
+			vaddr = kmap_local_page(pfn_to_page(pfn));
+		else
+			vaddr = vmap_pfn(pfns, ARRAY_SIZE(pfns), PAGE_KERNEL);
+
+		if (!vaddr) {
+			rc = -EINVAL;
+			break;
+		}
+
+		rc = rmpquery((u64)vaddr, &page_size, &flags);
+		if (rmpq.ram)
+			kunmap_local(vaddr);
+		else
+			vunmap(vaddr);
+		if (rc != 0 && rc != 2) {
+			pr_warn("Bogus status %ld for pfn %#llx when querying RMP\n", rc, pfn);
+			rc = -EINVAL;
+			break;
+		}
+		if (rc == 2) {
+			rc = -EPERM;
+			pr_warn("Current ASID not 0 or the RMP entry is immutable\n");
+		}
+
+		if (rc) {
+			pr_warn("Failed to rmpquery pfn %#llx, ret %ld\n", pfn, rc);
+			if (rmpq.terminate_on_failure)
+				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PSC);
+			else
+				break;
+		}
+
+		if (copy_to_user(user_flags_in_out, &flags, sizeof(flags))) {
+			pr_warn("Failed to copy flags out for pfn %#llx when querying RMP\n",
+				pfn);
+			rc = -EFAULT;
+			break;
+		}
+		if (copy_to_user(user_page_size_out, &page_size, sizeof(page_size))) {
+			pr_warn("Failed to copy page size out for pfn %#llx when querying RMP\n",
+				pfn);
+			rc = -EFAULT;
+			break;
+		}
+
+		++pfn;
+		++user_flags_in_out;
+		++user_page_size_out;
+		++pages_processed;
+	}
+
+	return copy_to_user(rmpq.pages_processed, &pages_processed, sizeof(pages_processed)) ?
+		-EFAULT : rc;
+}
+
+static long mshv_vtl_ioctl_invlpgb(void __user *invlpgb_user)
+{
+	struct mshv_invlpgb invlpgb = {};
+
+	if (copy_from_user(&invlpgb, invlpgb_user, sizeof(invlpgb)))
+		return -EFAULT;
+
+	/*
+	 * `invlpgb` might not be supported by an older toolchain.
+	 * Use the raw encoding instead of the mnemonic not to break
+	 * the build on the older systems.
+	 */
+	asm volatile(".byte 0x0F,0x01,0xFE\n\t"
+			:
+			: "a"(invlpgb.rax), "c"(invlpgb.ecx), "d"(invlpgb.edx)
+			: "memory");
+
+	return 0;
+}
+
+static long mshv_vtl_ioctl_tlbsync(void)
+{
+	/*
+	 * `tlbsync` might not be supported by an older toolchain.
+	 * Use the raw encoding instead of the mnemonic not to break
+	 * the build on the older systems.
+	 */
+	asm volatile(".byte 0x0F,0x01,0xFF\n\t"
+			:
+			:
+			: "memory");
+
+	return 0;
+}
+
+static void guest_vsm_vmsa_pfn_this_cpu(void *arg)
+{
+	int cpu;
+	struct page *vmsa_guest_vsm_page;
+	u64 *pfn = arg;
+
+	cpu = get_cpu();
+	vmsa_guest_vsm_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page);
+	if (!vmsa_guest_vsm_page) {
+		if (mshv_configure_vmsa_page(1, per_cpu_ptr(&mshv_vtl_per_cpu, cpu)))
+			*pfn = -ENOMEM;
+		else
+			vmsa_guest_vsm_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page);
+	}
+	put_cpu();
+
+	*pfn = vmsa_guest_vsm_page ? page_to_pfn(vmsa_guest_vsm_page) : -ENOMEM;
+}
+
+static long mshv_vtl_ioctl_guest_vsm_vmsa_pfn(void __user *user_arg)
+{
+	u64 pfn;
+	u32 cpu_id;
+	long ret;
+
+	ret = copy_from_user(&cpu_id, user_arg, sizeof(cpu_id)) ? -EFAULT : 0;
+	if (ret)
+		return ret;
+
+	ret = smp_call_function_single(cpu_id, guest_vsm_vmsa_pfn_this_cpu, &pfn, true);
+	if (ret)
+		return ret;
+	ret = (long)pfn;
+	if (ret < 0)
+		return ret;
+
+	ret = copy_to_user(user_arg, &pfn, sizeof(pfn)) ? -EFAULT : 0;
+
+	return ret;
+}
 #endif
 
 static long
@@ -1097,7 +1470,8 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 
 	switch (ioctl) {
 	case MSHV_VTL_SET_POLL_FILE:
-		ret = mshv_vtl_ioctl_set_poll_file((struct mshv_vtl_set_poll_file *)arg);
+		ret = mshv_vtl_ioctl_set_poll_file(
+			(struct mshv_vtl_set_poll_file *)arg);
 		break;
 	case MSHV_GET_VP_REGISTERS:
 		ret = mshv_vtl_ioctl_get_regs((void __user *)arg);
@@ -1119,6 +1493,28 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		ret = mshv_vtl_ioctl_read_vmx_cr4_fixed1((void __user *)arg);
 		break;
 #endif
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+	case MSHV_VTL_PVALIDATE:
+		ret = mshv_vtl_ioctl_pvalidate((void __user *)arg);
+		break;
+	case MSHV_VTL_RMPADJUST:
+		ret = mshv_vtl_ioctl_rmpadjust((void __user *)arg);
+		break;
+	case MSHV_VTL_RMPQUERY:
+		ret = mshv_vtl_ioctl_rmpquery((void __user *)arg);
+		break;
+	case MSHV_VTL_INVLPGB:
+		ret = mshv_vtl_ioctl_invlpgb((void __user *)arg);
+		break;
+	case MSHV_VTL_TLBSYNC:
+		ret = mshv_vtl_ioctl_tlbsync();
+		break;
+	case MSHV_VTL_GUEST_VSM_VMSA_PFN:
+		ret = mshv_vtl_ioctl_guest_vsm_vmsa_pfn((void __user *)arg);
+		break;
+#endif
+
 	default:
 		dev_err(vtl->module_dev, "invalid vtl ioctl: %#x\n", ioctl);
 		ret = -ENOTTY;
@@ -1130,6 +1526,10 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 {
 	struct page *page;
+#ifdef CONFIG_X86_64
+	struct page **page_ptr_ptr;
+	struct mshv_vtl_per_cpu *per_cpu;
+#endif
 	int cpu = vmf->pgoff & MSHV_PG_OFF_CPU_MASK;
 	int real_off = vmf->pgoff >> MSHV_REAL_OFF_SHIFT;
 
@@ -1142,12 +1542,33 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 		if (!mshv_has_reg_page)
 			return VM_FAULT_SIGBUS;
 		page = mshv_vtl_cpu_reg_page(cpu);
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+#ifdef CONFIG_X86_64
+	} else if (real_off == MSHV_VMSA_PAGE_OFFSET) {
+		if (!hv_isolation_type_snp())
+			return VM_FAULT_SIGBUS;
+		page = *per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page, cpu);
+	} else if (real_off == MSHV_VMSA_GUEST_VSM_PAGE_OFFSET) {
+		if (!hv_isolation_type_snp())
+			return VM_FAULT_SIGBUS;
+		page_ptr_ptr = per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page, cpu);
+		if (!*page_ptr_ptr) {
+			per_cpu = (struct mshv_vtl_per_cpu *)per_cpu_ptr(&mshv_vtl_per_cpu, cpu);
+			if (mshv_configure_vmsa_page(1, per_cpu) < 0)
+				return VM_FAULT_SIGBUS;
+			page_ptr_ptr = &per_cpu->vmsa_page;
+		}
+		page = *page_ptr_ptr;
+	} else if (real_off == MSHV_VMSA_PAGE_OFFSET) {
+		if (!hv_isolation_type_snp())
+			return VM_FAULT_SIGBUS;
+		page = *per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page, cpu);
+#ifdef CONFIG_INTEL_TDX_GUEST
 	} else if (real_off == MSHV_APIC_PAGE_OFFSET) {
 		if (!hv_isolation_type_tdx())
 			return VM_FAULT_SIGBUS;
 
 		page = tdx_apic_page(cpu);
+#endif
 #endif
 	} else {
 		return VM_FAULT_NOPAGE;
@@ -1578,13 +1999,13 @@ static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 	return ret;
 }
 
-static bool can_fault(struct vm_fault *vmf, unsigned long size, pfn_t *pfn)
+static bool can_fault(struct vm_fault *vmf, pgoff_t pgoff, unsigned long size, pfn_t *pfn)
 {
 	unsigned long mask = size - 1;
 	unsigned long start = vmf->address & ~mask;
 	unsigned long end = start + size;
 	bool valid;
-	unsigned long pgoff = vmf->pgoff & ~DECRYPTED_MASK;
+	pgoff = vmf->pgoff & ~DECRYPTED_MASK;
 
 	valid = (vmf->address & mask) == ((pgoff << PAGE_SHIFT) & mask) &&
 		start >= vmf->vma->vm_start &&
@@ -1598,22 +2019,25 @@ static bool can_fault(struct vm_fault *vmf, unsigned long size, pfn_t *pfn)
 
 static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int order)
 {
+	pgoff_t pgoff;
 	pfn_t pfn;
 	int ret = VM_FAULT_FALLBACK;
 
+	pgoff = vmf->pgoff & ~DECRYPTED_MASK;
+
 	switch (order) {
 	case 0:
-		pfn = __pfn_to_pfn_t(vmf->pgoff & ~DECRYPTED_MASK, PFN_DEV | PFN_MAP);
+		pfn = __pfn_to_pfn_t(pgoff, PFN_DEV | PFN_MAP);
 		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
 
 	case PMD_ORDER:
-		if (can_fault(vmf, PMD_SIZE, &pfn))
+		if (can_fault(vmf, pgoff, PMD_SIZE, &pfn))
 			ret = vmf_insert_pfn_pmd(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
 		return ret;
 
 #if defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 	case PUD_ORDER:
-		if (can_fault(vmf, PUD_SIZE, &pfn))
+		if (can_fault(vmf, pgoff, PUD_SIZE, &pfn))
 			ret = vmf_insert_pfn_pud(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
 		return ret;
 #endif
@@ -1743,7 +2167,7 @@ static int __init mshv_vtl_init(void)
 		goto unset_func;
 	}
 #ifdef CONFIG_X86_64
-	if (!hv_isolation_type_tdx()) {
+	if (!hv_isolation_type_tdx() && !hv_isolation_type_snp()) {
 		if (mshv_vtl_configure_vsm_partition(dev)) {
 			dev_emerg(dev, "VSM configuration failed !!\n");
 			ret = -ENODEV;
