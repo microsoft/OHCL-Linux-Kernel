@@ -364,7 +364,7 @@ struct hv_vtl_cpu_context {
 
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
-void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_offset);
+void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, union hv_input_vtl target_vtl, u32 flags, u64 vtl_return_offset);
 
 static inline void hv_vtl_idle(void)
 {
