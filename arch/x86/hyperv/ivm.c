@@ -297,10 +297,10 @@ int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu)
 		__get_free_page(GFP_KERNEL | __GFP_ZERO);
 	struct sev_es_save_area *cur_vmsa;
 	struct desc_ptr gdtr;
-	u64 ret, retry = 5;
 	struct hv_enable_vp_vtl *start_vp_input;
 	unsigned long flags;
 	int vp_index;
+	u64 ret, retry = 5;
 
 	if (!vmsa)
 		return -ENOMEM;
@@ -360,6 +360,20 @@ int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu)
 	start_vp_input->vp_index = vp_index;
 	start_vp_input->target_vtl.target_vtl = ms_hyperv.vtl;
 	*(u64 *)&start_vp_input->vp_context = __pa(vmsa) | 1;
+
+#ifdef CONFIG_HYPERV_VTL_MODE
+	if (ms_hyperv.vtl != 0) {
+		do {
+			ret = hv_do_hypercall(HVCALL_ENABLE_VP_VTL,
+					      start_vp_input, NULL);
+		} while (hv_result(ret) == HV_STATUS_TIME_OUT && retry--);
+
+		if (ret) {
+			pr_err("HvCallEnableVpVtl failed: %llx\n", ret);
+			return ret;
+		}
+	}
+#endif
 
 	do {
 		ret = hv_do_hypercall(HVCALL_START_VP,
