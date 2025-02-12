@@ -289,18 +289,38 @@ static void snp_cleanup_vmsa(struct sev_es_save_area *vmsa)
 		free_page((unsigned long)vmsa);
 }
 
-int hv_snp_boot_ap(u32 cpu, unsigned long start_ip)
+int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip)
 {
 	struct sev_es_save_area *vmsa = (struct sev_es_save_area *)
 		__get_free_page(GFP_KERNEL | __GFP_ZERO);
 	struct sev_es_save_area *cur_vmsa;
 	struct desc_ptr gdtr;
-	u64 ret, retry = 5;
 	struct hv_enable_vp_vtl *start_vp_input;
+	int cpu_id = -EINVAL;
 	unsigned long flags;
+	u64 ret, retry = 5;
+	int vp_id = apic_id;
 
 	if (!vmsa)
 		return -ENOMEM;
+
+#ifdef CONFIG_HYPERV_VTL_MODE
+	int i;
+
+	for_each_possible_cpu(i) {
+		if (per_cpu(x86_cpu_to_apicid, i) == apic_id) {
+			cpu_id = i;
+			break;
+		}
+	}
+
+	if (cpu_id == -EINVAL)
+		panic("%s: no cpu found for APIC ID %d\n", __func__, apic_id);
+
+	vp_id = hv_vtl_apicid_to_vp_id(apic_id);
+	if (vp_id < 0)
+		panic("%s: error when getting VP id for APIC id %#x\n", __func__, apic_id);
+#endif
 
 	native_store_gdt(&gdtr);
 
@@ -349,9 +369,23 @@ int hv_snp_boot_ap(u32 cpu, unsigned long start_ip)
 	start_vp_input = (struct hv_enable_vp_vtl *)ap_start_input_arg;
 	memset(start_vp_input, 0, sizeof(*start_vp_input));
 	start_vp_input->partition_id = -1;
-	start_vp_input->vp_index = cpu;
+	start_vp_input->vp_index = vp_id;
 	start_vp_input->target_vtl.target_vtl = ms_hyperv.vtl;
 	*(u64 *)&start_vp_input->vp_context = __pa(vmsa) | 1;
+
+#ifdef CONFIG_HYPERV_VTL_MODE
+	if (ms_hyperv.vtl != 0) {
+		do {
+			ret = hv_do_hypercall(HVCALL_ENABLE_VP_VTL,
+					      start_vp_input, NULL);
+		} while (hv_result(ret) == HV_STATUS_TIME_OUT && retry--);
+
+		if (ret) {
+			pr_err("HvCallEnableVpVtl failed: %llx\n", ret);
+			return ret;
+		}
+	}
+#endif
 
 	do {
 		ret = hv_do_hypercall(HVCALL_START_VP,
@@ -366,13 +400,13 @@ int hv_snp_boot_ap(u32 cpu, unsigned long start_ip)
 		vmsa = NULL;
 	}
 
-	cur_vmsa = per_cpu(hv_sev_vmsa, cpu);
+	cur_vmsa = per_cpu(hv_sev_vmsa, cpu_id);
 	/* Free up any previous VMSA page */
 	if (cur_vmsa)
 		snp_cleanup_vmsa(cur_vmsa);
 
 	/* Record the current VMSA page */
-	per_cpu(hv_sev_vmsa, cpu) = vmsa;
+	per_cpu(hv_sev_vmsa, cpu_id) = vmsa;
 
 	return ret;
 }
