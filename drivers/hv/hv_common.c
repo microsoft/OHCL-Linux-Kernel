@@ -627,17 +627,17 @@ int hv_common_cpu_init(unsigned int cpu)
 			if (*hvp)
 				vp_assist_reg.pfn = virt_to_hvpfn(*hvp);
 		}
+	}
 
-		WARN_ON(!(*hvp));
-		if (*hvp) {
-			if (!ms_hyperv.paravisor_present &&
-			    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
-				WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1) != 0);
-				memset(*hvp, 0, PAGE_SIZE);
-			}
-			vp_assist_reg.enable = 1;
-			hv_set_msr(HV_SYN_REG_VP_ASSIST_PAGE, vp_assist_reg.as_uint64);
+	WARN_ON(!(*hvp));
+	if (*hvp) {
+		if (!ms_hyperv.paravisor_present &&
+		    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
+			WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1) != 0);
+			memset(*hvp, 0, PAGE_SIZE);
 		}
+		vp_assist_reg.enable = 1;
+		hv_set_msr(HV_SYN_REG_VP_ASSIST_PAGE, vp_assist_reg.as_uint64);
 	}
 
 	return 0;
