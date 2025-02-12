@@ -285,13 +285,12 @@ int __init hv_vtl_early_init(void)
 			  "Please add 'noxsave' to the kernel command line.\n");
 
 	/*
-	 * TDX confidential VMs do not trust the hypervisor and cannot use it to
-	 * boot secondary CPUs. Instead, they will be booted using the wakeup
-	 * mailbox if detected during boot. See setup_arch().
-	 *
-	 * There is no paravisor present if we are here.
+	 * For hardware-isolated VMs, use the common VP startup path.
+	 * Otherwise, use an enlightened path since SIPI is not
+	 * available for VTL2.
 	 */
-	if (!hv_isolation_type_tdx())
+	if (!((hv_isolation_type_snp() || hv_isolation_type_tdx()) &&
+	      !ms_hyperv.paravisor_present))
 		apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
 
 	return 0;
