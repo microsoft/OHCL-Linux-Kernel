@@ -249,6 +249,43 @@ struct mshv_tdcall {
 	__u64 r11_out;	/* Only supported as output */
 } __packed;
 
+struct mshv_pvalidate {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u8 validate;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding;
+} __packed;
+
+struct mshv_rmpadjust {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u64 value;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[6];
+} __packed;
+
+struct mshv_rmpquery {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[6];
+	__u64 *flags;
+	__u64 *page_size;
+	__u64 *pages_processed;
+} __packed;
+
+struct mshv_invlpgb {
+	__u64 rax;
+	__u32 pad0;
+	__u32 edx;
+	__u32 pad1;
+	__u32 ecx;
+} __packed;
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -298,6 +335,14 @@ struct mshv_tdcall {
 #define MSHV_VTL_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_vtl_ram_disposition)
 #define MSHV_VTL_SET_POLL_FILE		_IOW(MSHV_IOCTL, 0x25, struct mshv_vtl_set_poll_file)
 #define MSHV_VTL_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
+#define MSHV_VTL_PVALIDATE	_IOW(MSHV_IOCTL, 0x28, struct mshv_pvalidate)
+#define MSHV_VTL_RMPADJUST	_IOW(MSHV_IOCTL, 0x29, struct mshv_rmpadjust)
+#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
+#define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
+#define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
+#define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
+#define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
+
 
 /* For x86-64 TDX only */
 #define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)

@@ -341,6 +341,19 @@ static __always_inline void sev_es_nmi_complete(void)
 extern int __init sev_es_efi_map_ghcbs(pgd_t *pgd);
 extern void sev_enable(struct boot_params *bp);
 
+static inline int rmpquery(unsigned long vaddr, u64 *rmp_psize, u64 *attrs)
+{
+	int rc;
+
+	/* "rmpquery" mnemonic support in binutils 2.36 and newer */
+	asm volatile(".byte 0xF3,0x0F,0x01,0xFD\n\t"
+			: "=a"(rc), "=c"(*rmp_psize), "=d"(*attrs)
+			: "a"(vaddr), "c"(*rmp_psize), "d"(*attrs)
+			: "memory", "cc");
+
+	return rc;
+}
+
 /*
  * RMPADJUST modifies the RMP permissions of a page of a lesser-
  * privileged (numerically higher) VMPL.
@@ -381,6 +394,7 @@ static inline int pvalidate(unsigned long vaddr, bool rmp_psize, bool validate)
 
 struct snp_guest_request_ioctl;
 
+void snp_mshv_vtl_return(u8 input_vtl);
 void setup_ghcb(void);
 void early_snp_set_memory_private(unsigned long vaddr, unsigned long paddr,
 				  unsigned long npages);
@@ -435,6 +449,7 @@ static inline u64 snp_get_unsupported_features(u64 status) { return 0; }
 static inline u64 sev_get_status(void) { return 0; }
 static inline void sev_show_status(void) { }
 static inline void snp_update_svsm_ca(void) { }
+static inline void snp_mshv_vtl_return(u8 input_vtl) { }
 
 #endif	/* CONFIG_AMD_MEM_ENCRYPT */
 
