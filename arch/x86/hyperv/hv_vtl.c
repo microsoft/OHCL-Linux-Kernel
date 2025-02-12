@@ -257,8 +257,16 @@ int __init hv_vtl_early_init(void)
 		panic("XSAVE has to be disabled as it is not supported by this module.\n"
 			  "Please add 'noxsave' to the kernel command line.\n");
 
-	real_mode_header = &hv_vtl_real_mode_header;
-	apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
+	/*
+	 * For hardware-isolated VMs, use the common VP startup path.
+	 * Otherwise, use an enlightened path since SIPI is not
+	 * available for VTL2.
+	 */
+	if (!(hv_isolation_type_snp() && !hyperv_paravisor_present))
+		apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
+
+	if (!hv_isolation_type_tdx())
+		real_mode_header = &hv_vtl_real_mode_header;
 
 	return 0;
 }
