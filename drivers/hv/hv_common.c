@@ -424,8 +424,6 @@ int __init hv_common_init(void)
 	 * The VP assist page is useless to a TDX guest: the only use we
 	 * would have for it is lazy EOI, which can not be used with TDX.
 	 *
-	 * TODO TDX: UH doens't require this on TDX right now, but we may
-	 * want it in the future?
 	 */
 	if (hv_isolation_type_tdx())
 		hv_vp_assist_page = NULL;
