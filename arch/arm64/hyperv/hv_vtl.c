@@ -9,7 +9,7 @@
 #include <asm/mshyperv.h>
 #include <asm/cpu_ops.h>
 
-void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_offset)
+void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, union hv_input_vtl target_vtl, u32 flags, u64 vtl_return_offset)
 {
 	register u64 x18 asm("x18");
 

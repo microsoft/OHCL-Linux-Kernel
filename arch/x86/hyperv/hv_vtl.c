@@ -433,7 +433,7 @@ int __init hv_vtl_early_init(void)
 noinline void mshv_vtl_return_tdx(void);
 struct mshv_vtl_run *mshv_vtl_this_run(void);
 
-void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_offset)
+void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, union hv_input_vtl target_vtl, u32 flags, u64 vtl_return_offset)
 {
 	struct hv_vp_assist_page *hvp;
 	u64 hypercall_addr;
@@ -447,8 +447,8 @@ void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_of
 	register u64 r14 asm("r14");
 	register u64 r15 asm("r15");
 
-#if defined(CONFIG_X86_64)
 	if (hv_isolation_type_tdx()) {
+#if defined(CONFIG_INTEL_TDX_GUEST)
 		/*
 		 * Clear RAX to an exit (PENDING_INTERRUPT) that the usermode
 		 * VMM will do nothing, if we are halting.
@@ -462,17 +462,16 @@ void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, u32 flags, u64 vtl_return_of
 			mshv_vtl_return_tdx();
 		}
 		return;
-	} else if (hv_isolation_type_snp()) {
-		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED)) {
-			native_safe_halt();
-		} else {
-			u8 target_vtl = 0;
-
-			snp_mshv_vtl_return(target_vtl);
-		}
-		return;
-	}
 #endif
+	} else if (hv_isolation_type_snp()) {
+#if defined(CONFIG_SEV_GUEST)
+		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED))
+			native_safe_halt();
+		else
+			snp_mshv_vtl_return(target_vtl.use_target_vtl ? target_vtl.target_vtl : 0);
+		return;
+#endif
+	}
 
 	hvp = hv_vp_assist_page[smp_processor_id()];
 
