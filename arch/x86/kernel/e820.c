@@ -666,8 +666,8 @@ __init void e820__setup_pci_gap(void)
 	if (!found) {
 #ifdef CONFIG_X86_64
 		gapstart = (max_pfn << PAGE_SHIFT) + 1024*1024;
-		pr_err("Cannot find an available gap in the 32-bit address range\n");
-		pr_err("PCI devices with unassigned 32-bit BARs may not work!\n");
+		pr_info("Cannot find an available gap in the 32-bit address range\n");
+		pr_info("PCI devices with unassigned 32-bit BARs may not work!\n");
 #else
 		gapstart = 0x10000000;
 #endif
