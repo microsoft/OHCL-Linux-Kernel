@@ -1120,7 +1120,7 @@ do_cmd_auto:
 
 		if (boot_cpu_data.x86_vendor != X86_VENDOR_AMD &&
 		    boot_cpu_data.x86_vendor != X86_VENDOR_HYGON)
-			pr_err(RETBLEED_UNTRAIN_MSG);
+			pr_warn(RETBLEED_UNTRAIN_MSG);
 
 		mitigate_smt = true;
 		break;
@@ -1178,7 +1178,7 @@ do_cmd_auto:
 			break;
 		default:
 			if (retbleed_mitigation != RETBLEED_MITIGATION_STUFF)
-				pr_err(RETBLEED_INTEL_MSG);
+				pr_warn(RETBLEED_INTEL_MSG);
 		}
 	}
 
