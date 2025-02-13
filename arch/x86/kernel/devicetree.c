@@ -268,7 +268,7 @@ static void __init dtb_ioapic_setup(void)
 		of_ioapic = 1;
 		return;
 	}
-	pr_err("Error: No information about IO-APIC in OF.\n");
+	pr_debug("Error: No information about IO-APIC in OF.");
 }
 #else
 static void __init dtb_ioapic_setup(void) {}
