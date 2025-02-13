@@ -1374,7 +1374,7 @@ static void __init retbleed_select_mitigation(void)
 	case RETBLEED_MITIGATION_UNRET:
 		if (!IS_ENABLED(CONFIG_MITIGATION_UNRET_ENTRY)) {
 			retbleed_mitigation = RETBLEED_MITIGATION_AUTO;
-			pr_err("WARNING: kernel not compiled with MITIGATION_UNRET_ENTRY.\n");
+			pr_warn("WARNING: kernel not compiled with MITIGATION_UNRET_ENTRY.\n");
 		}
 		break;
 	case RETBLEED_MITIGATION_IBPB:
@@ -1464,7 +1464,7 @@ static void __init retbleed_update_mitigation(void)
 		default:
 			if (retbleed_mitigation != RETBLEED_MITIGATION_STUFF) {
 				if (retbleed_mitigation != RETBLEED_MITIGATION_NONE)
-					pr_err(RETBLEED_INTEL_MSG);
+					pr_warn(RETBLEED_INTEL_MSG);
 
 				retbleed_mitigation = RETBLEED_MITIGATION_NONE;
 			}
