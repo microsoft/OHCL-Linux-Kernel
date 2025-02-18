@@ -419,32 +419,6 @@ static int mshv_vtl_get_vsm_regs(void)
 	return ret;
 }
 
-static int __maybe_unused mshv_vtl_configure_vsm_partition(struct device *dev)
-{
-	union hv_register_vsm_partition_config config;
-	struct hv_register_assoc reg_assoc;
-	union hv_input_vtl input_vtl;
-
-	config.as_u64 = 0;
-	config.default_vtl_protection_mask = HV_MAP_GPA_PERMISSIONS_MASK;
-	config.enable_vtl_protection = 1;
-	config.zero_memory_on_reset = 1;
-	config.intercept_vp_startup = 1;
-	config.intercept_cpuid_unimplemented = 1;
-
-	if (mshv_vsm_capabilities.intercept_page_available) {
-		dev_dbg(dev, "using intercept page\n");
-		config.intercept_page = 1;
-	}
-
-	reg_assoc.name = HV_REGISTER_VSM_PARTITION_CONFIG;
-	reg_assoc.value.reg64 = config.as_u64;
-	input_vtl.as_uint8 = 0;
-
-	return hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				       1, input_vtl, &reg_assoc);
-}
-
 static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 {
 	struct hv_message *msg;
@@ -2574,15 +2548,7 @@ static int __init mshv_vtl_init(void)
 		ret = -ENODEV;
 		goto unset_func;
 	}
-#ifdef CONFIG_X86_64
-	if (!hv_isolation_type_tdx() && !hv_isolation_type_snp()) {
-		if (mshv_vtl_configure_vsm_partition(dev)) {
-			dev_emerg(dev, "VSM configuration failed !!\n");
-			ret = -ENODEV;
-			goto unset_func;
-		}
-	}
-#endif
+
 	ret = mshv_tdx_create_apicid_to_cpuid_mapping(dev);
 	if (ret)
 		goto unset_func;
