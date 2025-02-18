@@ -39,7 +39,7 @@ static __init int pci_arch_init(void)
 	pci_direct_init(type);
 
 	if (!raw_pci_ops && !raw_pci_ext_ops)
-		printk(KERN_ERR
+		printk(KERN_INFO
 		"PCI: Fatal: No config space access function found\n");
 
 	dmi_check_pciprobe();
