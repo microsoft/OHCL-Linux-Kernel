@@ -1584,6 +1584,48 @@ static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
 
 	return copy_to_user(user_arg, &value, sizeof(value)) ? -EFAULT : 0;
 }
+
+static int mshv_vtl_map_redirected_intr(u32 proxy_vector, u32 apic_id)
+{
+	return -ENODEV;
+}
+
+static int mshv_vtl_unmap_redirected_intr(u32 hw_vector, u32 apic_id)
+{
+	return -ENODEV;
+}
+
+static long mshv_vtl_ioctl_setup_redirected_intr(void __user *user_arg)
+{
+	struct mshv_map_device_intr intr_data;
+	int ret;
+
+	if (copy_from_user(&intr_data, user_arg, sizeof(intr_data)))
+		return (long)-EFAULT;
+
+	/* User space provides the hardware vector to unmap. */
+	if (!intr_data.create_mapping)
+		return (long)mshv_vtl_unmap_redirected_intr(intr_data.vector,
+							    intr_data.apic_id);
+
+	/*
+	 * User space provides the proxy vector it wants to map to a hardware
+	 * vector.
+	 */
+	ret = mshv_vtl_map_redirected_intr(intr_data.vector, intr_data.apic_id);
+	if (ret < 0)
+		return (long)ret;
+
+	/*
+	 * The return value is the hardware vector to which the proxy vector
+	 * is mapped.
+	 */
+	intr_data.vector = ret;
+	ret = copy_to_user(user_arg, &intr_data, sizeof(intr_data)) ? -EFAULT : 0;
+
+	return (long)ret;
+}
+
 #endif
 
 #if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
@@ -2077,6 +2119,9 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;
 	case MSHV_VTL_READ_VMX_CR4_FIXED1:
 		ret = mshv_vtl_ioctl_read_vmx_cr4_fixed1((void __user *)arg);
+		break;
+	case MSHV_VTL_MAP_REDIRECTED_DEVICE_INTERRUPT:
+		ret = mshv_vtl_ioctl_setup_redirected_intr((void __user *)arg);
 		break;
 #endif
 
