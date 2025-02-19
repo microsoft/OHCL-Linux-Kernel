@@ -442,13 +442,22 @@ static int mshv_vtl_get_vsm_regs(void)
 	return ret;
 }
 
+static void do_assert_single_proxy_intr(const u32 vector, struct mshv_vtl_run *run)
+{
+	/* See mshv_tdx_handle_simple_icr_write() on how the bank and bit are computed. */
+	const u32 bank = vector >> 5;
+	const u32 masked_irr = BIT(vector & 0x1f) & ~READ_ONCE(run->proxy_irr_blocked[bank]);
+
+	/* nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write */
+	atomic_or(masked_irr, (atomic_t *)&run->proxy_irr[bank]);
+}
+
 static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 {
 	struct hv_message *msg;
 	u32 message_type;
 	struct hv_x64_proxy_interrupt_message_payload *proxy;
 	struct mshv_vtl_run *run;
-	u32 vector;
 
 	msg = (struct hv_message *)per_cpu->synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
 	for (;;) {
@@ -478,17 +487,9 @@ static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 			}
 		} else {
 			/* A malicious hypervisor might set a vector > 255. */
-			vector = READ_ONCE(proxy->u.asserted_vector) & 0xff;
-			/*
-			 * See mshv_tdx_handle_simple_icr_write() on how the bank and bit are
-			 * computed.
-			 */
-			const u32 bank = vector >> 5;
-			const u32 masked_irr = BIT(vector & 0x1f) &
-				~READ_ONCE(run->proxy_irr_blocked[bank]);
+			const u32 vector = READ_ONCE(proxy->u.asserted_vector) & 0xff;
 
-			/* nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write() */
-			atomic_or(masked_irr, (atomic_t *)&run->proxy_irr[bank]);
+			do_assert_single_proxy_intr(vector, run);
 		}
 
 		WRITE_ONCE(run->scan_proxy_irr, 1);
