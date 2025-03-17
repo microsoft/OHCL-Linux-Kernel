@@ -39,6 +39,8 @@
 
 #include "../../kernel/fpu/legacy.h"
 
+#include "mshv_vtl_local_maps.h"
+
 #endif
 
 #include "mshv.h"
@@ -1603,7 +1605,35 @@ static void __noreturn mshv_sev_es_terminate(unsigned int set, unsigned int reas
 		asm volatile("hlt\n" : : : "memory");
 }
 
-static long mshv_vtl_ioctl_pvalidate(void __user *pval_user)
+struct mshv_vtl_pvalidate_param {
+	bool use_large_page;
+	u8 validate;
+};
+
+static ssize_t mshv_vtl_use_local_page_pvalidate(void *vaddr, void *param)
+{
+	struct mshv_vtl_pvalidate_param *pval = param;
+	u8 rmp_psize = pval->use_large_page ? RMP_PG_SIZE_2M : RMP_PG_SIZE_4K;
+	u8 validate = pval->validate;
+
+	return pvalidate((u64)vaddr, rmp_psize, validate);
+}
+
+struct mshv_vtl_rmpadjust_param {
+	bool use_large_page;
+	u64 attrs;
+};
+
+static ssize_t mshv_vtl_use_local_page_rmpadjust(void *vaddr, void *param)
+{
+	struct mshv_vtl_rmpadjust_param* rmpadj = param;
+	u8 rmp_psize = rmpadj->use_large_page ? RMP_PG_SIZE_2M : RMP_PG_SIZE_4K;
+	u64 attrs = rmpadj->attrs;
+
+	return rmpadjust((u64)vaddr, rmp_psize, attrs);
+}
+
+static long mshv_vtl_ioctl_pvalidate(void __user* pval_user)
 {
 	u64 pfn_end, pfn;
 	long rc;
@@ -1618,36 +1648,62 @@ static long mshv_vtl_ioctl_pvalidate(void __user *pval_user)
 	if (!pval.page_count)
 		return -ENODATA;
 
+	pr_debug("%s: start_pfn %#llx, page count %#llx, ram %d, validate %d\n",
+			__func__, pval.start_pfn, pval.page_count, pval.ram, pval.validate);
+
 	pfn = pval.start_pfn;
 	pfn_end = pfn + pval.page_count;
-
 	while (pfn < pfn_end) {
-		unsigned long pfns[1] = { pfn };
-		void *vaddr;
-
-		if (pval.ram)
-			vaddr = kmap_local_page(pfn_to_page(pfn));
-		else
-			vaddr = vmap_pfn(pfns, ARRAY_SIZE(pfns), PAGE_KERNEL);
-
-		if (!vaddr) {
-			rc = -EINVAL;
-			break;
+		struct mshv_vtl_pvalidate_param param;
+		bool use_large_page = IS_ALIGNED(pfn, 0x200) && (pfn_end - pfn >= 0x200);
+		u64 count = 0;
+		u64 failed_pfn = -1;
+		
+		if (use_large_page) {
+			count = ALIGN_DOWN(pfn_end, 0x200) - pfn;
+		} else {
+			if (pfn_end - pfn >= 0x200)
+				count = ALIGN(pfn, 0x200) - pfn;
+			else
+				count = pfn_end - pfn;
 		}
 
-		rc = pvalidate((u64)vaddr, RMP_PG_SIZE_4K, pval.validate);
-		if (pval.ram)
-			kunmap_local(vaddr);
-		else
-			vunmap(vaddr);
-		if (WARN(rc, "Failed to pvalidate pfn %#llx, ret %ld", pfn, rc)) {
+		pr_debug("%s: large_page %d, pfn %#llx, count %#llx\n", __func__, use_large_page, pfn, count);
+		BUG_ON(!count || count > pval.page_count);
+
+		param.use_large_page = use_large_page;
+		param.validate = pval.validate;
+
+		rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_pvalidate, &param);
+		if (rc == PVALIDATE_FAIL_SIZEMISMATCH && use_large_page) {
+			BUG_ON(!IS_ALIGNED(pfn, 0x200) || (pfn_end - pfn < 0x200));
+			BUG_ON(!IS_ALIGNED(failed_pfn, 0x200));
+
+			pfn = failed_pfn;
+			count = 0x200;
+			use_large_page = false;
+			param.use_large_page = false;
+
+			pr_debug("%s: retrying, large_page %d, pfn %#llx, count %#llx\n", __func__, use_large_page, pfn, count);
+			rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_pvalidate, &param);
+		}
+
+		if (WARN(rc, "Failed to pvalidate pfn %#llx, ret %ld", failed_pfn, rc)) {
+			/*
+			 * `sev.h` defines `PVALIDATE_FAIL_NOUPDATE` as `255` in addition to the hardware
+			 * codes. That software error code is returned when the CF is set after the `pvalidate`
+			 * instruction.
+			 * That in and by itself does not mean that there has been an error; the RMP entry might
+			 * just not have been updated as it is already in the requested state. As we don't expect
+			 * overlapping ranges, that is fine.
+			 */
 			if (pval.terminate_on_failure)
 				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PVALIDATE);
 			else
 				break;
 		}
 
-		++pfn;
+		pfn += count;
 	}
 
 	return rc;
@@ -1670,34 +1726,57 @@ static long mshv_vtl_ioctl_rmpadjust(void __user *rmpa_user)
 
 	pfn = rmpa.start_pfn;
 	pfn_end = pfn + rmpa.page_count;
-
 	while (pfn < pfn_end) {
-		unsigned long pfns[1] = { pfn };
-		void *vaddr;
-
-		if (rmpa.ram)
-			vaddr = kmap_local_page(pfn_to_page(pfn));
-		else
-			vaddr = vmap_pfn(pfns, ARRAY_SIZE(pfns), PAGE_KERNEL);
-
-		if (!vaddr) {
-			rc = -EINVAL;
-			break;
+		struct mshv_vtl_rmpadjust_param param;
+		bool use_large_page = IS_ALIGNED(pfn, 0x200) && (pfn_end - pfn >= 0x200);
+		u64 count = 0;
+		u64 failed_pfn = -1;
+		
+		if (use_large_page) {
+			count = ALIGN_DOWN(pfn_end, 0x200) - pfn;
+		} else {
+			if (pfn_end - pfn >= 0x200)
+				count = ALIGN(pfn, 0x200) - pfn;
+			else
+				count = pfn_end - pfn;
 		}
 
-		rc = rmpadjust((u64)vaddr, RMP_PG_SIZE_4K, rmpa.value);
-		if (rmpa.ram)
-			kunmap_local(vaddr);
-		else
-			vunmap(vaddr);
-		if (WARN(rc, "Failed to rmpadjust pfn %#llx, ret %ld", pfn, rc)) {
+		pr_debug("%s: large_page %d, pfn %#llx, count %#llx\n", __func__, use_large_page, pfn, count);
+		BUG_ON(!count || count > rmpa.page_count);
+
+		param.use_large_page = use_large_page;
+		param.attrs = rmpa.value;
+
+		rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_rmpadjust, &param);
+		if (rc == PVALIDATE_FAIL_SIZEMISMATCH && use_large_page) {
+			BUG_ON(!IS_ALIGNED(pfn, 0x200) || (pfn_end - pfn < 0x200));
+			BUG_ON(!IS_ALIGNED(failed_pfn, 0x200));
+
+			pfn = failed_pfn;
+			count = 0x200;
+			use_large_page = false;
+			param.use_large_page = false;
+
+			pr_debug("%s: retrying, large_page %d, pfn %#llx, count %#llx\n", __func__, use_large_page, pfn, count);
+			rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_rmpadjust, &param);
+		}
+
+		if (WARN(rc, "Failed to rmpadjust pfn %#llx, ret %ld", failed_pfn, rc)) {
+			/*
+			 * `sev.h` defines `PVALIDATE_FAIL_NOUPDATE` as `255` in addition to the hardware
+			 * codes. That software error code is returned when the CF is set after the `pvalidate`
+			 * instruction.
+			 * That in and by itself does not mean that there has been an error; the RMP entry might
+			 * just not have been updated as it is already in the requested state. As we don't expect
+			 * overlapping ranges, that is fine.
+			 */
 			if (rmpa.terminate_on_failure)
 				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PSC);
 			else
 				break;
 		}
 
-		++pfn;
+		pfn += count;
 	}
 
 	return rc;
