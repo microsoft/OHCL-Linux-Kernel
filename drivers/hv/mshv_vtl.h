@@ -106,7 +106,8 @@ struct mshv_vtl_run {
 	u32 vtl_ret_action_size;
 	__u32 flags;
 	__u8 scan_proxy_irr;
-	u8 pad[2];
+	__u8 offload_flags;
+	__u8 pad[1];
 	__u8 enter_mode;
 	char exit_message[MSHV_MAX_RUN_MSG_SIZE];
 	union {
