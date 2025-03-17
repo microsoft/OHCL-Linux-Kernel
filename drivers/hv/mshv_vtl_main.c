@@ -1199,8 +1199,8 @@ static void mshv_vtl_idle(void)
  */
 #ifndef CONFIG_INTEL_TDX_GUEST
 static void mshv_tdx_free_apicid_to_cpuid_mapping(void) {}
-static int mshv_tdx_create_apicid_to_cpuid_mapping(struct device *) { return 0; }
-static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *) { return false; }
+static int mshv_tdx_create_apicid_to_cpuid_mapping(struct device *dev) { return 0; }
+static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *run) { return false; }
 #else
 static void mshv_tdx_free_apicid_to_cpuid_mapping(void)
 {
@@ -1558,8 +1558,12 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 	reenter = reenter_mode(mode);
 
 	for (;;) {
+		const unsigned long VTL0_WORK= _TIF_SIGPENDING | _TIF_NEED_RESCHED |
+					_TIF_NOTIFY_RESUME | _TIF_NOTIFY_SIGNAL;
 		unsigned long irq_flags;
 		struct hv_vp_assist_page *hvp;
+		unsigned long ti_work;
+		u32 cancel;
 		int ret;
 
 		if (__xfer_to_guest_mode_work_pending()) {
@@ -2827,7 +2831,7 @@ static int __init mshv_vtl_init(void)
 #endif
 	ret = mshv_tdx_create_apicid_to_cpuid_mapping(dev);
 	if (ret)
-		goto unset_func;
+		goto free_dev;
 
 	mshv_vtl_return_call_init(mshv_vsm_page_offsets.vtl_return_offset);
 	ret = hv_vtl_setup_synic();
@@ -2913,7 +2917,6 @@ static void __exit mshv_vtl_exit(void)
 {
 	mshv_tdx_free_apicid_to_cpuid_mapping();
 	misc_deregister(&mshv_vtl_sint_dev);
-	misc_deregister(&mshv_vtl_hvcall);
 	misc_deregister(&mshv_vtl_low);
 	device_del(mem_dev);
 	kfree(mem_dev);
