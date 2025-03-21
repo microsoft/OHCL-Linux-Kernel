@@ -76,8 +76,11 @@ void mshv_vtl_sidecar_isr(void)
 
 static void sidecar_signal(struct sidecar_dev *dev, u32 cpu)
 {
-	if (dev->control->request_vector)
+	if (dev->control->request_vector) {
+		preempt_disable();
 		__apic_send_IPI(cpu, dev->control->request_vector);
+		preempt_enable();
+	}
 }
 
 static int sidecar_claim(struct sidecar_dev *dev, u32 cpu, u8 state)
