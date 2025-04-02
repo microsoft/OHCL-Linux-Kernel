@@ -461,6 +461,10 @@ static struct cc_blob_sev_info *find_cc_blob(struct boot_params *bp)
 {
 	struct cc_blob_sev_info *cc_info;
 
+	/* Boot kernel would have passed the CC blob via boot_params. */
+	if (bp->cc_blob_address)
+		return (struct cc_blob_sev_info *)(unsigned long)bp->cc_blob_address;
+
 	cc_info = find_cc_blob_efi(bp);
 	if (cc_info)
 		goto found_cc_info;
@@ -510,9 +514,11 @@ static bool early_snp_init(struct boot_params *bp)
 	/*
 	 * Pass run-time kernel a pointer to CC info via boot_params so EFI
 	 * config table doesn't need to be searched again during early startup
-	 * phase.
+	 * phase. Hypervisor also may popualte cc_blob_address directyly
+	 * in direct boot mode.
 	 */
-	bp->cc_blob_address = (u32)(unsigned long)cc_info;
+	if (!bp->cc_blob_address)
+		bp->cc_blob_address = (u32)(unsigned long)cc_info;
 
 	return true;
 }
@@ -554,17 +560,24 @@ static int sev_check_cpu_support(void)
 
 void sev_enable(struct boot_params *bp)
 {
+	struct cc_blob_sev_info *cc_info;
 	struct msr m;
 	int bitpos;
 	bool snp;
 
 	/*
-	 * bp->cc_blob_address should only be set by boot/compressed kernel.
-	 * Initialize it to 0 to ensure that uninitialized values from
-	 * buggy bootloaders aren't propagated.
+	 * bp->cc_blob_address should only be set by boot/compressed
+	 * kernel and hypervisor with direct boot mode. Initialize it
+	 * to 0 after checking in order to ensure that uninitialized
+	 * values from buggy bootloaders aren't propagated.
 	 */
-	if (bp)
-		bp->cc_blob_address = 0;
+	if (bp) {
+		cc_info = (struct cc_blob_sev_info *)(unsigned long)
+			bp->cc_blob_address;
+
+		if (cc_info->magic != CC_BLOB_SEV_HDR_MAGIC)
+			bp->cc_blob_address = 0;
+	}
 
 	/*
 	 * Do an initial SEV capability check before early_snp_init() which
