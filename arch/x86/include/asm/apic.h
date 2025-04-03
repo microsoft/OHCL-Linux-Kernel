@@ -241,6 +241,15 @@ static inline u64 native_x2apic_icr_read(void)
 	return val;
 }
 
+#if defined(CONFIG_AMD_SECURE_AVIC)
+extern void x2apic_savic_update_vector(unsigned int cpu,
+				unsigned int vector,
+				bool set);
+#else
+static inline void x2apic_savic_update_vector(unsigned int cpu,
+					      unsigned int vector,								      bool set) { }
+#endif
+
 extern int x2apic_mode;
 extern int x2apic_phys;
 extern void __init x2apic_set_max_apicid(u32 apicid);
