@@ -85,6 +85,17 @@ static int hv_cpu_init(unsigned int cpu)
 	if (ret)
 		return ret;
 
+	/* Allow Hyper-V vector to be injected from Hypervisor. */
+	if (ms_hyperv.features & HV_ACCESS_REENLIGHTENMENT)
+		x2apic_savic_update_vector(cpu,
+					   HYPERV_REENLIGHTENMENT_VECTOR, true);
+
+	if (ms_hyperv.misc_features & HV_STIMER_DIRECT_MODE_AVAILABLE)
+		x2apic_savic_update_vector(cpu,
+					   HYPERV_STIMER0_VECTOR, true);
+
+	x2apic_savic_update_vector(cpu, HYPERVISOR_CALLBACK_VECTOR, true);
+
 	return hyperv_init_ghcb();
 }
 
