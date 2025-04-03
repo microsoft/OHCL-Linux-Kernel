@@ -369,6 +369,9 @@ static void init_backing_page(void *backing_page)
 	u32 val;
 	int i;
 
+	if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
+		return;
+
 	val = read_msr_from_hv(APIC_LVR);
 	set_reg(backing_page, APIC_LVR, val);
 
