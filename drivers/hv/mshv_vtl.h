@@ -2,6 +2,7 @@
 #ifndef _MSHV_VTL_H
 #define _MSHV_VTL_H
 
+#include <linux/kernel.h>
 #include <linux/mshv.h>
 #include <linux/types.h>
 #include <asm/mshyperv.h>
@@ -163,6 +164,8 @@ static_assert(sizeof(struct mshv_vtl_run) <= 4096);
 void mshv_vtl_sidecar_isr(void);
 int __init mshv_vtl_sidecar_init(void);
 void mshv_vtl_sidecar_exit(void);
+u64 __tdg_vp_enter(u64 rcx, u64 rdx,
+		struct tdx_tdg_vp_enter_exit_info *tdg_exit_info);
 #else
 static inline void mshv_vtl_sidecar_isr(void) {}
 static inline int mshv_vtl_sidecar_init(void) { return 0; }
