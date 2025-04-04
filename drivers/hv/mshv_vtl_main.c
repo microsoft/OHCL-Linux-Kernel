@@ -2309,7 +2309,8 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 				struct mshv_vtl_hvcall __user *hvcall_user)
 {
 	struct mshv_vtl_hvcall hvcall;
-	void *in, *out;
+	void *in, *out, *percpu_in, *percpu_out;
+	unsigned long flags;
 	int ret;
 
 	if (copy_from_user(&hvcall, hvcall_user, sizeof(struct mshv_vtl_hvcall)))
@@ -2333,13 +2334,27 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 
 	in = (void *)__get_free_page(GFP_KERNEL);
 	out = (void *)__get_free_page(GFP_KERNEL);
+	if (!in || !out) {
+		ret = -ENOMEM;
+		goto free_pages;
+	}
 
 	if (copy_from_user(in, (void __user *)hvcall.input_ptr, hvcall.input_size)) {
 		ret = -EFAULT;
 		goto free_pages;
 	}
 
-	hvcall.status = hv_do_hypercall(hvcall.control, in, out);
+	local_irq_save(flags);
+
+	percpu_in = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	percpu_out = *this_cpu_ptr(hyperv_pcpu_output_arg);
+	memcpy(percpu_in, in, hvcall.input_size);
+
+	hvcall.status = hv_do_hypercall(hvcall.control, percpu_in, percpu_out);
+
+	memcpy(out, percpu_out, hvcall.output_size);
+
+	local_irq_restore(flags);
 
 	if (copy_to_user((void __user *)hvcall.output_ptr, out, hvcall.output_size)) {
 		ret = -EFAULT;
