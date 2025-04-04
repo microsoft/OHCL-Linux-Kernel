@@ -852,8 +852,7 @@ noinline void mshv_vtl_return_tdx(void)
 	tdx_vp_state = &vtl_run->tdx_context.vp_state;
 	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
 
-	/* TODO TDX: For now, hardcode VP.ENTER rax value. */
-	u64 input_rax = 25;
+	u64 input_rax = TDG_VP_ENTER;
 	u64 input_rcx = vtl_run->tdx_context.entry_rcx;
 	u64 input_rdx = virt_to_phys((void*) &vtl_run->tdx_context.l2_enter_guest_state);
 
