@@ -159,4 +159,7 @@ static_assert(sizeof(struct mshv_vtl_run) <= 4096);
 #define SEV_GHCB_FORMAT_BASE        0
 #define SEV_GHCB_FORMAT_VTL_RETURN  2
 
+/* TDCALL Instruction Leaf Numbers */
+#define TDG_VP_ENTER 25
+
 #endif /* _MSHV_VTL_H */
