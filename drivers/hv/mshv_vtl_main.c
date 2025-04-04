@@ -566,30 +566,6 @@ static int mshv_vtl_get_vsm_regs(void)
 	return ret;
 }
 
-static int __maybe_unused mshv_vtl_configure_vsm_partition(struct device *dev)
-{
-	union hv_register_vsm_partition_config config;
-	struct hv_register_assoc reg_assoc;
-
-	config.as_uint64 = 0;
-	config.default_vtl_protection_mask = HV_MAP_GPA_PERMISSIONS_MASK;
-	config.enable_vtl_protection = 1;
-	config.zero_memory_on_reset = 1;
-	config.intercept_vp_startup = 1;
-	config.intercept_cpuid_unimplemented = 1;
-
-	if (mshv_vsm_capabilities.intercept_page_available) {
-		dev_dbg(dev, "using intercept page\n");
-		config.intercept_page = 1;
-	}
-
-	reg_assoc.name = HV_REGISTER_VSM_PARTITION_CONFIG;
-	reg_assoc.value.reg64 = config.as_uint64;
-
-	return hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				       1, input_vtl_zero, &reg_assoc);
-}
-
 static void do_assert_single_proxy_intr(const u32 vector, struct mshv_vtl_run *run)
 {
 	/* See mshv_tdx_handle_simple_icr_write() on how the bank and bit are computed. */
@@ -3392,15 +3368,7 @@ static int __init mshv_vtl_init(void)
 		ret = -ENODEV;
 		goto free_dev;
 	}
-#ifdef CONFIG_X86_64
-	if (!hv_isolation_type_tdx() && !hv_isolation_type_snp()) {
-		if (mshv_vtl_configure_vsm_partition(dev)) {
-			dev_emerg(dev, "VSM configuration failed !!\n");
-			ret = -ENODEV;
-			goto free_dev;
-		}
-	}
-#endif
+
 	ret = mshv_tdx_create_apicid_to_cpuid_mapping(dev);
 	if (ret)
 		goto free_dev;
