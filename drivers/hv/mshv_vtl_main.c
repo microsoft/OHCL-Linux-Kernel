@@ -2553,7 +2553,8 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 				struct mshv_vtl_hvcall __user *hvcall_user)
 {
 	struct mshv_vtl_hvcall hvcall;
-	void *in, *out;
+	void *in, *out, *percpu_in, *percpu_out;
+	unsigned long flags;
 	int ret;
 
 	if (copy_from_user(&hvcall, hvcall_user, sizeof(struct mshv_vtl_hvcall)))
@@ -2594,13 +2595,18 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 		goto free_pages;
 	}
 
-	/*
-	 * The caller supplies output_size, so clear the range copied back to
-	 * userspace in case the hypercall writes fewer bytes than requested.
-	 */
-	memset(out, 0, hvcall.output_size);
+	local_irq_save(flags);
 
-	hvcall.status = hv_do_hypercall(hvcall.control, in, out);
+	percpu_in = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	percpu_out = *this_cpu_ptr(hyperv_pcpu_output_arg);
+	memcpy(percpu_in, in, hvcall.input_size);
+	memset(percpu_out, 0, hvcall.output_size);
+
+	hvcall.status = hv_do_hypercall(hvcall.control, percpu_in, percpu_out);
+
+	memcpy(out, percpu_out, hvcall.output_size);
+
+	local_irq_restore(flags);
 
 	if (copy_to_user((void __user *)hvcall.output_ptr, out, hvcall.output_size)) {
 		ret = -EFAULT;
