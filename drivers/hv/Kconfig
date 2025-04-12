@@ -91,6 +91,7 @@ config MSHV_VTL
 	select HYPERV_VTL_MODE
 	select CPUMASK_OFFSTACK
 	select VMAP_PFN
+	select USER_RETURN_NOTIFIER if X86
 	help
 	  Select this option to enable Hyper-V VTL driver.
 	  Virtual Secure Mode (VSM) is a set of hypervisor capabilities and
