@@ -20,6 +20,7 @@
 #include <linux/eventfd.h>
 #include <linux/poll.h>
 #include <linux/file.h>
+#include <linux/user-return-notifier.h>
 #include <linux/vmalloc.h>
 #include <asm/boot.h>
 #include <linux/tick.h>
@@ -186,6 +187,8 @@ struct mshv_vtl_per_cpu {
 	u64 l2_tsc_deadline_prev[MSHV_VTL_NUM_L2_VM];
 	u64 l2_hlt_tsc_deadline;
 	bool l2_tsc_deadline_expired[MSHV_VTL_NUM_L2_VM];
+	bool urn_registered;
+	struct user_return_notifier mshv_urn;
 #endif
 };
 
@@ -789,12 +792,13 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 
 		/*
 		 * Capture the initial syscall MSRs to be restored after VP.ENTER.
-		 * TODO TDX: Needs review from kernel experts.
 		 */
 		rdmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
 		rdmsrl(MSR_STAR, per_cpu->l1_msr_star);
 		rdmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
 		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+
+		per_cpu->urn_registered = false;
 
 		/* Enable the apic page. */
 		mshv_write_tdx_apic_page(page_to_phys(tdx_apic_page));
@@ -1139,6 +1143,21 @@ static void mshv_tdx_tsc_deadline_expired(struct tdx_vp_context *context)
 	per_cpu->l2_tsc_deadline_expired[vm_idx - 1] = true;
 }
 
+static void mshv_vtl_on_user_return(struct user_return_notifier *urn)
+{
+	struct mshv_vtl_per_cpu *per_cpu
+		= container_of(urn, struct mshv_vtl_per_cpu, mshv_urn);
+
+	per_cpu->urn_registered = false;
+	user_return_notifier_unregister(urn);
+
+	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+	wrmsrl(MSR_STAR, per_cpu->l1_msr_star);
+	wrmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
+	wrmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+	wrmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
+}
+
 void mshv_vtl_return_tdx(void)
 {
 	struct tdx_tdg_vp_enter_exit_info *tdx_exit_info;
@@ -1189,12 +1208,11 @@ void mshv_vtl_return_tdx(void)
 	rdmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
 	rdmsrl(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
 
-	/* Restore VTL2's syscall registers & MSRs */
-	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
-	wrmsrl(MSR_STAR, per_cpu->l1_msr_star);
-	wrmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
-	wrmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
-	wrmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
+	if (!per_cpu->urn_registered) {
+		per_cpu->mshv_urn.on_user_return = mshv_vtl_on_user_return;
+		user_return_notifier_register(&per_cpu->mshv_urn);
+		per_cpu->urn_registered = true;
+	}
 
 	fxsave(&vtl_run->tdx_context.fx_state);
 	kernel_fpu_end();

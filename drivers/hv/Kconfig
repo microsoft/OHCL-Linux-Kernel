@@ -98,6 +98,7 @@ config MSHV_VTL
 	select CPUMASK_OFFSTACK
 	select VIRT_XFER_TO_GUEST_WORK
 	select VMAP_PFN
+	select USER_RETURN_NOTIFIER if X86
 	default n
 	help
 	  Select this option to enable Hyper-V VTL driver support.
