@@ -252,7 +252,6 @@ static long __mshv_vtl_ioctl_check_extension(u32 arg)
 
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
-#ifdef CONFIG_X86_64
 	struct hv_register_assoc reg_assoc = {};
 	union mshv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
@@ -267,7 +266,7 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 
 	overlay.enabled = 1;
 	overlay.pfn = page_to_phys(reg_page) >> HV_HYP_PAGE_SHIFT;
-	reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
+	reg_assoc.name = HV_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_u64;
 
 	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
@@ -275,8 +274,11 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 	if (ret) {
 		__free_page(reg_page);
 
-		if (ret == -EINVAL) {
+		if (ret == -EINVAL || ret == -EACCES) {
 			/*
+			 * EINVAL is returned when the hypervisor predates register page support.
+			 * EACCES is returned when the register page is not available for use.
+			 *
 			 * TODO: replace `ret == -EINVAL` with
 			 *       `ret == HV_STATUS_INVALID_PARAMETER'.
 			 *
@@ -299,6 +301,7 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 			 * into some `hv_call_set_vp_registers_raw` function. Then here we could
 			 * call `hv_call_set_vp_registers_raw` to be able to be precise when detecting
 			 * whether the register page is available or not.
+			 *
 			 */
 			pr_info("not using the register page");
 		} else {
@@ -309,9 +312,6 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 		per_cpu->reg_page = reg_page;
 		mshv_has_reg_page = true;
 	}
-#else
-	pr_debug("not using the register page");
-#endif
 }
 
 #ifdef CONFIG_X86_64
