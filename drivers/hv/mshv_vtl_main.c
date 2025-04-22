@@ -397,7 +397,6 @@ static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask
 
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
-#ifdef CONFIG_X86_64
 	struct hv_register_assoc reg_assoc = {};
 	union hv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
@@ -411,15 +410,19 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 
 	overlay.enabled = 1;
 	overlay.pfn = page_to_hvpfn(reg_page);
-	reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
+	reg_assoc.name = HV_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_uint64;
 
 	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 				       1, input_vtl_zero, &reg_assoc);
 	if (ret) {
 		__free_page(reg_page);
-		if (ret == -EINVAL) {
+
+		if (ret == -EINVAL || ret == -EACCES) {
 			/*
+			 * EINVAL is returned when the hypervisor predates register page support.
+			 * EACCES is returned when the register page is not available for use.
+			 *
 			 * TODO: replace `ret == -EINVAL` with
 			 *       `ret == HV_STATUS_INVALID_PARAMETER'.
 			 *
@@ -452,9 +455,6 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 		per_cpu->reg_page = reg_page;
 		mshv_has_reg_page = true;
 	}
-#else
-	pr_debug("not using the register page");
-#endif
 }
 
 #ifdef CONFIG_X86_64
