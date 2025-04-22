@@ -2,7 +2,8 @@
 /*
  * Copyright (c) 2023, Microsoft Corporation.
  *
- * Author:
+ * Authors:
+ *   Roman Kisel <romank@microsoft.com>
  *   Saurabh Sengar <ssengar@microsoft.com>
  */
 
