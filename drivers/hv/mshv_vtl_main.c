@@ -1585,6 +1585,62 @@ static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
 	return copy_to_user(user_arg, &value, sizeof(value)) ? -EFAULT : 0;
 }
 
+static int hyperv_vtl_redirected_intr_alloc(struct irq_domain *domain, unsigned int virq,
+					    unsigned int nr_irqs, void *arg)
+{
+	int ret;
+
+	ret = irq_domain_alloc_irqs_parent(domain, virq, nr_irqs, arg);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * The dummy chip does not have irq_set_affinity(). The affinity of an
+	 * IRQ cannot be changed after initialization (see
+	 * __irq_can_set_affinity()).
+	 */
+	irq_set_chip_and_handler(virq, &dummy_irq_chip, handle_simple_irq);
+
+	return 0;
+}
+
+static const struct irq_domain_ops hyperv_vtl_redirected_intr_ops = {
+	.alloc = hyperv_vtl_redirected_intr_alloc,
+	.free = irq_domain_free_irqs_common,
+};
+
+static struct irq_domain *redirected_intr_domain;
+static struct fwnode_handle *redirected_intr_fwnode;
+
+static int __init ms_hyperv_init_redirected_intr(void)
+{
+	redirected_intr_fwnode = irq_domain_alloc_named_fwnode("hyperv-redirected-intr");
+	if (!redirected_intr_fwnode)
+		return -ENODEV;
+
+	redirected_intr_domain = irq_domain_create_hierarchy(x86_vector_domain, 0, 0,
+							     redirected_intr_fwnode,
+							     &hyperv_vtl_redirected_intr_ops,
+							     NULL);
+	if (!redirected_intr_domain) {
+		irq_domain_free_fwnode(redirected_intr_fwnode);
+		return -ENODEV;
+	}
+
+	return 0;
+}
+
+static void ms_hyperv_free_redirected_intr(void)
+{
+	if (!redirected_intr_domain)
+		return;
+
+	irq_domain_remove(redirected_intr_domain);
+	irq_domain_free_fwnode(redirected_intr_fwnode);
+	redirected_intr_domain = NULL;
+	redirected_intr_fwnode = NULL;
+}
+
 static int mshv_vtl_map_redirected_intr(u32 proxy_vector, u32 apic_id)
 {
 	return -ENODEV;
@@ -1626,6 +1682,9 @@ static long mshv_vtl_ioctl_setup_redirected_intr(void __user *user_arg)
 	return (long)ret;
 }
 
+#else
+static inline int ms_hyperv_init_redirected_intr(void) { return 0; }
+static inline void ms_hyperv_free_redirected_intr(void) { }
 #endif
 
 #if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
@@ -2874,6 +2933,10 @@ static int __init mshv_vtl_init(void)
 		goto free_mem;
 	}
 
+	ret = ms_hyperv_init_redirected_intr();
+	if (ret)
+		goto free_mem;
+
 	mshv_vtl_init_memory();
 	mshv_vtl_set_idle(mshv_vtl_idle);
 
@@ -2903,6 +2966,7 @@ unset_func:
 static void __exit mshv_vtl_exit(void)
 {
 	mshv_setup_vtl_func(NULL, NULL, NULL);
+	ms_hyperv_free_redirected_intr();
 	mshv_tdx_free_apicid_to_cpuid_mapping();
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
