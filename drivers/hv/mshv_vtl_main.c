@@ -161,6 +161,9 @@ struct mshv_vtl_per_cpu {
 	u64 l1_msr_sfmask;
 	u64 l1_msr_tsc_aux;
 #endif
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+	struct page *secure_avic_page;
+#endif
 };
 
 static struct mutex	mshv_vtl_poll_file_lock;
@@ -190,17 +193,27 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 
 static struct page *tdx_apic_page(int cpu)
 {
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
+#else
+	(void)cpu;
+	return NULL;
+#endif
 }
 
 static struct page *tdx_this_apic_page(void)
 {
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page);
+#else
+	return NULL;
+#endif
 }
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 
 /*
  * For ICR emulation on TDX, we need a fast way to map APICIDs to CPUIDs.
@@ -234,6 +247,26 @@ static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask
 	return -EINVAL;
 }
 #endif
+
+static struct page *snp_secure_avic_page(int cpu)
+{
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.secure_avic_page, cpu);
+#else
+	(void)cpu;
+	return NULL;
+#endif
+}
+
+struct page* mshv_apic_page(int cpu)
+{
+	if (hv_isolation_type_tdx())
+		return tdx_apic_page(cpu);
+	else if (hv_isolation_type_snp())
+		return snp_secure_avic_page(cpu);
+
+	return NULL;
+}
 
 static long __mshv_vtl_ioctl_check_extension(u32 arg)
 {
@@ -1959,7 +1992,7 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 
 static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 {
-	struct page *page;
+	struct page *page = NULL;
 	int cpu = vmf->pgoff & MSHV_PG_OFF_CPU_MASK;
 	int real_off = vmf->pgoff >> MSHV_REAL_OFF_SHIFT;
 
@@ -1991,17 +2024,15 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 		if (!hv_isolation_type_snp())
 			return VM_FAULT_SIGBUS;
 		page = *per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page, cpu);
-#ifdef CONFIG_INTEL_TDX_GUEST
 	} else if (real_off == MSHV_APIC_PAGE_OFFSET) {
-		if (!hv_isolation_type_tdx())
-			return VM_FAULT_SIGBUS;
-
-		page = tdx_apic_page(cpu);
-#endif
+		page = mshv_apic_page(cpu);
 #endif
 	} else {
 		return VM_FAULT_NOPAGE;
 	}
+
+	if (!page)
+		return VM_FAULT_SIGBUS;
 
 	get_page(page);
 	vmf->page = page;
