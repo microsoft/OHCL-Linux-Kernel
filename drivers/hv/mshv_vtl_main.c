@@ -2,8 +2,7 @@
 /*
  * Copyright (c) 2023, Microsoft Corporation.
  *
- * Authors:
- *   Roman Kisel <romank@microsoft.com>
+ * Author:
  *   Saurabh Sengar <ssengar@microsoft.com>
  */
 
@@ -252,6 +251,7 @@ static long __mshv_vtl_ioctl_check_extension(u32 arg)
 
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
+#ifdef CONFIG_X86_64
 	struct hv_register_assoc reg_assoc = {};
 	union mshv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
@@ -266,7 +266,7 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 
 	overlay.enabled = 1;
 	overlay.pfn = page_to_phys(reg_page) >> HV_HYP_PAGE_SHIFT;
-	reg_assoc.name = HV_REGISTER_REG_PAGE;
+	reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_u64;
 
 	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
@@ -274,11 +274,8 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 	if (ret) {
 		__free_page(reg_page);
 
-		if (ret == -EINVAL || ret == -EACCES) {
+		if (ret == -EINVAL) {
 			/*
-			 * EINVAL is returned when the hypervisor predates register page support.
-			 * EACCES is returned when the register page is not available for use.
-			 *
 			 * TODO: replace `ret == -EINVAL` with
 			 *       `ret == HV_STATUS_INVALID_PARAMETER'.
 			 *
@@ -301,7 +298,6 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 			 * into some `hv_call_set_vp_registers_raw` function. Then here we could
 			 * call `hv_call_set_vp_registers_raw` to be able to be precise when detecting
 			 * whether the register page is available or not.
-			 *
 			 */
 			pr_info("not using the register page");
 		} else {
@@ -312,6 +308,9 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 		per_cpu->reg_page = reg_page;
 		mshv_has_reg_page = true;
 	}
+#else
+	pr_debug("not using the register page");
+#endif
 }
 
 #ifdef CONFIG_X86_64
@@ -425,6 +424,32 @@ static int mshv_vtl_get_vsm_regs(void)
 #endif
 
 	return ret;
+}
+
+static int __maybe_unused mshv_vtl_configure_vsm_partition(struct device *dev)
+{
+	union hv_register_vsm_partition_config config;
+	struct hv_register_assoc reg_assoc;
+	union hv_input_vtl input_vtl;
+
+	config.as_u64 = 0;
+	config.default_vtl_protection_mask = HV_MAP_GPA_PERMISSIONS_MASK;
+	config.enable_vtl_protection = 1;
+	config.zero_memory_on_reset = 1;
+	config.intercept_vp_startup = 1;
+	config.intercept_cpuid_unimplemented = 1;
+
+	if (mshv_vsm_capabilities.intercept_page_available) {
+		dev_dbg(dev, "using intercept page\n");
+		config.intercept_page = 1;
+	}
+
+	reg_assoc.name = HV_REGISTER_VSM_PARTITION_CONFIG;
+	reg_assoc.value.reg64 = config.as_u64;
+	input_vtl.as_uint8 = 0;
+
+	return hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+				       1, input_vtl, &reg_assoc);
 }
 
 static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
@@ -839,7 +864,8 @@ noinline void mshv_vtl_return_tdx(void)
 	tdx_vp_state = &vtl_run->tdx_context.vp_state;
 	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
 
-	u64 input_rax = TDG_VP_ENTER;
+	/* TODO TDX: For now, hardcode VP.ENTER rax value. */
+	u64 input_rax = 25;
 	u64 input_rcx = vtl_run->tdx_context.entry_rcx;
 	u64 input_rdx = virt_to_phys((void*) &vtl_run->tdx_context.l2_enter_guest_state);
 
@@ -2310,9 +2336,8 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 				struct mshv_vtl_hvcall __user *hvcall_user)
 {
 	struct mshv_vtl_hvcall hvcall;
-	void *in, *out, *percpu_in, *percpu_out;
 	unsigned long flags;
-	int ret;
+	void *in, *out;
 
 	if (copy_from_user(&hvcall, hvcall_user, sizeof(struct mshv_vtl_hvcall)))
 		return -EFAULT;
@@ -2333,42 +2358,24 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 		return -EPERM;
 	}
 
-	in = (void *)__get_free_page(GFP_KERNEL);
-	out = (void *)__get_free_page(GFP_KERNEL);
-	if (!in || !out) {
-		ret = -ENOMEM;
-		goto free_pages;
-	}
+	local_irq_save(flags);
+	in = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	out = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
 	if (copy_from_user(in, (void __user *)hvcall.input_ptr, hvcall.input_size)) {
-		ret = -EFAULT;
-		goto free_pages;
+		local_irq_restore(flags);
+		return -EFAULT;
 	}
 
-	local_irq_save(flags);
-
-	percpu_in = *this_cpu_ptr(hyperv_pcpu_input_arg);
-	percpu_out = *this_cpu_ptr(hyperv_pcpu_output_arg);
-	memcpy(percpu_in, in, hvcall.input_size);
-
-	hvcall.status = hv_do_hypercall(hvcall.control, percpu_in, percpu_out);
-
-	memcpy(out, percpu_out, hvcall.output_size);
-
-	local_irq_restore(flags);
+	hvcall.status = hv_do_hypercall(hvcall.control, in, out);
 
 	if (copy_to_user((void __user *)hvcall.output_ptr, out, hvcall.output_size)) {
-		ret = -EFAULT;
-		goto free_pages;
+		local_irq_restore(flags);
+		return -EFAULT;
 	}
+	local_irq_restore(flags);
 
-	ret = put_user(hvcall.status, &hvcall_user->status);
-
-free_pages:
-	free_page((unsigned long)in);
-	free_page((unsigned long)out);
-
-	return ret;
+	return put_user(hvcall.status, &hvcall_user->status);
 }
 
 static long mshv_vtl_hvcall_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
@@ -2588,7 +2595,15 @@ static int __init mshv_vtl_init(void)
 		ret = -ENODEV;
 		goto unset_func;
 	}
-
+#ifdef CONFIG_X86_64
+	if (!hv_isolation_type_tdx() && !hv_isolation_type_snp()) {
+		if (mshv_vtl_configure_vsm_partition(dev)) {
+			dev_emerg(dev, "VSM configuration failed !!\n");
+			ret = -ENODEV;
+			goto unset_func;
+		}
+	}
+#endif
 	ret = mshv_tdx_create_apicid_to_cpuid_mapping(dev);
 	if (ret)
 		goto unset_func;

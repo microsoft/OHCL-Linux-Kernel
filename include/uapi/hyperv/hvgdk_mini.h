@@ -326,7 +326,7 @@ enum hv_interrupt_type {
 	HV_X64_INTERRUPT_TYPE_LOCALINT0		= 0x0008,
 	HV_X64_INTERRUPT_TYPE_LOCALINT1		= 0x0009,
 	HV_X64_INTERRUPT_TYPE_MAXIMUM		= 0x000A,
-#endif
+#endif	
 };
 
 /* Define synthetic interrupt source. */
@@ -652,7 +652,7 @@ struct hv_enable_vp_vtl {
 	union hv_input_vtl		target_vtl;
 	__u8				mbz0;
 	__u16				mbz1;
-#if defined(__x86_64__)
+#if defined(__x86_64__)	
 	struct hv_x64_init_vp_context	vp_context;
 #elif defined(__aarch64__)
 	struct hv_arm64_init_vp_context	vp_context;
@@ -916,11 +916,7 @@ enum hv_register_name {
 	HV_X64_REGISTER_IA32_VMX_TRUE_EXIT_CTLS		= 0x000800B1,
 	HV_X64_REGISTER_IA32_VMX_TRUE_ENTRY_CTLS	= 0x000800B2,
 
-#endif
-
-	HV_REGISTER_REG_PAGE	= 0x0009001C,
-
-#if defined(__x86_64__)
+	HV_X64_REGISTER_REG_PAGE	= 0x0009001C,
 
 	/* Partition Timer Assist Registers */
 	HV_X64_REGISTER_EMULATED_TIMER_PERIOD	= 0x00090030,
@@ -1017,8 +1013,6 @@ enum hv_register_name {
 #define HV_MSR_STIMER0_COUNT	(HV_X64_MSR_STIMER0_COUNT)
 #define HV_MSR_SIMP		(HV_X64_MSR_SIMP)
 #define HV_MSR_SINT0		(HV_X64_MSR_SINT0)
-
-#define HV_X64_REGISTER_REG_PAGE HV_REGISTER_REG_PAGE
 
 #elif defined(__aarch64__)
 
