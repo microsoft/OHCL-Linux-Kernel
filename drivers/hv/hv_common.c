@@ -304,8 +304,7 @@ u8 __init get_vtl(void)
 	if (hv_result_success(ret)) {
 		ret = output->values[0].reg8 & HV_VTL_MASK;
 	} else {
-		pr_err("Failed to get VTL(error: %lld) exiting...\n", ret);
-		BUG();
+		ret = 0;
 	}
 
 	local_irq_restore(flags);
