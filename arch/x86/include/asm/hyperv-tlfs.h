@@ -311,6 +311,14 @@ enum hv_isolation_type {
 #define HV_MSR_STIMER0_CONFIG	(HV_X64_MSR_STIMER0_CONFIG)
 #define HV_MSR_STIMER0_COUNT	(HV_X64_MSR_STIMER0_COUNT)
 
+/*
+ * Registers are only accessible via HVCALL_GET_VP_REGISTERS hvcall and
+ * there is not associated MSR address.
+ */
+#define	HV_X64_REGISTER_VSM_VP_STATUS	0x000D0003
+#define	HV_X64_VTL_MASK			GENMASK(3, 0)
+#define HV_X64_REGISTER_SEV_AVIC_GPA    0x00090043
+
 /* Hyper-V memory host visibility */
 enum hv_mem_host_visibility {
 	VMBUS_PAGE_NOT_VISIBLE		= 0,

@@ -16,6 +16,7 @@
 #include <asm/apic.h>
 #include <asm/cpuid.h>
 #include <asm/sev.h>
+#include <asm/mshyperv.h>
 
 #include "local.h"
 
@@ -396,6 +397,10 @@ static void x2apic_savic_setup(void)
 	void *backing_page;
 	enum es_result ret;
 	unsigned long gpa;
+	unsigned long gfn;
+
+	if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
+		return;
 
 	if (this_cpu_read(savic_setup_done))
 		return;
@@ -403,7 +408,13 @@ static void x2apic_savic_setup(void)
 	backing_page = this_cpu_read(apic_backing_page);
 	init_backing_page(backing_page);
 	gpa = __pa(backing_page);
-	ret = sev_notify_savic_gpa(gpa);
+	gfn = gpa >> PAGE_SHIFT;
+
+	if (hv_isolation_type_snp())
+		ret = hv_set_savic_backing_page(gfn);
+	else
+		ret = sev_notify_savic_gpa(gpa);
+
 	if (ret != ES_OK)
 		snp_abort();
 	savic_wr_control_msr(gpa | MSR_AMD64_SECURE_AVIC_EN | MSR_AMD64_SECURE_AVIC_ALLOWEDNMI);

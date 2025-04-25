@@ -65,6 +65,13 @@ union hv_ghcb {
 /* Only used in an SNP VM with the paravisor */
 static u16 hv_ghcb_version __ro_after_init;
 
+/*
+ * Use static page to set Secure AVIC backing page.
+ * The operation happens before allocating input arg
+ * page when start AP.
+ */
+static u8 inputbuf[PAGE_SIZE] __bss_decrypted __aligned(PAGE_SIZE);
+
 /* Functions only used in an SNP VM with the paravisor go here. */
 u64 hv_ghcb_hypercall(u64 control, void *input, void *output, u32 input_size)
 {
@@ -287,6 +294,43 @@ static void snp_cleanup_vmsa(struct sev_es_save_area *vmsa)
 		pr_err("clear VMSA page failed (%u), leaking page\n", err);
 	else
 		free_page((unsigned long)vmsa);
+}
+
+enum es_result hv_set_savic_backing_page(u64 gfn)
+{
+	u64 control = HV_HYPERCALL_REP_COMP_1 | HVCALL_SET_VP_REGISTERS;
+	struct hv_set_vp_registers_input *input
+		= hv_vp_early_input_arg + smp_processor_id() * PAGE_SIZE;
+	union hv_x64_register_sev_gpa_page value;
+	unsigned long flags;
+	int retry = 5;
+	u64 ret;
+
+	local_irq_save(flags);
+
+	value.enabled = 1;
+	value.reserved = 0;
+	value.pagenumber = gfn;
+
+	memset(input, 0, struct_size(input, element, 1));
+	input->header.partitionid = HV_PARTITION_ID_SELF;
+	input->header.vpindex = HV_VP_INDEX_SELF;
+	input->header.inputvtl = ms_hyperv.vtl;
+	input->element[0].name = HV_X64_REGISTER_SEV_AVIC_GPA;
+	input->element[0].value.reg64 = value.u64;
+
+	do {
+		ret = hv_do_hypercall(control, input, NULL);
+		if (!hv_result_success(ret))
+			pr_err("Failed to set secure AVIC backing page %llx.\n", ret);
+	} while (ret == HV_STATUS_TIME_OUT && retry--);
+
+	local_irq_restore(flags);
+
+	if (hv_result_success(ret))
+		return ES_OK;
+	else
+		return ES_VMM_ERROR;
 }
 
 int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip)

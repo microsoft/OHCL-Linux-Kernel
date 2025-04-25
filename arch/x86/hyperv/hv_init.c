@@ -40,6 +40,7 @@
 void *hv_hypercall_pg;
 EXPORT_SYMBOL_GPL(hv_hypercall_pg);
 
+void *hv_vp_early_input_arg;
 union hv_ghcb * __percpu *hv_ghcb_pg;
 
 /* Storage to save the hypercall page temporarily for hibernation */
@@ -357,12 +358,29 @@ void __init hyperv_init(void)
 	u64 guest_id;
 	union hv_x64_msr_hypercall_contents hypercall_msr;
 	int cpuhp;
+	int ret;
 
 	if (x86_hyper_type != X86_HYPER_MS_HYPERV)
 		return;
 
 	if (hv_common_init())
 		return;
+
+	if (cc_platform_has(CC_ATTR_SNP_SECURE_AVIC)) {
+		hv_vp_early_input_arg = kcalloc(num_possible_cpus(),
+					     PAGE_SIZE,
+					     GFP_KERNEL);
+		if (hv_vp_early_input_arg) {
+			ret = set_memory_decrypted(hv_vp_early_input_arg,
+					     num_possible_cpus());
+			if (ret) {
+				kfree(hv_vp_early_input_arg);
+				goto common_free;
+			}
+		} else {
+			goto common_free;
+		}
+	}
 
 	/*
 	 * The VP assist page is useless to a TDX guest: the only use we
@@ -378,7 +396,7 @@ void __init hyperv_init(void)
 		ms_hyperv.hints &= ~HV_X64_ENLIGHTENED_VMCS_RECOMMENDED;
 
 		if (!hv_isolation_type_tdx())
-			goto common_free;
+			goto free_vp_early_input_arg;
 	}
 
 	if (ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
@@ -538,6 +556,10 @@ free_ghcb_page:
 free_vp_assist_page:
 	kfree(hv_vp_assist_page);
 	hv_vp_assist_page = NULL;
+free_vp_early_input_arg:
+	set_memory_encrypted(hv_vp_early_input_arg, num_possible_cpus());
+	kfree(hv_vp_early_input_arg);
+	hv_vp_early_input_arg = NULL;
 common_free:
 	hv_common_free();
 }
