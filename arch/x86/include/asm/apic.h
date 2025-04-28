@@ -262,6 +262,12 @@ extern void __init check_x2apic(void);
 
 struct irq_data;
 
+struct wakeup_secondary_cpu_data {
+	int cpu;
+	u32 apicid;
+	unsigned long start_ip;
+};
+
 /*
  * Copyright 2004 James Cleverdon, IBM.
  *
@@ -313,9 +319,9 @@ struct apic {
 	u32	(*get_apic_id)(u32 id);
 
 	/* wakeup_secondary_cpu */
-	int	(*wakeup_secondary_cpu)(u32 apicid, unsigned long start_eip);
+	int	(*wakeup_secondary_cpu)(struct wakeup_secondary_cpu_data *data);
 	/* wakeup secondary CPU using 64-bit wakeup point */
-	int	(*wakeup_secondary_cpu_64)(u32 apicid, unsigned long start_eip);
+	int	(*wakeup_secondary_cpu_64)(struct wakeup_secondary_cpu_data *data);
 
 	char	*name;
 };
@@ -333,8 +339,8 @@ struct apic_override {
 	void	(*send_IPI_self)(int vector);
 	u64	(*icr_read)(void);
 	void	(*icr_write)(u32 low, u32 high);
-	int	(*wakeup_secondary_cpu)(u32 apicid, unsigned long start_eip);
-	int	(*wakeup_secondary_cpu_64)(u32 apicid, unsigned long start_eip);
+	int	(*wakeup_secondary_cpu)(struct wakeup_secondary_cpu_data *data);
+	int	(*wakeup_secondary_cpu_64)(struct wakeup_secondary_cpu_data *data);
 };
 
 /*

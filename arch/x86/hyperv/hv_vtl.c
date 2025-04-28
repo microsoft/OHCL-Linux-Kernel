@@ -371,17 +371,14 @@ int hv_vtl_apicid_to_vp_id(u32 apic_id)
 	return ret;
 }
 
-static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip)
+static int hv_vtl_wakeup_secondary_cpu(struct wakeup_secondary_cpu_data *wakeup)
 {
-	int vp_id, cpu;
-
-	/* Find the logical CPU for the APIC ID */
-	for_each_present_cpu(cpu) {
-		if (arch_match_cpu_phys_id(cpu, apicid))
-			break;
-	}
-	if (cpu >= nr_cpu_ids)
-		return -EINVAL;
+	unsigned long start_ip;
+	u32 apicid;
+	int vp_id;
+	
+	apicid = wakeup->apicid;
+	start_ip = wakeup->start_ip;
 
 	pr_debug("Bringing up CPU with APIC ID %d in VTL2...\n", apicid);
 	/*
@@ -401,9 +398,9 @@ static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip)
 	}
 
 	if (hv_isolation_type_tdx())
-		return hv_vtl_bringup_tdx_vcpu(vp_id, start_eip);
+		return hv_vtl_bringup_tdx_vcpu(vp_id, start_ip);
 	else
-		return hv_vtl_bringup_vcpu(vp_id, cpu, start_eip);
+		return hv_vtl_bringup_vcpu(vp_id, wakeup->cpu, start_ip);
 }
 
 int __init hv_vtl_early_init(void)

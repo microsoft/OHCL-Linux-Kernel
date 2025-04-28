@@ -667,10 +667,15 @@ static __init void build_uv_gr_table(void)
 	}
 }
 
-static int uv_wakeup_secondary(u32 phys_apicid, unsigned long start_rip)
+static int uv_wakeup_secondary(struct wakeup_secondary_cpu_data *wakeup)
 {
+	unsigned long start_rip;
 	unsigned long val;
+	u32 phys_apicid;
 	int pnode;
+
+	phys_apicid = wakeup->apicid;
+	start_rip = wakeup->start_ip;
 
 	pnode = uv_apicid_to_pnode(phys_apicid);
 
