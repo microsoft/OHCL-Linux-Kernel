@@ -259,7 +259,7 @@ static struct page *snp_secure_avic_page(int cpu)
 #endif
 }
 
-struct page* mshv_apic_page(int cpu)
+static struct page* mshv_apic_page(int cpu)
 {
 	if (hv_isolation_type_tdx())
 		return tdx_apic_page(cpu);
@@ -652,8 +652,15 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		mshv_write_tdx_apic_page(page_to_phys(tdx_apic_page));
 #endif
 	} else if (hv_isolation_type_snp()) {
-#ifdef CONFIG_X86_64
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
 		int ret;
+
+		struct page *secure_avic_page;
+
+		secure_avic_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!secure_avic_page)
+			return -ENOMEM;
+		per_cpu->secure_avic_page = secure_avic_page;
 
 		ret = mshv_configure_vmsa_page(0, &per_cpu->vmsa_page);
 		if (ret < 0)
