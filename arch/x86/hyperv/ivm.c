@@ -65,13 +65,6 @@ union hv_ghcb {
 /* Only used in an SNP VM with the paravisor */
 static u16 hv_ghcb_version __ro_after_init;
 
-/*
- * Use static page to set Secure AVIC backing page.
- * The operation happens before allocating input arg
- * page when start AP.
- */
-static u8 inputbuf[PAGE_SIZE] __bss_decrypted __aligned(PAGE_SIZE);
-
 /* Functions only used in an SNP VM with the paravisor go here. */
 u64 hv_ghcb_hypercall(u64 control, void *input, void *output, u32 input_size)
 {
