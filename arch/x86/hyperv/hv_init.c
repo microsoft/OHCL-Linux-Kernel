@@ -382,7 +382,7 @@ void __init hyperv_init(void)
 					     PAGE_SIZE,
 					     GFP_KERNEL);
 		if (hv_vp_early_input_arg) {
-			ret = set_memory_decrypted(hv_vp_early_input_arg,
+			ret = set_memory_decrypted((u64)hv_vp_early_input_arg,
 					     num_possible_cpus());
 			if (ret) {
 				kfree(hv_vp_early_input_arg);
@@ -568,7 +568,7 @@ free_vp_assist_page:
 	kfree(hv_vp_assist_page);
 	hv_vp_assist_page = NULL;
 free_vp_early_input_arg:
-	set_memory_encrypted(hv_vp_early_input_arg, num_possible_cpus());
+	set_memory_encrypted((u64)hv_vp_early_input_arg, num_possible_cpus());
 	kfree(hv_vp_early_input_arg);
 	hv_vp_early_input_arg = NULL;
 common_free:

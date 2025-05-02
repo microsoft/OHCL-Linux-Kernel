@@ -20,7 +20,9 @@
 #include <linux/interrupt.h>
 #include <clocksource/hyperv_timer.h>
 #include <asm/mshyperv.h>
+#ifdef CONFIG_SEV_GUEST
 #include <asm/apic.h>
+#endif
 #include <linux/set_memory.h>
 #include "hyperv_vmbus.h"
 
@@ -313,8 +315,9 @@ void hv_synic_enable_regs(unsigned int cpu)
 	if (vmbus_irq != -1)
 		enable_percpu_irq(vmbus_irq, 0);
 	shared_sint.as_uint64 = hv_get_msr(HV_MSR_SINT0 + VMBUS_MESSAGE_SINT);
+#ifdef CONFIG_SEV_GUEST
 	x2apic_savic_update_vector(smp_processor_id(), vmbus_interrupt, true);
-
+#endif
 	shared_sint.vector = vmbus_interrupt;
 	shared_sint.masked = false;
 
