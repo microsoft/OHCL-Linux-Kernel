@@ -11,6 +11,7 @@
 #include <uapi/linux/mshv.h>
 #include <asm/apic.h>
 #include <asm/irq_vectors.h>
+#include <asm/irq.h>
 
 #include "mshv.h"
 
@@ -62,7 +63,7 @@ DEFINE_PER_CPU(struct sidecar_dev *, sidecar_interrupt_dev);
 #define VP_STATE_ASYNC_STOPPED 4
 #define VP_STATE_REMOVED 0xff
 
-void mshv_vtl_sidecar_isr(void)
+static void mshv_vtl_sidecar_isr(void)
 {
 	struct sidecar_dev *dev;
 
@@ -437,15 +438,29 @@ static int sidecar_probe(struct platform_device *pdev)
 	resource_size_t total_shmem_size;
 	struct sidecar_dev *dev;
 	char name[64];
-	static bool registered_cpuhp;
+	static bool global_init;
 
-	if (!registered_cpuhp) {
+	if (!global_init) {
+		/*
+		 * Use the platform IPI callback for IPIs from sidecar; this vector
+		 * won't be used by anything else in a VTL2 environment.
+		 *
+		 * We can't use the hypervisor callback vector because it may be
+		 * configured to use auto EOI, and there is no interface to send
+		 * auto-EOI IPIs.
+		 */
+		if (x86_platform_ipi_callback) {
+			pr_err("x86_platform_ipi_callback already set\n");
+			return -EBUSY;
+		}
+
 		ret = cpuhp_setup_state(CPUHP_BP_PREPARE_DYN, "mshv_vtl_sidecar:remove_for_hotplug",
 				sidecar_remove, NULL);
 		if (ret < 0)
 			return ret;
 
-		registered_cpuhp = true;
+		x86_platform_ipi_callback = mshv_vtl_sidecar_isr;
+		global_init = true;
 	}
 
 	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
@@ -499,7 +514,7 @@ static int sidecar_probe(struct platform_device *pdev)
 	}
 
 	dev->control->response_cpu = per_cpu(x86_cpu_to_apicid, dev->base_cpu);
-	dev->control->response_vector = HYPERVISOR_CALLBACK_VECTOR;
+	dev->control->response_vector = X86_PLATFORM_IPI_VECTOR;
 	per_cpu(sidecar_interrupt_dev, dev->base_cpu) = dev;
 
 	dev->misc = sidecar_misc;

@@ -515,7 +515,6 @@ static void mshv_vtl_vmbus_isr(void)
 		}
 	}
 
-	mshv_vtl_sidecar_isr();
 	vmbus_isr();
 }
 

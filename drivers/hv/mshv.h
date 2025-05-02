@@ -123,11 +123,9 @@ int mshv_setup_vtl_func(const mshv_create_func_t create_vtl,
 int mshv_set_create_partition_func(const mshv_create_func_t func, struct device **dev);
 
 #ifdef CONFIG_X86_64
-void mshv_vtl_sidecar_isr(void);
 int __init mshv_vtl_sidecar_init(void);
 void mshv_vtl_sidecar_exit(void);
 #else
-static inline void mshv_vtl_sidecar_isr(void) {}
 static inline int mshv_vtl_sidecar_init(void) { return 0; }
 static inline void mshv_vtl_sidecar_exit(void) {}
 #endif
