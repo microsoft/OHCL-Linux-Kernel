@@ -1887,6 +1887,7 @@ void __init bringup_nonboot_cpus(unsigned int max_cpus, const struct cpumask *bo
 
 	if (boot_cpus) {
 		static struct cpumask tmp_mask __initdata;
+
 		cpumask_and(&tmp_mask, mask, boot_cpus);
 		mask = &tmp_mask;
 	}

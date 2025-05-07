@@ -994,7 +994,7 @@ static int __init boot_cpus(char *str)
 	alloc_bootmem_cpumask_var(&mask);
 	r = cpulist_parse(str, mask);
 	if (r < 0) {
-		pr_warn("Invalid boot_cpus parameter\n");
+		pr_warn("Invalid %s parameter\n", __func__);
 		goto ret;
 	}
 	cpu_boot_mask = mask;
