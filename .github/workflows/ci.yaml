@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - 'product/hcl-main/*'
-      - 'product/hcl-dev/*'
+      - 'project/hcl-dev/*'
   push:
     tags:
       - 'rolling-lts/hcl-main/*'
