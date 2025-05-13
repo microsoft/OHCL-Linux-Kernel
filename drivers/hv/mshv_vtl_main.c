@@ -616,6 +616,7 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		rdmsrl(MSR_STAR, per_cpu->l1_msr_star);
 		rdmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
 		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+		rdmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
 
 		per_cpu->urn_registered = false;
 
@@ -844,8 +845,6 @@ void mshv_vtl_return_tdx(void)
 	tdx_exit_info = &vtl_run->tdx_context.exit_info;
 	tdx_vp_state = &vtl_run->tdx_context.vp_state;
 	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
-
-	rdmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
 
 	kernel_fpu_begin_mask(0);
 	fxrstor(&vtl_run->tdx_context.fx_state); // restore FP reg and XMM regs
