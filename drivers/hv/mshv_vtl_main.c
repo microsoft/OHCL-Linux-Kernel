@@ -162,7 +162,7 @@ struct mshv_vtl_per_cpu {
 	u64 l1_msr_lstar;
 	u64 l1_msr_sfmask;
 	u64 l1_msr_tsc_aux;
-	bool urn_registered;
+	bool msrs_are_guest;
 	struct user_return_notifier mshv_urn;
 #endif
 };
@@ -618,7 +618,7 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
 		rdmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
 
-		per_cpu->urn_registered = false;
+		per_cpu->msrs_are_guest = false;
 
 		/* Enable the apic page. */
 		mshv_write_tdx_apic_page(page_to_phys(tdx_apic_page));
@@ -824,7 +824,7 @@ static void mshv_vtl_on_user_return(struct user_return_notifier *urn)
 	struct mshv_vtl_per_cpu *per_cpu
 		= container_of(urn, struct mshv_vtl_per_cpu, mshv_urn);
 
-	per_cpu->urn_registered = false;
+	per_cpu->msrs_are_guest = false;
 	user_return_notifier_unregister(urn);
 
 	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
@@ -850,12 +850,17 @@ void mshv_vtl_return_tdx(void)
 	fxrstor(&vtl_run->tdx_context.fx_state); // restore FP reg and XMM regs
 	native_write_cr2(tdx_vp_state->cr2);
 
-	/* Restore VTL0's syscall registers & MSRs */
-	wrmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
-	wrmsrl(MSR_STAR, tdx_vp_state->msr_star);
-	wrmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
-	wrmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
-	wrmsrl(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
+	/* Restore the lower VTL's syscall registers & MSRs */
+	if (!per_cpu->msrs_are_guest) {
+		wrmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+		wrmsrl(MSR_STAR, tdx_vp_state->msr_star);
+		wrmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
+		wrmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+		wrmsrl(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
+		per_cpu->mshv_urn.on_user_return = mshv_vtl_on_user_return;
+		user_return_notifier_register(&per_cpu->mshv_urn);
+		per_cpu->msrs_are_guest = true;
+	}
 
 	if (tdx_vp_state->msr_xss != per_cpu->xss)
 		wrmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
@@ -868,18 +873,11 @@ void mshv_vtl_return_tdx(void)
 	rdmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
 	per_cpu->xss = tdx_vp_state->msr_xss;
 
+	/* Of the context-switched MSRs, only MSR_KERNEL_GS_BASE is changed
+	   often by guests. Read it back so that user mode doesn't have
+	   to configure an exit on it. The other MSRs will trigger exits
+	   on guest writes. */
 	rdmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
-	rdmsrl(MSR_STAR, tdx_vp_state->msr_star);
-	rdmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
-	rdmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
-	rdmsrl(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
-
-	if (!per_cpu->urn_registered) {
-		per_cpu->mshv_urn.on_user_return = mshv_vtl_on_user_return;
-		user_return_notifier_register(&per_cpu->mshv_urn);
-		per_cpu->urn_registered = true;
-	}
-
 	fxsave(&vtl_run->tdx_context.fx_state);
 	kernel_fpu_end();
 }
