@@ -798,6 +798,7 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		rdmsrq(MSR_STAR, per_cpu->l1_msr_star);
 		rdmsrq(MSR_LSTAR, per_cpu->l1_msr_lstar);
 		rdmsrq(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+		rdmsrq(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
 
 		per_cpu->urn_registered = false;
 
@@ -1184,8 +1185,6 @@ void mshv_vtl_return_tdx(void)
 	 * view of TSC_AUX across every VP.ENTER call until we can do the same
 	 * thing.
 	*/
-	rdmsrq(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
-
 	kernel_fpu_begin_mask(0);
 	fxrstor(&vtl_run->tdx_context.fx_state); // restore FP reg and XMM regs
 	native_write_cr2(tdx_vp_state->cr2);
