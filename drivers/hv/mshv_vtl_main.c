@@ -602,12 +602,24 @@ static void hv_vtl_remove_synic(void)
 
 static int vtl_get_vp_register(struct hv_register_assoc *reg)
 {
+#ifdef CONFIG_X86_64
+	/* TDX & SNP should not run this, checking to be sure. */
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
+		return -EINVAL;
+#endif
+
 	return hv_call_get_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 					1, input_vtl_normal, reg);
 }
 
 static int vtl_set_vp_register(struct hv_register_assoc *reg)
 {
+#ifdef CONFIG_X86_64
+	/* TDX & SNP should not run this, checking to be sure. */
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
+		return -EINVAL;
+#endif
+
 	return hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 					1, input_vtl_normal, reg);
 }
@@ -1077,6 +1089,12 @@ mshv_vtl_ioctl_get_regs(void __user *user_args)
 	struct hv_register_assoc reg;
 	long ret;
 
+#ifdef CONFIG_X86_64
+	/* For SNP, register state maniupulation happens through the VMSA. */
+	if (hv_isolation_type_snp())
+		return -EINVAL;
+#endif
+
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
@@ -1108,6 +1126,12 @@ mshv_vtl_ioctl_set_regs(void __user *user_args)
 	struct mshv_vp_registers args;
 	struct hv_register_assoc reg;
 	long ret;
+
+#ifdef CONFIG_X86_64
+	/* For SNP, register state maniupulation happens through the VMSA. */
+	if (hv_isolation_type_snp())
+		return -EINVAL;
+#endif
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
