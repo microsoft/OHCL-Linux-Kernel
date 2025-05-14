@@ -660,6 +660,12 @@ static int vtl_get_vp_registers(u16 count,
 {
 	union hv_input_vtl input_vtl;
 
+#ifdef CONFIG_X86_64
+	/* SNP should not run this, checking to be sure. */
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
+		return -EINVAL;
+#endif
+
 	input_vtl.as_uint8 = 0;
 	input_vtl.use_target_vtl = 1;
 	return hv_call_get_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
@@ -670,6 +676,12 @@ static int vtl_set_vp_registers(u16 count,
 				struct hv_register_assoc *registers)
 {
 	union hv_input_vtl input_vtl;
+
+#ifdef CONFIG_X86_64
+	/* SNP should not run this, checking to be sure. */
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
+		return -EINVAL;
+#endif
 
 	input_vtl.as_uint8 = 0;
 	input_vtl.use_target_vtl = 1;
@@ -1448,6 +1460,12 @@ mshv_vtl_ioctl_get_set_regs(void __user *user_args, bool set)
 	struct mshv_vp_registers args;
 	struct hv_register_assoc *registers;
 	long ret;
+
+#ifdef CONFIG_X86_64
+	/* For SNP, register state maniupulation happens through the VMSA. */
+	if (hv_isolation_type_snp())
+		return -EINVAL;
+#endif
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
