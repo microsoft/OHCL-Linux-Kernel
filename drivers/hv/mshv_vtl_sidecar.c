@@ -147,13 +147,14 @@ static int sidecar_remove(unsigned int cpu)
 		return 0;
 	}
 
-	dev_info(dev->dev, "removing sidecar cpu %d", cpu);
+	dev_info(dev->dev, "cpu %d: removing from sidecar", cpu);
 	slot = &dev->control->cpu_status[cpu_index];
 	last = cmpxchg(slot, CPU_STATUS_IDLE, CPU_STATUS_REMOVE);
 	WARN(last != CPU_STATUS_IDLE, "unexpected cpu status %d", last);
 
 	sidecar_signal(dev, cpu);
-	wait_event(dev->wait, READ_ONCE(*slot) == CPU_STATUS_REMOVE);
+	wait_event(dev->wait, READ_ONCE(*slot) == CPU_STATUS_IDLE);
+	dev_info(dev->dev, "cpu %d: remove complete", cpu);
 	last = READ_ONCE(dev->vp_state[cpu_index]);
 	WARN(last != VP_STATE_REMOVED, "unexpected vp state %d", last);
 	return 0;
