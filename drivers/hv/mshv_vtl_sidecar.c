@@ -153,7 +153,7 @@ static int sidecar_remove(unsigned int cpu)
 	WARN(last != CPU_STATUS_IDLE, "unexpected cpu status %d", last);
 
 	sidecar_signal(dev, cpu);
-	wait_event(dev->wait, READ_ONCE(*slot) == CPU_STATUS_IDLE);
+	wait_event(dev->wait, READ_ONCE(*slot) == CPU_STATUS_REMOVED);
 	dev_info(dev->dev, "cpu %d: remove complete", cpu);
 	last = READ_ONCE(dev->vp_state[cpu_index]);
 	WARN(last != VP_STATE_REMOVED, "unexpected vp state %d", last);
