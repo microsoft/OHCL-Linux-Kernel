@@ -469,11 +469,15 @@ static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 		} else {
 			/* A malicious hypervisor might set a vector > 255. */
 			vector = READ_ONCE(proxy->u.asserted_vector) & 0xff;
-			const u32 bank = vector / 32;
-			const u32 masked_irr = BIT(vector % 32) &
+			/*
+			 * See mshv_tdx_handle_simple_icr_write() on how the bank and bit are
+			 * computed.
+			 */
+			const u32 bank = vector >> 5;
+			const u32 masked_irr = BIT(vector & 0x1f) &
 				~READ_ONCE(run->proxy_irr_blocked[bank]);
 
-			/* nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write */
+			/* nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write() */
 			atomic_or(masked_irr, (atomic_t *)&run->proxy_irr[bank]);
 		}
 
@@ -1122,8 +1126,8 @@ static int mshv_tdx_handle_simple_icr_write(struct tdx_vp_context *context)
 	const u32 dest = context->l2_enter_guest_state.rdx;
 	const u8 shorthand = (icr_lo >> 18) & 0b11;
 	const u8 vector = icr_lo;
-	const u64 bank = vector / 32;
-	const u32 mask = BIT(vector % 32);
+	const u64 bank = vector >> 5; /* Each bank is 32 bits. Divide by 32 to find the bank. */
+	const u32 mask = BIT(vector & 0x1f); /* Bit in the bank is the remainder of the division. */
 	const u32 self = smp_processor_id();
 
 	bool send_ipi = false;
