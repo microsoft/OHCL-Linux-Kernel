@@ -24,9 +24,10 @@ mshv-y				+= mshv_main.o
 mshv_root-y			:= mshv_root_main.o mshv_synic.o mshv_portid_table.o \
 						mshv_eventfd.o mshv_msi.o mshv_root_hv_call.o hv_call.o
 mshv_vtl-y			:= mshv_vtl_main.o hv_call.o
-mshv_vtl-$(CONFIG_X86_64)	+= mshv_vtl_sidecar.o
+mshv_vtl-$(CONFIG_X86_64)	+= mshv_vtl_sidecar.o mshv_tdx.o
+mshv_vtl-$(CONFIG_SEV_GUEST)	+= mshv_vtl_local_maps.o
 
-mshv_vtl-$(CONFIG_X86_64)	+= mshv_tdx.o
+CFLAGS_mshv_vtl_local_maps.o = -DHV_HYPERV_DEFS
 
 $(obj)/mshv_tdx.o: $(obj)/mshv_tdx_asm_offsets.h
 
