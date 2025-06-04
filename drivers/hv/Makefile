@@ -35,6 +35,9 @@ mshv_root-$(CONFIG_DEBUG_FS) += mshv_debugfs.o
 mshv_root-$(CONFIG_TRACEPOINTS) += mshv_trace.o
 mshv_vtl-y := mshv_vtl_main.o
 mshv_vtl-$(CONFIG_X86_64)       += mshv_vtl_sidecar.o mshv_tdx.o
+mshv_vtl-$(CONFIG_SEV_GUEST)	+= mshv_vtl_local_maps.o
+
+CFLAGS_mshv_vtl_local_maps.o = -DHV_HYPERV_DEFS
 
 # Code that must be built-in
 obj-$(CONFIG_HYPERV) += hv_common.o
