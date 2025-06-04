@@ -46,6 +46,7 @@
 
 #include "mshv.h"
 #include "mshv_vtl.h"
+#include "mshv_vtl_local_maps.h"
 #include "hyperv_vmbus.h"
 
 MODULE_AUTHOR("Microsoft");
@@ -111,6 +112,7 @@ struct mshv_vtl_poll_file {
 
 struct mshv_vtl {
 	struct device *module_dev;
+	struct mshv_local_maps *local_maps;
 	u64 id;
 	refcount_t ref_count;
 };
@@ -1581,7 +1583,35 @@ static void __noreturn mshv_sev_es_terminate(unsigned int set, unsigned int reas
 		asm volatile("hlt\n" : : : "memory");
 }
 
-static long mshv_vtl_ioctl_pvalidate(void __user *pval_user)
+struct mshv_vtl_pvalidate_param {
+	bool use_large_page;
+	u8 validate;
+};
+
+static ssize_t mshv_vtl_use_local_page_pvalidate(void *vaddr, void *param)
+{
+	struct mshv_vtl_pvalidate_param *pval = param;
+	u8 rmp_psize = pval->use_large_page ? RMP_PG_SIZE_2M : RMP_PG_SIZE_4K;
+	u8 validate = pval->validate;
+
+	return pvalidate((u64)vaddr, rmp_psize, validate);
+}
+
+struct mshv_vtl_rmpadjust_param {
+	bool use_large_page;
+	u64 attrs;
+};
+
+static ssize_t mshv_vtl_use_local_page_rmpadjust(void *vaddr, void *param)
+{
+	struct mshv_vtl_rmpadjust_param* rmpadj = param;
+	u8 rmp_psize = rmpadj->use_large_page ? RMP_PG_SIZE_2M : RMP_PG_SIZE_4K;
+	u64 attrs = rmpadj->attrs;
+
+	return rmpadjust((u64)vaddr, rmp_psize, attrs);
+}
+
+static long mshv_vtl_ioctl_pvalidate(void __user* pval_user)
 {
 	u64 pfn_end, pfn;
 	long rc;
@@ -1596,36 +1626,74 @@ static long mshv_vtl_ioctl_pvalidate(void __user *pval_user)
 	if (!pval.page_count)
 		return -ENODATA;
 
+	pr_debug("%s: start_pfn %#llx, page count %#llx, ram %d, validate %d\n",
+			__func__, pval.start_pfn, pval.page_count, pval.ram, pval.validate);
+
 	pfn = pval.start_pfn;
 	pfn_end = pfn + pval.page_count;
-
+	/* The strategy below is to process as few small pages as possible as that is slow */
 	while (pfn < pfn_end) {
-		unsigned long pfns[1] = { pfn };
-		void *vaddr;
+		struct mshv_vtl_pvalidate_param param;
+		bool use_large_page = IS_ALIGNED(pfn, PAGES_PER_PMD) && (pfn_end - pfn >= PAGES_PER_PMD);
+		u64 count = 0;
+		u64 failed_pfn = -1;
 
-		if (pval.ram)
-			vaddr = kmap_local_page(pfn_to_page(pfn));
-		else
-			vaddr = vmap_pfn(pfns, ARRAY_SIZE(pfns), PAGE_KERNEL);
+		if (use_large_page) {
+			/* Get the maximum amount of large page in pfn..pfn_end */
+			count = ALIGN_DOWN(pfn_end, PAGES_PER_PMD) - pfn;
+		} else {
+			/*
+			 * If there are some large pages (PAGES_PER_PMD pages) is a large pages,
+			 * process up to the beginning of a large page so that after that
+			 * can process the large pages again. Otherwise, just process the
+			 * small pages.
+			 */
+			if (pfn_end - pfn >= PAGES_PER_PMD)
+				count = ALIGN(pfn, PAGES_PER_PMD) - pfn;
+			else
+				count = pfn_end - pfn;
+		}
+		BUG_ON(!count || count > pval.page_count);
 
-		if (!vaddr) {
-			rc = -EINVAL;
-			break;
+		param.use_large_page = use_large_page;
+		param.validate = pval.validate;
+
+		rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_pvalidate, &param);
+		if (rc == PVALIDATE_FAIL_SIZEMISMATCH && use_large_page) {
+			/*
+			 * The hypervisor indicated that it smashed the large page into 4KiB ones.
+			 * That may happen if and only if large pages are used. Assert that is true,
+			 * as otherwise something fundamental is broken and the processing has to stop
+			 * as the results are undefined.
+			 */
+			BUG_ON(!IS_ALIGNED(pfn, PAGES_PER_PMD) || (pfn_end - pfn < PAGES_PER_PMD));
+			BUG_ON(!IS_ALIGNED(failed_pfn, PAGES_PER_PMD));
+
+			pfn = failed_pfn;
+			count = PAGES_PER_PMD;
+			use_large_page = false;
+			param.use_large_page = false;
+
+			pr_debug("%s: retrying, large_page %d, pfn %#llx, count %#llx\n", __func__, use_large_page, pfn, count);
+			rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_pvalidate, &param);
 		}
 
-		rc = pvalidate((u64)vaddr, RMP_PG_SIZE_4K, pval.validate);
-		if (pval.ram)
-			kunmap_local(vaddr);
-		else
-			vunmap(vaddr);
-		if (WARN(rc, "Failed to pvalidate pfn %#llx, ret %ld", pfn, rc)) {
+		if (WARN(rc, "%s failed for pfn %#llx, ret %ld", __func__, failed_pfn, rc)) {
+			/*
+			 * `sev.h` defines `PVALIDATE_FAIL_NOUPDATE` as `255` in addition to the hardware
+			 * codes. That software error code is returned when the CF is set after the `pvalidate`
+			 * instruction.
+			 * That in and by itself does not mean that there has been an error; the RMP entry might
+			 * just not have been updated as it is already in the requested state. As we don't expect
+			 * overlapping ranges, that is fine.
+			 */
 			if (pval.terminate_on_failure)
 				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PVALIDATE);
 			else
 				break;
 		}
 
-		++pfn;
+		pfn += count;
 	}
 
 	return rc;
@@ -1648,34 +1716,69 @@ static long mshv_vtl_ioctl_rmpadjust(void __user *rmpa_user)
 
 	pfn = rmpa.start_pfn;
 	pfn_end = pfn + rmpa.page_count;
-
+	/* The strategy below is to process as few small pages as possible as that is slow */
 	while (pfn < pfn_end) {
-		unsigned long pfns[1] = { pfn };
-		void *vaddr;
+		struct mshv_vtl_rmpadjust_param param;
+		bool use_large_page = IS_ALIGNED(pfn, PAGES_PER_PMD) && (pfn_end - pfn >= PAGES_PER_PMD);
+		u64 count = 0;
+		u64 failed_pfn = -1;
 
-		if (rmpa.ram)
-			vaddr = kmap_local_page(pfn_to_page(pfn));
-		else
-			vaddr = vmap_pfn(pfns, ARRAY_SIZE(pfns), PAGE_KERNEL);
+		if (use_large_page) {
+			/* Get the maximum amount of large page in pfn..pfn_end */
+			count = ALIGN_DOWN(pfn_end, PAGES_PER_PMD) - pfn;
+		} else {
+			/*
+			 * If there are some large pages (PAGES_PER_PMD pages) is a large pages,
+			 * process up to the beginning of a large page so that after that
+			 * can process the large pages again. Otherwise, just process the
+			 * small pages.
+			 */
+			if (pfn_end - pfn >= PAGES_PER_PMD)
+				count = ALIGN(pfn, PAGES_PER_PMD) - pfn;
+			else
+				count = pfn_end - pfn;
+		}
+		BUG_ON(!count || count > rmpa.page_count);
 
-		if (!vaddr) {
-			rc = -EINVAL;
-			break;
+		param.use_large_page = use_large_page;
+		param.attrs = rmpa.value;
+
+		rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_rmpadjust, &param);
+		if (rc == PVALIDATE_FAIL_SIZEMISMATCH && use_large_page) {
+			/*
+			 * The hypervisor indicated that it smashed the large page into 4KiB ones.
+			 * That may happen if and only if large pages are used. Assert that is true,
+			 * as otherwise something fundamental is broken and the processing has to stop
+			 * as the results are undefined.
+			 */
+			BUG_ON(!IS_ALIGNED(pfn, PAGES_PER_PMD) || (pfn_end - pfn < PAGES_PER_PMD));
+			BUG_ON(!IS_ALIGNED(failed_pfn, PAGES_PER_PMD));
+
+			pfn = failed_pfn;
+			count = PAGES_PER_PMD;
+			use_large_page = false;
+			param.use_large_page = false;
+
+			pr_debug("%s: retrying, large_page %d, pfn %#llx, count %#llx\n", __func__, use_large_page, pfn, count);
+			rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_rmpadjust, &param);
 		}
 
-		rc = rmpadjust((u64)vaddr, RMP_PG_SIZE_4K, rmpa.value);
-		if (rmpa.ram)
-			kunmap_local(vaddr);
-		else
-			vunmap(vaddr);
-		if (WARN(rc, "Failed to rmpadjust pfn %#llx, ret %ld", pfn, rc)) {
+		if (WARN(rc, "%s failed for pfn %#llx, ret %ld", __func__, failed_pfn, rc)) {
+			/*
+			 * `sev.h` defines `PVALIDATE_FAIL_NOUPDATE` as `255` in addition to the hardware
+			 * codes. That software error code is returned when the CF is set after the `pvalidate`
+			 * instruction.
+			 * That in and by itself does not mean that there has been an error; the RMP entry might
+			 * just not have been updated as it is already in the requested state. As we don't expect
+			 * overlapping ranges, that is fine.
+			 */
 			if (rmpa.terminate_on_failure)
 				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PSC);
 			else
 				break;
 		}
 
-		++pfn;
+		pfn += count;
 	}
 
 	return rc;
@@ -2061,6 +2164,8 @@ static int mshv_vtl_release(struct inode *inode, struct file *filp)
 {
 	struct mshv_vtl *vtl = filp->private_data;
 
+	if (vtl->local_maps)
+		mshv_vtl_teardown_local_maps(vtl->local_maps);
 	kfree(vtl);
 
 	return 0;
@@ -2078,20 +2183,33 @@ static long __mshv_ioctl_create_vtl(void __user *user_arg, struct device *module
 	struct mshv_vtl *vtl;
 	struct file *file;
 	int fd;
+	struct mshv_local_maps *local_maps = NULL;
 
 	vtl = kzalloc(sizeof(*vtl), GFP_KERNEL);
 	if (!vtl)
 		return -ENOMEM;
+	if (hv_isolation_type_snp())
+		local_maps = mshv_vtl_setup_local_maps();
+	if (!local_maps)
+		return -ENOMEM;
 
 	fd = get_unused_fd_flags(O_CLOEXEC);
-	if (fd < 0)
+	if (fd < 0) {
+		if (local_maps)
+			mshv_vtl_teardown_local_maps(local_maps);
 		return fd;
+	}
 	file = anon_inode_getfile("mshv_vtl", &mshv_vtl_fops,
 				  vtl, O_RDWR);
-	if (IS_ERR(file))
+	if (IS_ERR(file)) {
+		if (local_maps)
+			mshv_vtl_teardown_local_maps(local_maps);
 		return PTR_ERR(file);
+	}
+
 	refcount_set(&vtl->ref_count, 1);
 	vtl->module_dev = module_dev;
+	vtl->local_maps = local_maps;
 
 	fd_install(fd, file);
 
