@@ -2188,10 +2188,11 @@ static long __mshv_ioctl_create_vtl(void __user *user_arg, struct device *module
 	vtl = kzalloc(sizeof(*vtl), GFP_KERNEL);
 	if (!vtl)
 		return -ENOMEM;
-	if (hv_isolation_type_snp())
+	if (hv_isolation_type_snp()) {
 		local_maps = mshv_vtl_setup_local_maps();
-	if (!local_maps)
-		return -ENOMEM;
+		if (!local_maps)
+			return -ENOMEM;
+	}
 
 	fd = get_unused_fd_flags(O_CLOEXEC);
 	if (fd < 0) {
