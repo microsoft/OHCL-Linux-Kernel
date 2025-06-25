@@ -245,6 +245,7 @@ static inline u64 native_x2apic_icr_read(void)
 extern void x2apic_savic_update_vector(unsigned int cpu,
 				unsigned int vector,
 				bool set);
+extern void x2apic_savic_init_backing_page(void *backing_page);
 #else
 static inline void x2apic_savic_update_vector(unsigned int cpu,
 					      unsigned int vector,								      bool set) { }

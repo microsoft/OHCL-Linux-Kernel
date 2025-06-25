@@ -362,7 +362,7 @@ void x2apic_savic_update_vector(unsigned int cpu, unsigned int vector, bool set)
 		test_and_clear_bit(VEC_POS(vector), reg);
 }
 
-static void init_backing_page(void *backing_page)
+void x2apic_savic_init_backing_page(void *backing_page)
 {
 	u32 hv_apic_id;
 	u32 apic_id;
@@ -412,7 +412,7 @@ static void x2apic_savic_setup(void)
 		return;
 
 	backing_page = this_cpu_read(apic_backing_page);
-	init_backing_page(backing_page);
+	x2apic_savic_init_backing_page(backing_page);
 	gpa = __pa(backing_page);
 	gfn = gpa >> PAGE_SHIFT;
 
