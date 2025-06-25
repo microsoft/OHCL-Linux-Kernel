@@ -334,7 +334,7 @@ static void savic_eoi(void)
 	}
 }
 
-static void init_apic_page(struct apic_page *ap)
+void x2apic_savic_init_backing_page(void *ap)
 {
 	u32 apic_id;
 
@@ -365,7 +365,7 @@ static void savic_setup(void)
 		return;
 
 	backing_page = this_cpu_ptr(apic_page);
-	init_apic_page(backing_page);
+	x2apic_savic_init_backing_page(backing_page);
 	gpa = __pa(backing_page);
 
 	gfn = gpa >> PAGE_SHIFT;

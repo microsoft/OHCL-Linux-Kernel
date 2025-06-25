@@ -35,6 +35,7 @@
 
 #include <asm/apic.h>
 #include <uapi/asm/mtrr.h>
+#include <asm/svm.h>
 #include <asm/sev.h>
 #include <asm/tdx.h>
 #include <asm/fpu/xcr.h>
@@ -214,6 +215,9 @@ struct mshv_vtl_per_cpu {
 	bool msrs_are_guest;
 	struct user_return_notifier mshv_urn;
 #endif
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+	struct page *snp_secure_avic_page;
+#endif
 };
 
 static struct mutex	mshv_vtl_poll_file_lock;
@@ -252,20 +256,66 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+#if defined(CONFIG_X86_64)
 
-static struct page *tdx_apic_page(int cpu)
-{
-	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
-}
+#if defined(CONFIG_INTEL_TDX_GUEST)
 
 static struct page *tdx_this_apic_page(void)
 {
 	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page);
 }
 
+static u32 *mshv_tdx_vapic_irr(void)
+{
+	return (u32 *)((char *)page_address(tdx_this_apic_page()) + APIC_IRR);
+}
+
+#endif /* defined(CONFIG_INTEL_TDX_GUEST) */
+
+static struct page *tdx_apic_page(int cpu)
+{
+#if defined(CONFIG_INTEL_TDX_GUEST)
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
+#else
+	(void)cpu;
+	return NULL;
+#endif
+}
+
+static struct page *snp_secure_avic_page(int cpu)
+{
+#if defined(CONFIG_SEV_GUEST)
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.snp_secure_avic_page, cpu);
+#else
+	(void)cpu;
+	return NULL;
+#endif
+}
+
+static u32 *mshv_snp_secure_avic_irr(int cpu)
+{
+#if defined(CONFIG_SEV_GUEST)
+	return (u32 *)((char *)page_address(snp_secure_avic_page(cpu)) + APIC_IRR);
+#else
+	(void)cpu;
+	return NULL;
+#endif
+}
+
+static struct page* mshv_apic_page(int cpu)
+{
+	if (hv_isolation_type_tdx())
+		return tdx_apic_page(cpu);
+	else if (hv_isolation_type_snp())
+		return snp_secure_avic_page(cpu);
+
+	return NULL;
+}
+
+#if defined(CONFIG_SEV_GUEST) || defined(CONFIG_INTEL_TDX_GUEST)
 /*
- * For ICR emulation on TDX, we need a fast way to map APICIDs to CPUIDs.
+ * For ICR emulation when running a hardware isolated guest, we need a fast way to map
+ * APICIDs to CPUIDs.
  * Instead of iterating through all CPUs for each target in the ICR destination field
  * precompute a mapping. APICIDs can be sparse so we have to use a hash table.
  * Note: CPU hotplug is not supported (both by this code and by the paravisor in general)
@@ -293,7 +343,7 @@ static int get_cpuid(int apicid)
  * Sets the cpu described by apicid in cpu_mask.
  * Returns 0 on success, -EINVAL if no cpu matches the apicid.
  */
-static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask)
+static int mshv_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask)
 {
 
 	int cpu = get_cpuid(apicid);
@@ -305,7 +355,237 @@ static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask
 
 	return -EINVAL;
 }
-#endif
+
+/*
+ * Returns the cpumask described by dest, where dest is a logical destination.
+ * cpu_mask should have no CPUs set.
+ * Returns 0 on success
+ */
+static int mshv_get_logical_cpumask(u32 dest, struct cpumask *cpu_mask)
+{
+	int ret = 0;
+
+	while ((u16)dest) {
+		const u16 i = fls((u16)dest) - 1;
+		const u32 physical_id = (dest >> 16 << 4) | i;
+
+		ret = mshv_set_cpumask_from_apicid(physical_id, cpu_mask);
+		dest &= ~BIT(i);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
+/*
+ * Interrupt handling (particularly sending (via ICR writes) and receiving interrupts),
+ * is a hot path on hardware-isolated VMs. By performing some of the common functionality
+ * entirely in-kernel we eliminate costly user<->kernel transitions.
+ */
+static void mshv_free_apicid_to_cpuid_mapping(void)
+{
+	int bkt;
+	struct apicid_to_cpuid_entry *entry;
+	struct hlist_node *tmp;
+
+	hash_for_each_safe(apicid_to_cpuid, bkt, tmp, entry, node) {
+		hash_del(&entry->node);
+		kfree(entry);
+	}
+}
+
+/*
+ * Creates and populates the apicid_to_cpuid hash table.
+ * This mapping is used for fast ICR emulation on on hardware-isolated VMs.
+ * Returns 0 on success.
+ */
+static int mshv_create_apicid_to_cpuid_mapping(struct device *dev)
+{
+	int cpu, ret = 0;
+
+	for_each_online_cpu(cpu) {
+		struct apicid_to_cpuid_entry *entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+
+		if (!entry) {
+			ret = -ENOMEM;
+			break;
+		}
+
+		entry->apicid = cpuid_to_apicid[cpu];
+		entry->cpuid = cpu;
+
+		if (entry->apicid == BAD_APICID) {
+			dev_emerg(dev, "Bad APICID: %d !!\n", entry->apicid);
+			ret = -ENODEV;
+			break;
+		}
+
+		hash_add(apicid_to_cpuid, &entry->node, entry->apicid);
+	}
+
+	if (ret)
+		mshv_free_apicid_to_cpuid_mapping();
+
+	return ret;
+}
+
+/*
+ * Attempts to handle an ICR write. Returns 0 if successful, other values
+ * indicate user-space should be invoked to gracefully handle the error.
+ */
+static int mshv_cpu_mask_for_icr_write(u32 icr_lo, u32 dest, struct cpumask* local_mask)
+{
+	const u8 shorthand = (icr_lo >> 18) & 0b11;
+	const u32 self = smp_processor_id();
+	int ret = 0;
+
+	cpumask_clear(local_mask);
+	if (shorthand == 0b10 || dest == (u32)-1) { /* shorthand all or destination id == all */
+		cpumask_copy(local_mask, cpu_online_mask);
+	} else if (shorthand == 0b11) { /* shorthand all but self */
+		cpumask_copy(local_mask, cpu_online_mask);
+		cpumask_clear_cpu(self, local_mask);
+	} else if (shorthand == 0b01) { /* shorthand self */
+		cpumask_set_cpu(self, local_mask);
+	} else if (icr_lo & BIT(11)) { /* logical */
+		ret = mshv_get_logical_cpumask(dest, local_mask);
+	} else { /* physical */
+		ret = mshv_set_cpumask_from_apicid(dest, local_mask);
+	}
+
+	return ret;
+}
+
+/*
+ * Attempts to handle an ICR write. Returns 0 if successful, other values
+ * indicate user-space should be invoked to gracefully handle the error.
+ */
+static int mshv_update_proxy_irr_for_icr_write(u32 icr_lo, struct cpumask *local_mask)
+{
+	const u8 vector = icr_lo;
+	const u64 bank = vector / 32;
+	const u32 mask = BIT(vector % 32);
+	const u32 self = smp_processor_id();
+
+	unsigned int cpu;
+	bool send_ipi;
+
+	send_ipi = false;
+	for_each_cpu(cpu, local_mask) {
+		/*
+		 * The kernel doesn't provide an atomic_or which operates on u32,
+		 * so cast to atomic_t, which should have the same layout
+		 */
+		static_assert(sizeof(atomic_t) == sizeof(u32));
+		atomic_or(mask, (atomic_t *)
+				(&(mshv_vtl_cpu_run(cpu)->proxy_irr[bank])));
+		smp_store_release(&mshv_vtl_cpu_run(cpu)->scan_proxy_irr, 1);
+		send_ipi |= cpu != self;
+	}
+
+	if (send_ipi) {
+		cpumask_clear_cpu(self, local_mask);
+		__apic_send_IPI_mask(local_mask, RESCHEDULE_VECTOR);
+	}
+
+	return 0;
+}
+
+/*
+ * Attempts to handle an ICR write. Returns 0 if successful, other values
+ * indicate user-space should be invoked to gracefully handle the error.
+ * Secure AVIC accelerates self-IPI only.
+ */
+static int mshv_snp_handle_simple_icr_write(u32 icr_lo, u32 dest)
+{
+	const u8 vector = icr_lo;
+
+	struct cpumask local_mask;
+	unsigned int cpu;
+	int ret;
+
+	ret = mshv_cpu_mask_for_icr_write(icr_lo, dest, &local_mask);
+	if (ret)
+		return ret;
+	ret = mshv_update_proxy_irr_for_icr_write(icr_lo, &local_mask);
+	if (ret)
+		return ret;
+
+	// Probobaly shouldn't update the target VP's IRRs to inject the
+	// interrupt, there might be more state to account for. The target 
+	// VP will go into the user mode anyway, not much to be saved?
+
+	// for_each_cpu(cpu, &local_mask) {
+	// 	u64 irr_reg_off;
+	// 	unsigned long *irr_reg;
+	// 	void* irr;
+
+	// 	/*
+	// 	 * IRRs are banked into eight 32-bit registers each starting on the
+	// 	 * 16-byte boundary (4 byte of an IRR + 12 byte stride).
+	// 	 */
+	// 	irr_reg_off = (vector >> 5) << 4;
+	// 	irr = mshv_snp_secure_avic_irr(cpu);
+	// 	irr_reg = (unsigned long*)((u8*)irr + irr_reg_off);
+
+	// 	/* Inject the interrupt. */
+	// 	test_and_set_bit(vector & 0x1f, irr_reg);
+	// }
+
+	return 0;
+}
+
+#else
+
+static void mshv_free_apicid_to_cpuid_mapping(void) {}
+static int mshv_create_apicid_to_cpuid_mapping(struct device *) { return 0; }
+static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *) { return false; }
+static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *) { return false; }
+
+#endif /* defined(CONFIG_SEV_GUEST) || defined(CONFIG_INTEL_TDX_GUEST) */
+
+/*
+ * Pull the interrupts in the `proxy_irr` field into the VAPIC page
+ * Returns true if an exit to user-space is required (sync tmr state)
+ */
+static bool __mshv_pull_proxy_irr(struct mshv_vtl_run *run, struct page *apic_page)
+{
+	u32 *apic_page_irr = (u32 *)((char *)page_address(apic_page) + APIC_IRR);
+
+	if (!xchg(&run->scan_proxy_irr, 0) || !apic_page_irr)
+		return false;
+
+	for (int i = 0; i < 8; i++) {
+		const u32 val = xchg(&run->proxy_irr[i], 0);
+
+		if (!val)
+			continue;
+
+		if (run->proxy_irr_exit_mask[i] & val) {
+			/*
+			 * This vector was previously used for a level-triggered interrupt.
+			 * An edge-triggered interrupt has now arrived, so we need to involve
+			 * user-space to clear its copy of the tmr.
+			 * Put the interrupt(s) back on the run page so it can do so.
+			 * nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write
+			 */
+			atomic_or(val, (atomic_t *)(&run->proxy_irr[i]));
+			WRITE_ONCE(run->scan_proxy_irr, 1);
+			return true;
+		}
+
+		/*
+		 * IRR is non-contiguous.
+		 * Each bank is 4 bytes with 12 bytes of padding between banks.
+		 */
+		apic_page_irr[i * 4] |= val;
+	}
+
+	return false;
+}
+
+#endif /* defined(CONFIG_X86_64) */
 
 static long mshv_tdx_vtl_ioctl_check_extension(u32 arg)
 {
@@ -403,7 +683,7 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 }
 
 #ifdef CONFIG_X86_64
-static int mshv_configure_vmsa_page(u8 target_vtl, struct page** vmsa_page)
+static int mshv_snp_configure_vmsa_page(u8 target_vtl, struct page** vmsa_page)
 {
 	struct page *page;
 	struct hv_register_assoc reg_assoc = {};
@@ -561,7 +841,6 @@ static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 		} else {
 			/* A malicious hypervisor might set a vector > 255. */
 			const u32 vector = READ_ONCE(proxy->u.asserted_vector) & 0xff;
-
 			do_assert_single_proxy_intr(vector, run);
 		}
 
@@ -745,16 +1024,43 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		mshv_tdx_init_halt_timer();
 #endif
 	} else if (hv_isolation_type_snp()) {
-#ifdef CONFIG_X86_64
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+		struct page *snp_secure_avic_page;
+		u64 apic_id;
 		int ret;
 
-		ret = mshv_configure_vmsa_page(0, &per_cpu->vmsa_page);
+		ret = mshv_snp_configure_vmsa_page(0, &per_cpu->vmsa_page);
 		if (ret < 0)
 			return ret;
+
+		if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
+			goto synic;
+
+		snp_secure_avic_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!snp_secure_avic_page)
+			return -ENOMEM;
+
+		/* VMPL 2 for the VTL0 */
+		ret = rmpadjust((unsigned long)page_address(snp_secure_avic_page),
+					RMP_PG_SIZE_4K, 2 | RMPADJUST_ENABLE_READ | RMPADJUST_ENABLE_WRITE);
+		if (ret) {
+			pr_err("failed to adjust RMP for the secure AVIC page: %d\n", ret);
+			free_page((u64)snp_secure_avic_page);
+			return -EINVAL;
+		}
+
+		/* Some very basic initialization */
+		// ret = sev_ghcb_msr_read(APIC_BASE_MSR + (APIC_ID >> 4), &apic_id);
+		// BUG_ON(ret != ES_OK);
+		// WRITE_ONCE(*((u32*)page_address(snp_secure_avic_page) + APIC_ID), lower_32_bits(apic_id));
+		x2apic_savic_init_backing_page(page_address(snp_secure_avic_page)); // ???
+
+		per_cpu->snp_secure_avic_page = snp_secure_avic_page;
 #endif
 	} else if (mshv_vsm_capabilities.intercept_page_available)
 		mshv_vtl_configure_reg_page(per_cpu);
 
+synic:
 	mshv_vtl_synic_enable_regs(cpu);
 
 	return 0;
@@ -1393,28 +1699,6 @@ static bool mshv_tdx_is_simple_icr_write(const struct tdx_vp_context *context)
 }
 
 /*
- * Returns the cpumask described by dest, where dest is a logical destination.
- * cpu_mask should have no CPUs set.
- * Returns 0 on success
- */
-static int mshv_tdx_get_logical_cpumask(u32 dest, struct cpumask *cpu_mask)
-{
-	int ret = 0;
-
-	while ((u16)dest) {
-		const u16 i = fls((u16)dest) - 1;
-		const u32 physical_id = (dest >> 16 << 4) | i;
-
-		ret = mshv_tdx_set_cpumask_from_apicid(physical_id, cpu_mask);
-		dest &= ~BIT(i);
-		if (ret)
-			break;
-	}
-
-	return ret;
-}
-
-/*
  * Attempts to handle an ICR write. Returns 0 if successful, other values
  * indicate user-space should be invoked to gracefully handle the error.
  */
@@ -1427,94 +1711,20 @@ static int mshv_tdx_handle_simple_icr_write(struct tdx_vp_context *context)
 	const u64 bank = vector >> 5; /* Each bank is 32 bits. Divide by 32 to find the bank. */
 	const u32 mask = BIT(vector & 0x1f); /* Bit in the bank is the remainder of the division. */
 	const u32 self = smp_processor_id();
-
 	bool send_ipi = false;
 	struct cpumask local_mask = {};
-	unsigned int cpu = 0;
 	int ret = 0;
 
-	if (shorthand == 0b10 || dest == (u32)-1) { /* shorthand all or destination id == all */
-		cpumask_copy(&local_mask, cpu_online_mask);
-	} else if (shorthand == 0b11) { /* shorthand all but self */
-		cpumask_copy(&local_mask, cpu_online_mask);
-		cpumask_clear_cpu(self, &local_mask);
-	} else if (shorthand == 0b01) { /* shorthand self */
-		cpumask_set_cpu(self, &local_mask);
-	} else if (icr_lo & BIT(11)) { /* logical */
-		ret = mshv_tdx_get_logical_cpumask(dest, &local_mask);
-	} else { /* physical */
-		ret = mshv_tdx_set_cpumask_from_apicid(dest, &local_mask);
-	}
-
+	ret = mshv_cpu_mask_for_icr_write(icr_lo, dest, &local_mask);
 	if (ret)
 		return ret;
-
-	for_each_cpu(cpu, &local_mask) {
-		/*
-		 * The kernel doesn't provide an atomic_or which operates on u32,
-		 * so cast to atomic_t, which should have the same layout
-		 */
-		static_assert(sizeof(atomic_t) == sizeof(u32));
-		atomic_or(mask, (atomic_t *)
-				(&(mshv_vtl_cpu_run(cpu)->proxy_irr[bank])));
-		smp_store_release(&mshv_vtl_cpu_run(cpu)->scan_proxy_irr, 1);
-		send_ipi |= cpu != self;
-	}
-
-	if (send_ipi) {
-		cpumask_clear_cpu(self, &local_mask);
-		__apic_send_IPI_mask(&local_mask, RESCHEDULE_VECTOR);
-	}
-
+	ret = mshv_update_proxy_irr_for_icr_write(icr_lo, &local_mask);
+	if (ret)
+		return ret;
 	mshv_tdx_advance_to_next_instruction(context);
 	mshv_tdx_clear_exit_reason(context);
 
 	return 0;
-}
-
-static u32 *mshv_tdx_vapic_irr(void)
-{
-	return (u32 *)((char *)page_address(tdx_this_apic_page()) + APIC_IRR);
-}
-
-/*
- * Pull the interrupts in the `proxy_irr` field into the VAPIC page
- * Returns true if an exit to user-space is required (sync tmr state)
- */
-static bool mshv_tdx_pull_proxy_irr(struct mshv_vtl_run *run)
-{
-	u32 *apic_page_irr = mshv_tdx_vapic_irr();
-
-	if (!xchg(&run->scan_proxy_irr, 0))
-		return false;
-
-	for (int i = 0; i < 8; i++) {
-		const u32 val = xchg(&run->proxy_irr[i], 0);
-
-		if (!val)
-			continue;
-
-		if (run->proxy_irr_exit_mask[i] & val) {
-			/*
-			 * This vector was previously used for a level-triggered interrupt.
-			 * An edge-triggered interrupt has now arrived, so we need to involve
-			 * user-space to clear its copy of the tmr.
-			 * Put the interrupt(s) back on the run page so it can do so.
-			 * nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write
-			 */
-			atomic_or(val, (atomic_t *)(&run->proxy_irr[i]));
-			WRITE_ONCE(run->scan_proxy_irr, 1);
-			return true;
-		}
-
-		/*
-		 * IRR is non-contiguous.
-		 * Each bank is 4 bytes with 12 bytes of padding between banks.
-		 */
-		apic_page_irr[i * 4] |= val;
-	}
-
-	return false;
 }
 
 /*
@@ -1646,6 +1856,179 @@ static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *run)
 }
 #endif /* CONFIG_INTEL_TDX_GUEST */
 
+#if defined(CONFIG_SEV_GUEST)
+
+static struct page *snp_this_savic_page(void)
+{
+	return *this_cpu_ptr(&mshv_vtl_per_cpu.snp_secure_avic_page);
+}
+
+static struct sev_es_save_area *snp_this_vmsa(void)
+{
+	struct page *vmsa_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page);
+	return page_address(vmsa_page);
+}
+
+/*
+ * Sets a benign guest error code so that there won't be another
+ * #VMEXIT for the just processed one and marks the VMSA as
+ * runnable.
+ */
+static void mshv_snp_clear_exit_code(struct sev_es_save_area *vmsa, bool int_shadow)
+{
+	if (int_shadow)
+		vmsa->vintr_ctrl |= V_INT_SHADOW_MASK;
+	else
+		vmsa->vintr_ctrl &= ~V_INT_SHADOW_MASK;
+	vmsa->guest_exit_code = SVM_EXIT_INTR;
+	vmsa->vintr_ctrl &= ~V_GUEST_BUSY_MASK;
+}
+
+/*
+ * Try to handle the incomplete IPI SEV-SNP exit.
+ *
+ * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
+ * Returns false if the exit must be handled by user-space.
+ */
+static bool mshv_snp_try_handle_incomplete_ipi(struct mshv_vtl_run *run,
+	struct sev_es_save_area *vmsa)
+{
+	u32 icr_lo = vmsa->guest_exit_info_1;
+	u32 dest = vmsa->guest_exit_info_1 >> 32;
+
+	/* Route the INIT, SIPI, NMI to the user mode for now. */
+	if ((icr_lo & APIC_DM_FIXED_MASK) != APIC_DM_FIXED)
+		return false;
+	/* Can handle only edge-triggered interrupts. */
+	if (icr_lo & APIC_INT_LEVELTRIG)
+		return false;
+
+	if (mshv_snp_handle_simple_icr_write(icr_lo, dest))
+		return false;
+
+	return true;
+}
+
+/*
+ * Try to handle an SEV-SNP exit entirely in kernel, to avoid the overhead of a
+ * user<->kernel transition.
+ *
+ * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
+ * Returns false if the exit must be handled by user-space.
+ */
+static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
+{
+	const bool intr_inject = MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT & run->offload_flags;
+	const bool x2apic = MSHV_VTL_OFFLOAD_FLAG_X2APIC & run->offload_flags;
+	struct sev_es_save_area *vmsa;
+	u8 *offload_flags;
+
+	if (!intr_inject || !x2apic)
+		return false;
+
+	vmsa = snp_this_vmsa();
+
+	switch (vmsa->guest_exit_code)
+	{
+	case SVM_EXIT_AVIC_INCOMPLETE_IPI:
+		if (mshv_snp_try_handle_incomplete_ipi(run, vmsa))
+			goto handled;
+		break;
+	case SVM_EXIT_HLT:
+		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+		goto handled;
+	case SVM_EXIT_IDLE_HLT:
+		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+		goto handled;
+	case SVM_EXIT_MSR:
+		if (vmsa->rcx == HV_X64_MSR_GUEST_IDLE && !(vmsa->guest_exit_info_1 & 1)) {
+			/* The guest indicates it's idle by reading this synthetic MSR. */
+			vmsa->rax = 0;
+			vmsa->rdx = 0;
+			vmsa->rip = vmsa->guest_nrip;
+
+			run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+			run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+
+			goto handled;
+		}
+		break;
+	default:
+		break;
+	}
+
+	offload_flags = &run->offload_flags;
+	(*offload_flags) &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+	(*offload_flags) &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+	if (!(*offload_flags & MSHV_VTL_OFFLOAD_FLAG_HALT_OTHER))
+		run->flags &= ~MSHV_VTL_RUN_FLAG_HALTED;
+
+	return false;
+
+handled:
+
+	mshv_snp_clear_exit_code(vmsa, false);
+	return true;
+}
+
+static bool mshv_snp_try_handle_intercept(struct mshv_vtl_run *run)
+{
+	struct hv_vp_assist_page *hvp =  hv_vp_assist_page[smp_processor_id()];
+	u32 msg_type = HVMSG_NONE;
+	struct hv_message *msg = NULL;
+
+	switch (hvp->vtl_entry_reason) {
+	case MSHV_ENTRY_REASON_INTERRUPT:
+		if (!mshv_vsm_capabilities.intercept_page_available)
+		{
+			struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
+			void *synic_message_page = mshv_cpu->synic_message_page;
+
+			if (likely(synic_message_page))
+				msg = (struct hv_message *)synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;			
+		}
+		break;
+		
+	case MSHV_ENTRY_REASON_INTERCEPT:
+		WARN_ON(!mshv_vsm_capabilities.intercept_page_available);
+		msg = (struct hv_message *)hvp->intercept_message;
+		break;
+
+	default:
+		panic("unknown entry reason: %d", hvp->vtl_entry_reason);
+	}
+
+	if (!msg)
+		return true;
+	msg_type = READ_ONCE(msg->header.message_type);
+
+	switch (msg_type) {
+	case HVMSG_NONE:
+		break;
+	case HVMSG_X64_EXCEPTION_INTERCEPT:
+		{
+			struct hv_x64_exception_intercept_message *expt_msg = 
+				(struct hv_x64_exception_intercept_message*)msg->u.payload;
+			if (expt_msg->exception_vector != X86_TRAP_VC)
+				return false;
+		}
+		break;
+	case HVMSG_SYNIC_SINT_DELIVERABLE:
+		return false;
+	case HVMSG_X64_HALT:
+	    run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+		break;
+	default:
+		return false;
+	}
+
+	return true;
+}
+#endif /* CONFIG_SEV_GUEST */
+
 /*
  * Attempts to directly inject the interrupts in the proxy_irr field.
  * Returns true if an exit to user-space is required.
@@ -1654,14 +2037,20 @@ static bool mshv_pull_proxy_irr(struct mshv_vtl_run *run)
 {
 	bool ret = READ_ONCE(run->scan_proxy_irr);
 
-	if (!hv_isolation_type_tdx() ||
-	    !(run->offload_flags & MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT))
+	if (!(run->offload_flags & MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT))
 		return ret;
 
+	if (hv_isolation_type_tdx()) {
 #ifdef CONFIG_INTEL_TDX_GUEST
-	ret = mshv_tdx_pull_proxy_irr(run);
-	mshv_tdx_update_rvi_halt(run);
+		ret = __mshv_pull_proxy_irr(run, tdx_this_apic_page());
+		mshv_tdx_update_rvi_halt(run);
 #endif
+	} else if (hv_isolation_type_snp()) {
+#ifdef CONFIG_SEV_GUEST
+		ret = __mshv_pull_proxy_irr(run, snp_this_savic_page());
+#endif
+	}
+
 	return ret;
 }
 
@@ -1735,6 +2124,10 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 				continue; /* Exit handled entirely in kernel */
 			else
 				goto done;
+		} else if (hv_isolation_type_snp()) {
+			if (mshv_snp_try_handle_intercept(mshv_vtl_this_run()) &&
+				mshv_snp_try_handle_exit(mshv_vtl_this_run()))
+				continue; /* Exit handled entirely in kernel */
 		}
 
 		hvp = hv_vp_assist_page[smp_processor_id()];
@@ -2461,7 +2854,7 @@ static void guest_vsm_vmsa_pfn_this_cpu(void *arg)
 	cpu = get_cpu();
 	vmsa_guest_vsm_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page);
 	if (!vmsa_guest_vsm_page) {
-		if (mshv_configure_vmsa_page(1, per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page, cpu)))
+		if (mshv_snp_configure_vmsa_page(1, per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page, cpu)))
 			*pfn = -ENOMEM;
 		else
 			vmsa_guest_vsm_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page);
@@ -2482,6 +2875,41 @@ static long mshv_vtl_ioctl_guest_vsm_vmsa_pfn(void __user *user_arg)
 		return ret;
 
 	ret = smp_call_function_single(cpu_id, guest_vsm_vmsa_pfn_this_cpu, &pfn, true);
+	if (ret)
+		return ret;
+	ret = (long)pfn;
+	if (ret < 0)
+		return ret;
+
+	ret = copy_to_user(user_arg, &pfn, sizeof(pfn)) ? -EFAULT : 0;
+
+	return ret;
+}
+
+static void secure_avic_vtl0_this_cpu(void *arg)
+{
+	int cpu;
+	struct page *snp_secure_avic_page;
+	u64 *pfn = arg;
+
+	cpu = get_cpu();
+	snp_secure_avic_page = *this_cpu_ptr(&mshv_vtl_per_cpu.snp_secure_avic_page);
+	put_cpu();
+
+	*pfn = snp_secure_avic_page ? page_to_pfn(snp_secure_avic_page) : -ENOMEM;
+}
+
+static long mshv_vtl_ioctl_secure_avic_vtl0_pfn(void __user *user_arg)
+{
+	u64 pfn;
+	u32 cpu_id;
+	long ret;
+
+	ret = copy_from_user(&cpu_id, user_arg, sizeof(cpu_id)) ? -EFAULT : 0;
+	if (ret)
+		return ret;
+
+	ret = smp_call_function_single(cpu_id, secure_avic_vtl0_this_cpu, &pfn, true);
 	if (ret)
 		return ret;
 	ret = (long)pfn;
@@ -2627,6 +3055,9 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_VTL_GUEST_VSM_VMSA_PFN:
 		ret = mshv_vtl_ioctl_guest_vsm_vmsa_pfn((void __user *)arg);
 		break;
+	case MSHV_VTL_SECURE_AVIC_VTL0_PFN:
+		ret = mshv_vtl_ioctl_secure_avic_vtl0_pfn((void __user *)arg);
+		break;
 #endif
 
 	case MSHV_VTL_KICK_CPU:
@@ -2643,7 +3074,7 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 
 static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 {
-	struct page *page;
+	struct page *page = NULL;
 	int cpu = vmf->pgoff & MSHV_PG_OFF_CPU_MASK;
 	int real_off = vmf->pgoff >> MSHV_REAL_OFF_SHIFT;
 
@@ -2667,7 +3098,7 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 			return VM_FAULT_SIGBUS;
 		page_ptr_ptr = per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page, cpu);
 		if (!*page_ptr_ptr) {
-			if (mshv_configure_vmsa_page(1, page_ptr_ptr) < 0)
+			if (mshv_snp_configure_vmsa_page(1, page_ptr_ptr) < 0)
 				return VM_FAULT_SIGBUS;
 		}
 		page = *page_ptr_ptr;
@@ -2675,17 +3106,15 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 		if (!hv_isolation_type_snp())
 			return VM_FAULT_SIGBUS;
 		page = *per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page, cpu);
-#ifdef CONFIG_INTEL_TDX_GUEST
 	} else if (real_off == MSHV_APIC_PAGE_OFFSET) {
-		if (!hv_isolation_type_tdx())
-			return VM_FAULT_SIGBUS;
-
-		page = tdx_apic_page(cpu);
-#endif
+		page = mshv_apic_page(cpu);
 #endif
 	} else {
 		return VM_FAULT_NOPAGE;
 	}
+
+	if (!page)
+		return VM_FAULT_SIGBUS;
 
 	get_page(page);
 	vmf->page = page;
@@ -3317,7 +3746,7 @@ static int __init mshv_vtl_init(void)
 		goto unset_func;
 	}
 
-	ret = mshv_tdx_create_apicid_to_cpuid_mapping(dev);
+	ret = mshv_create_apicid_to_cpuid_mapping(dev);
 	if (ret)
 		goto unset_func;
 
@@ -3391,7 +3820,7 @@ static void __exit mshv_vtl_exit(void)
 {
 	mshv_setup_vtl_func(NULL, NULL, NULL);
 	ms_hyperv_free_redirected_intr();
-	mshv_tdx_free_apicid_to_cpuid_mapping();
+	mshv_free_apicid_to_cpuid_mapping();
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
 	misc_deregister(&mshv_vtl_low);
