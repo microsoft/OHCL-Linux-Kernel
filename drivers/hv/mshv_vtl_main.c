@@ -1575,7 +1575,7 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 			/* The guest indicates it's idle by reading this synthetic MSR. */
 			vmsa->rax = 0;
 			vmsa->rdx = 0;
-			vmsa->rip = vmsa->guest_nrip;
+			vmsa->rip += 2; /* vmsa->guest_nrip might not be available although here it should be. */
 
 			run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
 			run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
