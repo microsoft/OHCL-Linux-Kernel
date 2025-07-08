@@ -129,7 +129,8 @@ const struct bpf_func_proto bpf_map_peek_elem_proto = {
 
 BPF_CALL_3(bpf_map_lookup_percpu_elem, struct bpf_map *, map, void *, key, u32, cpu)
 {
-	WARN_ON_ONCE(!rcu_read_lock_held() && !rcu_read_lock_bh_held());
+	WARN_ON_ONCE(!rcu_read_lock_held() && !rcu_read_lock_trace_held() &&
+		     !rcu_read_lock_bh_held());
 	return (unsigned long) map->ops->map_lookup_percpu_elem(map, key, cpu);
 }
 
@@ -1593,10 +1594,24 @@ void bpf_timer_cancel_and_free(void *val)
 	 * To avoid these issues, punt to workqueue context when we are in a
 	 * timer callback.
 	 */
-	if (this_cpu_read(hrtimer_running))
+	if (this_cpu_read(hrtimer_running)) {
 		queue_work(system_unbound_wq, &t->cb.delete_work);
-	else
+		return;
+	}
+
+	if (IS_ENABLED(CONFIG_PREEMPT_RT)) {
+		/* If the timer is running on other CPU, also use a kworker to
+		 * wait for the completion of the timer instead of trying to
+		 * acquire a sleepable lock in hrtimer_cancel() to wait for its
+		 * completion.
+		 */
+		if (hrtimer_try_to_cancel(&t->timer) >= 0)
+			kfree_rcu(t, cb.rcu);
+		else
+			queue_work(system_unbound_wq, &t->cb.delete_work);
+	} else {
 		bpf_timer_delete_work(&t->cb.delete_work);
+	}
 }
 
 /* This function is called by map_delete/update_elem for individual element and
