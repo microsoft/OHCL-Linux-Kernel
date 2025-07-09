@@ -4,6 +4,8 @@
 
 #include <kvm/iodev.h>
 
+#include <asm/apic.h>
+
 #include <linux/kvm_host.h>
 
 #include "hyperv.h"
@@ -166,16 +168,6 @@ static inline void kvm_lapic_set_irr(int vec, struct kvm_lapic *apic)
 	 * APIC_IRR to avoid race with apic_clear_irr
 	 */
 	apic->irr_pending = true;
-}
-
-static inline u32 __kvm_lapic_get_reg(char *regs, int reg_off)
-{
-	return *((u32 *) (regs + reg_off));
-}
-
-static inline u32 kvm_lapic_get_reg(struct kvm_lapic *apic, int reg_off)
-{
-	return __kvm_lapic_get_reg(apic->regs, reg_off);
 }
 
 DECLARE_STATIC_KEY_FALSE(kvm_has_noapic_vcpu);
