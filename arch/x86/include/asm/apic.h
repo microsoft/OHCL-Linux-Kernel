@@ -564,19 +564,28 @@ static __always_inline void apic_set_reg64(void *regs, int reg, u64 val)
 	ap->regs64[reg / 8] = val;
 }
 
+static inline unsigned int get_vec_bit(unsigned int vec)
+{
+	/*
+	 * The registers are 32-bit wide and 16-byte aligned.
+	 * Compensate for the resulting bit number spacing.
+	 */
+	return vec + 96 * (vec / 32);
+}
+
 static inline void apic_clear_vector(int vec, void *bitmap)
 {
-	clear_bit(APIC_VECTOR_TO_BIT_NUMBER(vec), bitmap + APIC_VECTOR_TO_REG_OFFSET(vec));
+	clear_bit(get_vec_bit(vec), bitmap);
 }
 
 static inline void apic_set_vector(int vec, void *bitmap)
 {
-	set_bit(APIC_VECTOR_TO_BIT_NUMBER(vec), bitmap + APIC_VECTOR_TO_REG_OFFSET(vec));
+	set_bit(get_vec_bit(vec), bitmap);
 }
 
 static inline int apic_test_vector(int vec, void *bitmap)
 {
-	return test_bit(APIC_VECTOR_TO_BIT_NUMBER(vec), bitmap + APIC_VECTOR_TO_REG_OFFSET(vec));
+	return test_bit(get_vec_bit(vec), bitmap);
 }
 
 /*
