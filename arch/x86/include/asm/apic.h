@@ -525,26 +525,43 @@ static inline int apic_find_highest_vector(void *bitmap)
 	return -1;
 }
 
+struct apic_page {
+	union {
+		u64     regs64[PAGE_SIZE / 8];
+		u32     regs[PAGE_SIZE / 4];
+		u8      bytes[PAGE_SIZE];
+	};
+} __aligned(PAGE_SIZE);
+
 static inline u32 apic_get_reg(void *regs, int reg)
 {
-	return *((u32 *) (regs + reg));
+	struct apic_page *ap = regs;
+
+	return ap->regs[reg / 4];
 }
 
 static inline void apic_set_reg(void *regs, int reg, u32 val)
 {
-	*((u32 *) (regs + reg)) = val;
+	struct apic_page *ap = regs;
+
+	ap->regs[reg / 4] = val;
 }
 
 static __always_inline u64 apic_get_reg64(void *regs, int reg)
 {
+	struct apic_page *ap = regs;
+
 	BUILD_BUG_ON(reg != APIC_ICR);
-	return *((u64 *) (regs + reg));
+
+	return ap->regs64[reg / 8];
 }
 
 static __always_inline void apic_set_reg64(void *regs, int reg, u64 val)
 {
+	struct apic_page *ap = regs;
+
 	BUILD_BUG_ON(reg != APIC_ICR);
-	*((u64 *) (regs + reg)) = val;
+	ap->regs64[reg / 8] = val;
 }
 
 static inline void apic_clear_vector(int vec, void *bitmap)
