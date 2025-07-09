@@ -77,11 +77,6 @@ module_param(lapic_timer_advance, bool, 0444);
 static int kvm_lapic_msr_read(struct kvm_lapic *apic, u32 reg, u64 *data);
 static int kvm_lapic_msr_write(struct kvm_lapic *apic, u32 reg, u64 data);
 
-static inline int apic_test_vector(int vec, void *bitmap)
-{
-	return test_bit(VEC_POS(vec), (bitmap) + REG_POS(vec));
-}
-
 bool kvm_apic_pending_eoi(struct kvm_vcpu *vcpu, int vector)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
