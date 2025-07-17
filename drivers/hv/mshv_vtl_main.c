@@ -1462,6 +1462,7 @@ mshv_vtl_ioctl_get_set_regs(void __user *user_args, bool set)
 	struct mshv_vp_registers args;
 	struct hv_register_assoc *registers;
 	long ret;
+	int offset;
 
 #ifdef CONFIG_X86_64
 	/* For SNP, register state maniupulation happens through the VMSA. */
@@ -1488,15 +1489,22 @@ mshv_vtl_ioctl_get_set_regs(void __user *user_args, bool set)
 	}
 
 	if (set) {
-		ret = hv_vtl_set_reg(registers, mshv_vsm_capabilities.dr6_shared);
-		if (ret <= 0)
-			goto free_return; /* No need of hypercall */
+		for (offset = 0; offset < args.count; offset++) {
+			ret = hv_vtl_set_reg(registers + offset, mshv_vsm_capabilities.dr6_shared);
+			if (ret == 1)
+				break; /* Need to make hypercall */
+		}
+		if (offset == args.count)
+			goto free_return;
 		ret = vtl_set_vp_registers(args.count, registers);
-
 	} else {
-		ret = hv_vtl_get_reg(registers, mshv_vsm_capabilities.dr6_shared);
-		if (ret <= 0)
-			goto copy_args; /* No need of hypercall */
+		for (offset = 0; offset < args.count; offset++) {
+			ret = hv_vtl_get_reg(registers + offset, mshv_vsm_capabilities.dr6_shared);
+			if (ret == 1)
+				break; /* Need to make hypercall */
+		}
+		if (offset == args.count)
+			goto copy_args;
 		ret = vtl_get_vp_registers(args.count, registers);
 		if (ret)
 			goto free_return;
