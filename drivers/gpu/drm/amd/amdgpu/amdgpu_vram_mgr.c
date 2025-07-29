@@ -463,7 +463,7 @@ static int amdgpu_vram_mgr_new(struct ttm_resource_manager *man,
 	int r;
 
 	lpfn = (u64)place->lpfn << PAGE_SHIFT;
-	if (!lpfn)
+	if (!lpfn || lpfn > man->size)
 		lpfn = man->size;
 
 	fpfn = (u64)place->fpfn << PAGE_SHIFT;
@@ -567,7 +567,6 @@ static int amdgpu_vram_mgr_new(struct ttm_resource_manager *man,
 		else
 			remaining_size -= size;
 	}
-	mutex_unlock(&mgr->lock);
 
 	if (bo->flags & AMDGPU_GEM_CREATE_VRAM_CONTIGUOUS && adjust_dcc_size) {
 		struct drm_buddy_block *dcc_block;
@@ -584,6 +583,7 @@ static int amdgpu_vram_mgr_new(struct ttm_resource_manager *man,
 				     (u64)vres->base.size,
 				     &vres->blocks);
 	}
+	mutex_unlock(&mgr->lock);
 
 	vres->base.start = 0;
 	size = max_t(u64, amdgpu_vram_mgr_blocks_size(&vres->blocks),

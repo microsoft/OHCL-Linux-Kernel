@@ -65,6 +65,7 @@ void __init hv_vtl_init_platform(void)
 	x86_init.resources.probe_roms = x86_init_noop;
 	x86_init.irqs.pre_vector_init = x86_init_noop;
 	x86_init.timers.timer_init = x86_init_noop;
+	x86_init.resources.probe_roms = x86_init_noop;
 
 	/* Avoid searching for BIOS MP tables */
 	x86_init.mpparse.find_mptable = x86_init_noop;
@@ -290,7 +291,7 @@ void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, union hv_input_vtl target_vt
 		}
 
 		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED)) {
-			tdx_safe_halt();
+			tdx_halt();
 		} else {
 			/* Only supports VTL0 */
 			mshv_vtl_return_tdx();

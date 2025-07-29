@@ -369,7 +369,7 @@ void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, union hv_input_vtl target_vt
 static inline void hv_vtl_idle(void)
 {
 	if (hv_isolation_type_tdx())
-		tdx_safe_halt();
+		tdx_halt();
 	else
 		native_safe_halt();
 }
