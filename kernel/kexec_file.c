@@ -230,6 +230,9 @@ kimage_file_prepare_segments(struct kimage *image, int kernel_fd, int initrd_fd,
 		ret = 0;
 	}
 
+	image->no_cma = !!(flags & KEXEC_FILE_NO_CMA);
+	image->force_dtb = flags & KEXEC_FILE_FORCE_DTB;
+
 	if (cmdline_len) {
 		image->cmdline_buf = memdup_user(cmdline_ptr, cmdline_len);
 		if (IS_ERR(image->cmdline_buf)) {
