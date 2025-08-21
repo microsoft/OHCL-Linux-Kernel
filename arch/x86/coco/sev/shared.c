@@ -16,13 +16,14 @@
 #define has_cpuflag(f)			boot_cpu_has(f)
 #define sev_printk(fmt, ...)		printk(fmt, ##__VA_ARGS__)
 #define sev_printk_rtl(fmt, ...)	printk_ratelimited(fmt, ##__VA_ARGS__)
+#undef vc_forward_exception
+#define vc_forward_exception(c)		panic("SNP: Hypervisor requested exception\n")
 #else
 #undef WARN
 #define WARN(condition, format...) (!!(condition))
 #define sev_printk(fmt, ...)
 #define sev_printk_rtl(fmt, ...)
-#undef vc_forward_exception
-#define vc_forward_exception(c)		panic("SNP: Hypervisor requested exception\n")
+#define vc_forward_exception(c)
 #endif
 
 /*
