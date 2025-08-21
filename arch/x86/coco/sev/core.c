@@ -2470,16 +2470,34 @@ int snp_issue_guest_request(u64 exit_code, struct snp_req_data *input, struct sn
 
 	vc_ghcb_invalidate(ghcb);
 
-	if (exit_code == SVM_VMGEXIT_EXT_GUEST_REQUEST) {
+	switch (exit_code) {
+	case SVM_VMGEXIT_EXT_GUEST_REQUEST:
 		ghcb_set_rax(ghcb, input->data_gpa);
 		ghcb_set_rbx(ghcb, input->data_npages);
+		break;
+	case SVM_VMGEXIT_TIO_GUEST_REQUEST:
+		ghcb_set_rax(ghcb, input->data_gpa);
+		ghcb_set_rbx(ghcb, input->data_npages);
+		ghcb_set_rcx(ghcb, rio->pci_id);
+		ghcb_set_rdx(ghcb, rio->mmio_range);
+		ghcb_set_sw_exit_info_1(ghcb, rio->exitinfo1);
+		ghcb_set_sw_exit_info_2(ghcb, rio->exitinfo2);
+		break;
+	default:
+		break;
 	}
 
 	ret = sev_es_ghcb_hv_call(ghcb, &ctxt, exit_code, input->req_gpa, input->resp_gpa);
 	if (ret)
 		goto e_put;
 
+	rio->exitinfo1 = ghcb->save.sw_exit_info_1;
 	rio->exitinfo2 = ghcb->save.sw_exit_info_2;
+
+	/* TODO: Only defined for the TIO_MSG_TDI_INFO_RSP */
+	if (exit_code == SVM_VMGEXIT_TIO_GUEST_REQUEST)
+		rio->tdisp_state = ghcb_get_rdx(ghcb);
+
 	switch (rio->exitinfo2) {
 	case 0:
 		break;
