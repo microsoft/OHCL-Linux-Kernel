@@ -2858,12 +2858,7 @@ static int qcom_param_page_type_exec(struct nand_chip *chip,  const struct nand_
 	const struct nand_op_instr *instr = NULL;
 	unsigned int op_id = 0;
 	unsigned int len = 0;
-	int ret, reg_base;
-
-	reg_base = NAND_READ_LOCATION_0;
-
-	if (nandc->props->qpic_v2)
-		reg_base = NAND_READ_LOCATION_LAST_CW_0;
+	int ret;
 
 	ret = qcom_parse_instructions(chip, subop, &q_op);
 	if (ret)
@@ -2915,10 +2910,7 @@ static int qcom_param_page_type_exec(struct nand_chip *chip,  const struct nand_
 	op_id = q_op.data_instr_idx;
 	len = nand_subop_get_data_len(subop, op_id);
 
-	if (nandc->props->qpic_v2)
-		nandc_set_read_loc_last(chip, reg_base, 0, len, 1);
-	else
-		nandc_set_read_loc_first(chip, reg_base, 0, len, 1);
+	nandc_set_read_loc(chip, 0, 0, 0, len, 1);
 
 	if (!nandc->props->qpic_v2) {
 		write_reg_dma(nandc, NAND_DEV_CMD_VLD, 1, 0);

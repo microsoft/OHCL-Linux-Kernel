@@ -23,7 +23,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
-#include <linux/if_ether.h>	/* ETH_ALEN */
 
 #define IMX_OCOTP_OFFSET_B0W0		0x400 /* Offset from base address of the
 					       * OTP Bank0 Word0
@@ -228,11 +227,9 @@ static int imx_ocotp_cell_pp(void *context, const char *id, int index,
 	int i;
 
 	/* Deal with some post processing of nvmem cell data */
-	if (id && !strcmp(id, "mac-address")) {
-		bytes = min(bytes, ETH_ALEN);
+	if (id && !strcmp(id, "mac-address"))
 		for (i = 0; i < bytes / 2; i++)
 			swap(buf[i], buf[bytes - i - 1]);
-	}
 
 	return 0;
 }

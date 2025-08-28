@@ -765,26 +765,6 @@ static unsigned int mergeable_ctx_to_truesize(void *mrg_ctx)
 	return (unsigned long)mrg_ctx & ((1 << MRG_CTX_HEADER_SHIFT) - 1);
 }
 
-static int check_mergeable_len(struct net_device *dev, void *mrg_ctx,
-			       unsigned int len)
-{
-	unsigned int headroom, tailroom, room, truesize;
-
-	truesize = mergeable_ctx_to_truesize(mrg_ctx);
-	headroom = mergeable_ctx_to_headroom(mrg_ctx);
-	tailroom = headroom ? sizeof(struct skb_shared_info) : 0;
-	room = SKB_DATA_ALIGN(headroom + tailroom);
-
-	if (len > truesize - room) {
-		pr_debug("%s: rx error: len %u exceeds truesize %lu\n",
-			 dev->name, len, (unsigned long)(truesize - room));
-		DEV_STATS_INC(dev, rx_length_errors);
-		return -1;
-	}
-
-	return 0;
-}
-
 static struct sk_buff *virtnet_build_skb(void *buf, unsigned int buflen,
 					 unsigned int headroom,
 					 unsigned int len)
@@ -1118,29 +1098,15 @@ static void sg_fill_dma(struct scatterlist *sg, dma_addr_t addr, u32 len)
 	sg->length = len;
 }
 
-/* Note that @len is the length of received data without virtio header */
 static struct xdp_buff *buf_to_xdp(struct virtnet_info *vi,
-				   struct receive_queue *rq, void *buf,
-				   u32 len, bool first_buf)
+				   struct receive_queue *rq, void *buf, u32 len)
 {
 	struct xdp_buff *xdp;
 	u32 bufsize;
 
 	xdp = (struct xdp_buff *)buf;
 
-	/* In virtnet_add_recvbuf_xsk, we use part of XDP_PACKET_HEADROOM for
-	 * virtio header and ask the vhost to fill data from
-	 *         hard_start + XDP_PACKET_HEADROOM - vi->hdr_len
-	 * The first buffer has virtio header so the remaining region for frame
-	 * data is
-	 *         xsk_pool_get_rx_frame_size()
-	 * While other buffers than the first one do not have virtio header, so
-	 * the maximum frame data's length can be
-	 *         xsk_pool_get_rx_frame_size() + vi->hdr_len
-	 */
-	bufsize = xsk_pool_get_rx_frame_size(rq->xsk_pool);
-	if (!first_buf)
-		bufsize += vi->hdr_len;
+	bufsize = xsk_pool_get_rx_frame_size(rq->xsk_pool) + vi->hdr_len;
 
 	if (unlikely(len > bufsize)) {
 		pr_debug("%s: rx error: len %u exceeds truesize %u\n",
@@ -1265,7 +1231,7 @@ static int xsk_append_merge_buffer(struct virtnet_info *vi,
 
 		u64_stats_add(&stats->bytes, len);
 
-		xdp = buf_to_xdp(vi, rq, buf, len, false);
+		xdp = buf_to_xdp(vi, rq, buf, len);
 		if (!xdp)
 			goto err;
 
@@ -1363,7 +1329,7 @@ static void virtnet_receive_xsk_buf(struct virtnet_info *vi, struct receive_queu
 
 	u64_stats_add(&stats->bytes, len);
 
-	xdp = buf_to_xdp(vi, rq, buf, len, true);
+	xdp = buf_to_xdp(vi, rq, buf, len);
 	if (!xdp)
 		return;
 
@@ -1683,8 +1649,7 @@ static unsigned int virtnet_get_headroom(struct virtnet_info *vi)
  * across multiple buffers (num_buf > 1), and we make sure buffers
  * have enough headroom.
  */
-static struct page *xdp_linearize_page(struct net_device *dev,
-				       struct receive_queue *rq,
+static struct page *xdp_linearize_page(struct receive_queue *rq,
 				       int *num_buf,
 				       struct page *p,
 				       int offset,
@@ -1704,26 +1669,17 @@ static struct page *xdp_linearize_page(struct net_device *dev,
 	memcpy(page_address(page) + page_off, page_address(p) + offset, *len);
 	page_off += *len;
 
-	/* Only mergeable mode can go inside this while loop. In small mode,
-	 * *num_buf == 1, so it cannot go inside.
-	 */
 	while (--*num_buf) {
 		unsigned int buflen;
 		void *buf;
-		void *ctx;
 		int off;
 
-		buf = virtnet_rq_get_buf(rq, &buflen, &ctx);
+		buf = virtnet_rq_get_buf(rq, &buflen, NULL);
 		if (unlikely(!buf))
 			goto err_buf;
 
 		p = virt_to_head_page(buf);
 		off = buf - page_address(p);
-
-		if (check_mergeable_len(dev, ctx, buflen)) {
-			put_page(p);
-			goto err_buf;
-		}
 
 		/* guard against a misconfigured or uncooperative backend that
 		 * is sending packet larger than the MTU.
@@ -1813,7 +1769,7 @@ static struct sk_buff *receive_small_xdp(struct net_device *dev,
 		headroom = vi->hdr_len + header_offset;
 		buflen = SKB_DATA_ALIGN(GOOD_PACKET_LEN + headroom) +
 			SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
-		xdp_page = xdp_linearize_page(dev, rq, &num_buf, page,
+		xdp_page = xdp_linearize_page(rq, &num_buf, page,
 					      offset, header_offset,
 					      &tlen);
 		if (!xdp_page)
@@ -2148,7 +2104,7 @@ static void *mergeable_xdp_get_buf(struct virtnet_info *vi,
 	 */
 	if (!xdp_prog->aux->xdp_has_frags) {
 		/* linearize data for XDP */
-		xdp_page = xdp_linearize_page(vi->dev, rq, num_buf,
+		xdp_page = xdp_linearize_page(rq, num_buf,
 					      *page, offset,
 					      XDP_PACKET_HEADROOM,
 					      len);
@@ -3274,12 +3230,6 @@ static int virtnet_tx_resize(struct virtnet_info *vi, struct send_queue *sq,
 			     u32 ring_num)
 {
 	int qindex, err;
-
-	if (ring_num <= MAX_SKB_FRAGS + 2) {
-		netdev_err(vi->dev, "tx size (%d) cannot be smaller than %d\n",
-			   ring_num, MAX_SKB_FRAGS + 2);
-		return -EINVAL;
-	}
 
 	qindex = sq - vi->sq;
 
@@ -6808,7 +6758,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 	   otherwise get link status from config. */
 	netif_carrier_off(dev);
 	if (virtio_has_feature(vi->vdev, VIRTIO_NET_F_STATUS)) {
-		virtio_config_changed(vi->vdev);
+		virtnet_config_changed_work(&vi->config_work);
 	} else {
 		vi->status = VIRTIO_NET_S_LINK_UP;
 		virtnet_update_settings(vi);

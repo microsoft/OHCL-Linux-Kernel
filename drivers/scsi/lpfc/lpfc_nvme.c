@@ -1232,7 +1232,7 @@ lpfc_nvme_prep_io_cmd(struct lpfc_vport *vport,
 
 			/* Word 5 */
 			if ((phba->cfg_nvme_enable_fb) &&
-			    test_bit(NLP_FIRSTBURST, &pnode->nlp_flag)) {
+			    (pnode->nlp_flag & NLP_FIRSTBURST)) {
 				req_len = lpfc_ncmd->nvmeCmd->payload_length;
 				if (req_len < pnode->nvme_fb_size)
 					wqe->fcp_iwrite.initial_xfer_len =
@@ -2644,11 +2644,14 @@ lpfc_nvme_unregister_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 				 * reference. Check if another thread has set
 				 * NLP_DROPPED.
 				 */
-				if (!test_and_set_bit(NLP_DROPPED,
-						      &ndlp->nlp_flag)) {
+				spin_lock_irq(&ndlp->lock);
+				if (!(ndlp->nlp_flag & NLP_DROPPED)) {
+					ndlp->nlp_flag |= NLP_DROPPED;
+					spin_unlock_irq(&ndlp->lock);
 					lpfc_nlp_put(ndlp);
 					return;
 				}
+				spin_unlock_irq(&ndlp->lock);
 			}
 		}
 	}

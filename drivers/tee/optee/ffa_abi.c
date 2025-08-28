@@ -728,21 +728,12 @@ static bool optee_ffa_exchange_caps(struct ffa_device *ffa_dev,
 	return true;
 }
 
-static void notif_work_fn(struct work_struct *work)
-{
-	struct optee_ffa *optee_ffa = container_of(work, struct optee_ffa,
-						   notif_work);
-	struct optee *optee = container_of(optee_ffa, struct optee, ffa);
-
-	optee_do_bottom_half(optee->ctx);
-}
-
 static void notif_callback(int notify_id, void *cb_data)
 {
 	struct optee *optee = cb_data;
 
 	if (notify_id == optee->ffa.bottom_half_value)
-		queue_work(optee->ffa.notif_wq, &optee->ffa.notif_work);
+		optee_do_bottom_half(optee->ctx);
 	else
 		optee_notif_send(optee, notify_id);
 }
@@ -826,11 +817,9 @@ static void optee_ffa_remove(struct ffa_device *ffa_dev)
 	struct optee *optee = ffa_dev_get_drvdata(ffa_dev);
 	u32 bottom_half_id = optee->ffa.bottom_half_value;
 
-	if (bottom_half_id != U32_MAX) {
+	if (bottom_half_id != U32_MAX)
 		ffa_dev->ops->notifier_ops->notify_relinquish(ffa_dev,
 							      bottom_half_id);
-		destroy_workqueue(optee->ffa.notif_wq);
-	}
 	optee_remove_common(optee);
 
 	mutex_destroy(&optee->ffa.mutex);
@@ -845,13 +834,6 @@ static int optee_ffa_async_notif_init(struct ffa_device *ffa_dev,
 	bool is_per_vcpu = false;
 	u32 notif_id = 0;
 	int rc;
-
-	INIT_WORK(&optee->ffa.notif_work, notif_work_fn);
-	optee->ffa.notif_wq = create_workqueue("optee_notification");
-	if (!optee->ffa.notif_wq) {
-		rc = -EINVAL;
-		goto err;
-	}
 
 	while (true) {
 		rc = ffa_dev->ops->notifier_ops->notify_request(ffa_dev,
@@ -869,24 +851,19 @@ static int optee_ffa_async_notif_init(struct ffa_device *ffa_dev,
 		 * notifications in that case.
 		 */
 		if (rc != -EACCES)
-			goto err_wq;
+			return rc;
 		notif_id++;
 		if (notif_id >= OPTEE_FFA_MAX_ASYNC_NOTIF_VALUE)
-			goto err_wq;
+			return rc;
 	}
 	optee->ffa.bottom_half_value = notif_id;
 
 	rc = enable_async_notif(optee);
-	if (rc < 0)
-		goto err_rel;
-
-	return 0;
-err_rel:
-	ffa_dev->ops->notifier_ops->notify_relinquish(ffa_dev, notif_id);
-err_wq:
-	destroy_workqueue(optee->ffa.notif_wq);
-err:
-	optee->ffa.bottom_half_value = U32_MAX;
+	if (rc < 0) {
+		ffa_dev->ops->notifier_ops->notify_relinquish(ffa_dev,
+							      notif_id);
+		optee->ffa.bottom_half_value = U32_MAX;
+	}
 
 	return rc;
 }

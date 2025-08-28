@@ -928,7 +928,7 @@ repeat:
 		if (!inode)
 			continue;
 
-		name = QSTR(kn->name);
+		name = (struct qstr)QSTR_INIT(kn->name, strlen(kn->name));
 		parent = kernfs_get_parent(kn);
 		if (parent) {
 			p_inode = ilookup(info->sb, kernfs_ino(parent));

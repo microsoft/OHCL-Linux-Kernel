@@ -59,8 +59,10 @@ struct fbnic_queue_stats {
 	struct u64_stats_sync syncp;
 };
 
-#define FBNIC_PAGECNT_BIAS_MAX	PAGE_SIZE
-
+/* Pagecnt bias is long max to reserve the last bit to catch overflow
+ * cases where if we overcharge the bias it will flip over to be negative.
+ */
+#define PAGECNT_BIAS_MAX	LONG_MAX
 struct fbnic_rx_buf {
 	struct page *page;
 	long pagecnt_bias;

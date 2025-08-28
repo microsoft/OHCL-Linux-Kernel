@@ -54,7 +54,7 @@ int __gfs2_xattr_set(struct inode *inode, const char *name,
 		     const void *value, size_t size,
 		     int flags, int type);
 ssize_t gfs2_listxattr(struct dentry *dentry, char *buffer, size_t size);
-int gfs2_ea_dealloc(struct gfs2_inode *ip, bool initialized);
+int gfs2_ea_dealloc(struct gfs2_inode *ip);
 
 /* Exported to acl.c */
 

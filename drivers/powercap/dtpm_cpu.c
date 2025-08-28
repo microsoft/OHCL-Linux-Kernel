@@ -96,8 +96,6 @@ static u64 get_pd_power_uw(struct dtpm *dtpm)
 	int i;
 
 	pd = em_cpu_get(dtpm_cpu->cpu);
-	if (!pd)
-		return 0;
 
 	pd_mask = em_span_cpus(pd);
 

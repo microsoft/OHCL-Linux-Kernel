@@ -754,7 +754,7 @@ rexmit_timer(struct timer_list *timer)
 
 	utgts = count_targets(d, NULL);
 
-	if (d->flags & (DEVFL_TKILL | DEVFL_DEAD)) {
+	if (d->flags & DEVFL_TKILL) {
 		spin_unlock_irqrestore(&d->lock, flags);
 		return;
 	}
@@ -786,8 +786,7 @@ rexmit_timer(struct timer_list *timer)
 			 * to clean up.
 			 */
 			list_splice(&flist, &d->factive[0]);
-			d->flags |= DEVFL_DEAD;
-			queue_work(aoe_wq, &d->work);
+			aoedev_downdev(d);
 			goto out;
 		}
 
@@ -898,9 +897,6 @@ void
 aoecmd_sleepwork(struct work_struct *work)
 {
 	struct aoedev *d = container_of(work, struct aoedev, work);
-
-	if (d->flags & DEVFL_DEAD)
-		aoedev_downdev(d);
 
 	if (d->flags & DEVFL_GDALLOC)
 		aoeblk_gdalloc(d);

@@ -32,16 +32,7 @@ struct xe_gt_sriov_metadata {
 };
 
 /**
- * struct xe_gt_sriov_pf_workers - GT level workers used by the PF.
- */
-struct xe_gt_sriov_pf_workers {
-	/** @restart: worker that executes actions post GT reset */
-	struct work_struct restart;
-};
-
-/**
  * struct xe_gt_sriov_pf - GT level PF virtualization data.
- * @workers: workers data.
  * @service: service data.
  * @control: control data.
  * @policy: policy data.
@@ -49,7 +40,6 @@ struct xe_gt_sriov_pf_workers {
  * @vfs: metadata for all VFs.
  */
 struct xe_gt_sriov_pf {
-	struct xe_gt_sriov_pf_workers workers;
 	struct xe_gt_sriov_pf_service service;
 	struct xe_gt_sriov_pf_control control;
 	struct xe_gt_sriov_pf_policy policy;

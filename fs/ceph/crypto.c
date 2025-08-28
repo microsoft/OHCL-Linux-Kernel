@@ -215,31 +215,35 @@ static struct inode *parse_longname(const struct inode *parent,
 	struct ceph_client *cl = ceph_inode_to_client(parent);
 	struct inode *dir = NULL;
 	struct ceph_vino vino = { .snap = CEPH_NOSNAP };
-	char *name_end, *inode_number;
+	char *inode_number;
+	char *name_end;
+	int orig_len = *name_len;
 	int ret = -EIO;
-	/* NUL-terminate */
-	char *str __free(kfree) = kmemdup_nul(name, *name_len, GFP_KERNEL);
-	if (!str)
-		return ERR_PTR(-ENOMEM);
+
 	/* Skip initial '_' */
-	str++;
-	name_end = strrchr(str, '_');
+	name++;
+	name_end = strrchr(name, '_');
 	if (!name_end) {
-		doutc(cl, "failed to parse long snapshot name: %s\n", str);
+		doutc(cl, "failed to parse long snapshot name: %s\n", name);
 		return ERR_PTR(-EIO);
 	}
-	*name_len = (name_end - str);
+	*name_len = (name_end - name);
 	if (*name_len <= 0) {
 		pr_err_client(cl, "failed to parse long snapshot name\n");
 		return ERR_PTR(-EIO);
 	}
 
 	/* Get the inode number */
-	inode_number = name_end + 1;
+	inode_number = kmemdup_nul(name_end + 1,
+				   orig_len - *name_len - 2,
+				   GFP_KERNEL);
+	if (!inode_number)
+		return ERR_PTR(-ENOMEM);
 	ret = kstrtou64(inode_number, 10, &vino.ino);
 	if (ret) {
-		doutc(cl, "failed to parse inode number: %s\n", str);
-		return ERR_PTR(ret);
+		doutc(cl, "failed to parse inode number: %s\n", name);
+		dir = ERR_PTR(ret);
+		goto out;
 	}
 
 	/* And finally the inode */
@@ -250,6 +254,9 @@ static struct inode *parse_longname(const struct inode *parent,
 		if (IS_ERR(dir))
 			doutc(cl, "can't find inode %s (%s)\n", inode_number, name);
 	}
+
+out:
+	kfree(inode_number);
 	return dir;
 }
 

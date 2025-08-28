@@ -772,9 +772,7 @@ static int cdnsp_update_port_id(struct cdnsp_device *pdev, u32 port_id)
 	}
 
 	if (port_id != old_port) {
-		if (pdev->slot_id)
-			cdnsp_disable_slot(pdev);
-
+		cdnsp_disable_slot(pdev);
 		pdev->active_port = port;
 		cdnsp_enable_slot(pdev);
 	}
@@ -2485,8 +2483,7 @@ void cdnsp_queue_halt_endpoint(struct cdnsp_device *pdev, unsigned int ep_index)
 {
 	cdnsp_queue_command(pdev, 0, 0, 0, TRB_TYPE(TRB_HALT_ENDPOINT) |
 			    SLOT_ID_FOR_TRB(pdev->slot_id) |
-			    EP_ID_FOR_TRB(ep_index) |
-			    (!ep_index ? TRB_ESP : 0));
+			    EP_ID_FOR_TRB(ep_index));
 }
 
 void cdnsp_force_header_wakeup(struct cdnsp_device *pdev, int intf_num)
