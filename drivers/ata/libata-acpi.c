@@ -514,19 +514,15 @@ unsigned int ata_acpi_gtm_xfermask(struct ata_device *dev,
 EXPORT_SYMBOL_GPL(ata_acpi_gtm_xfermask);
 
 /**
- * ata_acpi_cbl_pata_type - Return PATA cable type
+ * ata_acpi_cbl_80wire		-	Check for 80 wire cable
  * @ap: Port to check
+ * @gtm: GTM data to use
  *
- * Return ATA_CBL_PATA* according to the transfer mode selected by BIOS
+ * Return 1 if the @gtm indicates the BIOS selected an 80wire mode.
  */
-int ata_acpi_cbl_pata_type(struct ata_port *ap)
+int ata_acpi_cbl_80wire(struct ata_port *ap, const struct ata_acpi_gtm *gtm)
 {
 	struct ata_device *dev;
-	int ret = ATA_CBL_PATA_UNK;
-	const struct ata_acpi_gtm *gtm = ata_acpi_init_gtm(ap);
-
-	if (!gtm)
-		return ATA_CBL_PATA40;
 
 	ata_for_each_dev(dev, &ap->link, ENABLED) {
 		unsigned int xfer_mask, udma_mask;
@@ -534,17 +530,13 @@ int ata_acpi_cbl_pata_type(struct ata_port *ap)
 		xfer_mask = ata_acpi_gtm_xfermask(dev, gtm);
 		ata_unpack_xfermask(xfer_mask, NULL, NULL, &udma_mask);
 
-		ret = ATA_CBL_PATA40;
-
-		if (udma_mask & ~ATA_UDMA_MASK_40C) {
-			ret = ATA_CBL_PATA80;
-			break;
-		}
+		if (udma_mask & ~ATA_UDMA_MASK_40C)
+			return 1;
 	}
 
-	return ret;
+	return 0;
 }
-EXPORT_SYMBOL_GPL(ata_acpi_cbl_pata_type);
+EXPORT_SYMBOL_GPL(ata_acpi_cbl_80wire);
 
 static void ata_acpi_gtf_to_tf(struct ata_device *dev,
 			       const struct ata_acpi_gtf *gtf,

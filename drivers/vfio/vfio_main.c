@@ -583,8 +583,7 @@ void vfio_df_close(struct vfio_device_file *df)
 
 	lockdep_assert_held(&device->dev_set->lock);
 
-	if (!vfio_assert_device_open(device))
-		return;
+	vfio_assert_device_open(device);
 	if (device->open_count == 1)
 		vfio_df_device_last_close(df);
 	device->open_count--;

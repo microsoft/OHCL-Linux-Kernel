@@ -407,7 +407,7 @@ int erofs_getxattr(struct inode *inode, int index, const char *name,
 	}
 
 	it.index = index;
-	it.name = QSTR(name);
+	it.name = (struct qstr)QSTR_INIT(name, strlen(name));
 	if (it.name.len > EROFS_NAME_LEN)
 		return -ERANGE;
 

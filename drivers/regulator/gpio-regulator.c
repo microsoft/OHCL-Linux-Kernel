@@ -260,10 +260,8 @@ static int gpio_regulator_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	drvdata->gpiods = devm_kcalloc(dev, config->ngpios,
-				       sizeof(struct gpio_desc *), GFP_KERNEL);
-	if (!drvdata->gpiods)
-		return -ENOMEM;
+	drvdata->gpiods = devm_kzalloc(dev, sizeof(struct gpio_desc *),
+				       GFP_KERNEL);
 
 	if (config->input_supply) {
 		drvdata->desc.supply_name = devm_kstrdup(&pdev->dev,
@@ -276,6 +274,8 @@ static int gpio_regulator_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (!drvdata->gpiods)
+		return -ENOMEM;
 	for (i = 0; i < config->ngpios; i++) {
 		drvdata->gpiods[i] = devm_gpiod_get_index(dev,
 							  NULL,

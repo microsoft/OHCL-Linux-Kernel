@@ -260,7 +260,7 @@ union hv_hypervisor_version_info {
 #define HVCALL_SET_VP_STATE			0x00e4
 #define HVCALL_GET_VP_CPUID_VALUES		0x00f4
 #define HVCALL_START_VP				0x0099
-#define HVCALL_GET_VP_ID_FROM_APIC_ID		0x009a
+#define HVCALL_GET_VP_INDEX_FROM_APIC_ID		0x009a
 
 /*
  * Some macros - i.e. GENMASK_ULL and BIT_ULL - are not currently supported by

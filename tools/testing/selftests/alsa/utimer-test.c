@@ -135,7 +135,6 @@ TEST_F(timer_f, utimer) {
 	pthread_join(ticking_thread, NULL);
 	ASSERT_EQ(total_ticks, TICKS_COUNT);
 	pclose(rfp);
-	free(buf);
 }
 
 TEST(wrong_timers_test) {

@@ -440,17 +440,15 @@ struct fib6_dump_arg {
 static int fib6_rt_dump(struct fib6_info *rt, struct fib6_dump_arg *arg)
 {
 	enum fib_event_type fib_event = FIB_EVENT_ENTRY_REPLACE;
-	unsigned int nsiblings;
 	int err;
 
 	if (!rt || rt == arg->net->ipv6.fib6_null_entry)
 		return 0;
 
-	nsiblings = READ_ONCE(rt->fib6_nsiblings);
-	if (nsiblings)
+	if (rt->fib6_nsiblings)
 		err = call_fib6_multipath_entry_notifier(arg->nb, fib_event,
 							 rt,
-							 nsiblings,
+							 rt->fib6_nsiblings,
 							 arg->extack);
 	else
 		err = call_fib6_entry_notifier(arg->nb, fib_event, rt,
@@ -1128,7 +1126,7 @@ static int fib6_add_rt2node(struct fib6_node *fn, struct fib6_info *rt,
 
 			if (rt6_duplicate_nexthop(iter, rt)) {
 				if (rt->fib6_nsiblings)
-					WRITE_ONCE(rt->fib6_nsiblings, 0);
+					rt->fib6_nsiblings = 0;
 				if (!(iter->fib6_flags & RTF_EXPIRES))
 					return -EEXIST;
 				if (!(rt->fib6_flags & RTF_EXPIRES)) {
@@ -1157,8 +1155,7 @@ static int fib6_add_rt2node(struct fib6_node *fn, struct fib6_info *rt,
 			 */
 			if (rt_can_ecmp &&
 			    rt6_qualify_for_ecmp(iter))
-				WRITE_ONCE(rt->fib6_nsiblings,
-					   rt->fib6_nsiblings + 1);
+				rt->fib6_nsiblings++;
 		}
 
 		if (iter->fib6_metric > rt->fib6_metric)
@@ -1208,8 +1205,7 @@ next_iter:
 		fib6_nsiblings = 0;
 		list_for_each_entry_safe(sibling, temp_sibling,
 					 &rt->fib6_siblings, fib6_siblings) {
-			WRITE_ONCE(sibling->fib6_nsiblings,
-				   sibling->fib6_nsiblings + 1);
+			sibling->fib6_nsiblings++;
 			BUG_ON(sibling->fib6_nsiblings != rt->fib6_nsiblings);
 			fib6_nsiblings++;
 		}
@@ -1254,9 +1250,8 @@ add:
 				list_for_each_entry_safe(sibling, next_sibling,
 							 &rt->fib6_siblings,
 							 fib6_siblings)
-					WRITE_ONCE(sibling->fib6_nsiblings,
-						   sibling->fib6_nsiblings - 1);
-				WRITE_ONCE(rt->fib6_nsiblings, 0);
+					sibling->fib6_nsiblings--;
+				rt->fib6_nsiblings = 0;
 				list_del_rcu(&rt->fib6_siblings);
 				rt6_multipath_rebalance(next_sibling);
 				return err;
@@ -1973,9 +1968,8 @@ static void fib6_del_route(struct fib6_table *table, struct fib6_node *fn,
 			notify_del = true;
 		list_for_each_entry_safe(sibling, next_sibling,
 					 &rt->fib6_siblings, fib6_siblings)
-			WRITE_ONCE(sibling->fib6_nsiblings,
-				   sibling->fib6_nsiblings - 1);
-		WRITE_ONCE(rt->fib6_nsiblings, 0);
+			sibling->fib6_nsiblings--;
+		rt->fib6_nsiblings = 0;
 		list_del_rcu(&rt->fib6_siblings);
 		rt6_multipath_rebalance(next_sibling);
 	}

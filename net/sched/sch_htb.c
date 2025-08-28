@@ -821,9 +821,7 @@ static struct htb_class *htb_lookup_leaf(struct htb_prio *hprio, const int prio)
 		u32 *pid;
 	} stk[TC_HTB_MAXDEPTH], *sp = stk;
 
-	if (unlikely(!hprio->row.rb_node))
-		return NULL;
-
+	BUG_ON(!hprio->row.rb_node);
 	sp->root = hprio->row.rb_node;
 	sp->pptr = &hprio->ptr;
 	sp->pid = &hprio->last_ptr_id;

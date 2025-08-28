@@ -209,9 +209,10 @@ static int unimac_mdio_clk_set(struct unimac_mdio_priv *priv)
 	if (ret)
 		return ret;
 
-	rate = clk_get_rate(priv->clk);
-	if (!rate)
+	if (!priv->clk)
 		rate = 250000000;
+	else
+		rate = clk_get_rate(priv->clk);
 
 	div = (rate / (2 * priv->clk_freq)) - 1;
 	if (div & ~MDIO_CLK_DIV_MASK) {

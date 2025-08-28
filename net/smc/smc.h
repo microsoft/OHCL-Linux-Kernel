@@ -283,10 +283,10 @@ struct smc_connection {
 };
 
 struct smc_sock {				/* smc sock container */
-	union {
-		struct sock		sk;
-		struct inet_sock	icsk_inet;
-	};
+	struct sock		sk;
+#if IS_ENABLED(CONFIG_IPV6)
+	struct ipv6_pinfo	*pinet6;
+#endif
 	struct socket		*clcsock;	/* internal tcp socket */
 	void			(*clcsk_state_change)(struct sock *sk);
 						/* original stat_change fct. */

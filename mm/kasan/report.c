@@ -398,10 +398,17 @@ static void print_address_description(void *addr, u8 tag,
 	}
 
 	if (is_vmalloc_addr(addr)) {
-		pr_err("The buggy address belongs to a");
-		if (!vmalloc_dump_obj(addr))
-			pr_cont(" vmalloc virtual mapping\n");
-		page = vmalloc_to_page(addr);
+		struct vm_struct *va = find_vm_area(addr);
+
+		if (va) {
+			pr_err("The buggy address belongs to the virtual mapping at\n"
+			       " [%px, %px) created by:\n"
+			       " %pS\n",
+			       va->addr, va->addr + va->size, va->caller);
+			pr_err("\n");
+
+			page = vmalloc_to_page(addr);
+		}
 	}
 
 	if (page) {

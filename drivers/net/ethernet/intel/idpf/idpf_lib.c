@@ -2315,12 +2315,8 @@ void *idpf_alloc_dma_mem(struct idpf_hw *hw, struct idpf_dma_mem *mem, u64 size)
 	struct idpf_adapter *adapter = hw->back;
 	size_t sz = ALIGN(size, 4096);
 
-	/* The control queue resources are freed under a spinlock, contiguous
-	 * pages will avoid IOMMU remapping and the use vmap (and vunmap in
-	 * dma_free_*() path.
-	 */
-	mem->va = dma_alloc_attrs(&adapter->pdev->dev, sz, &mem->pa,
-				  GFP_KERNEL, DMA_ATTR_FORCE_CONTIGUOUS);
+	mem->va = dma_alloc_coherent(&adapter->pdev->dev, sz,
+				     &mem->pa, GFP_KERNEL);
 	mem->size = sz;
 
 	return mem->va;
@@ -2335,8 +2331,8 @@ void idpf_free_dma_mem(struct idpf_hw *hw, struct idpf_dma_mem *mem)
 {
 	struct idpf_adapter *adapter = hw->back;
 
-	dma_free_attrs(&adapter->pdev->dev, mem->size,
-		       mem->va, mem->pa, DMA_ATTR_FORCE_CONTIGUOUS);
+	dma_free_coherent(&adapter->pdev->dev, mem->size,
+			  mem->va, mem->pa);
 	mem->size = 0;
 	mem->va = NULL;
 	mem->pa = 0;

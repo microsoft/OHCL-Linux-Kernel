@@ -4,7 +4,6 @@
 #include <linux/errno.h>
 #include <linux/smp.h>
 
-#include "x86.h"
 #include "../cpuid.h"
 #include "hyperv.h"
 #include "nested.h"

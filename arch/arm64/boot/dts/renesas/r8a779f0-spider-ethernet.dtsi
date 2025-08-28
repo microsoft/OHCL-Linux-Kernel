@@ -60,7 +60,8 @@
 				u101: ethernet-phy@1 {
 					reg = <1>;
 					compatible = "ethernet-phy-ieee802.3-c45";
-					interrupts-extended = <&gpio3 10 IRQ_TYPE_LEVEL_LOW>;
+					interrupt-parent = <&gpio3>;
+					interrupts = <10 IRQ_TYPE_LEVEL_LOW>;
 				};
 			};
 		};
@@ -77,7 +78,8 @@
 				u201: ethernet-phy@2 {
 					reg = <2>;
 					compatible = "ethernet-phy-ieee802.3-c45";
-					interrupts-extended = <&gpio3 11 IRQ_TYPE_LEVEL_LOW>;
+					interrupt-parent = <&gpio3>;
+					interrupts = <11 IRQ_TYPE_LEVEL_LOW>;
 				};
 			};
 		};
@@ -94,7 +96,8 @@
 				u301: ethernet-phy@3 {
 					reg = <3>;
 					compatible = "ethernet-phy-ieee802.3-c45";
-					interrupts-extended = <&gpio3 9 IRQ_TYPE_LEVEL_LOW>;
+					interrupt-parent = <&gpio3>;
+					interrupts = <9 IRQ_TYPE_LEVEL_LOW>;
 				};
 			};
 		};

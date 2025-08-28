@@ -999,7 +999,7 @@ thread_atoms_search(struct rb_root_cached *root, struct thread *thread,
 		else if (cmp < 0)
 			node = node->rb_right;
 		else {
-			BUG_ON(!RC_CHK_EQUAL(thread, atoms->thread));
+			BUG_ON(thread != atoms->thread);
 			return atoms;
 		}
 	}
@@ -1114,21 +1114,6 @@ add_sched_in_event(struct work_atoms *atoms, u64 timestamp)
 		atoms->max_lat_end = timestamp;
 	}
 	atoms->nb_atoms++;
-}
-
-static void free_work_atoms(struct work_atoms *atoms)
-{
-	struct work_atom *atom, *tmp;
-
-	if (atoms == NULL)
-		return;
-
-	list_for_each_entry_safe(atom, tmp, &atoms->work_list, list) {
-		list_del(&atom->list);
-		free(atom);
-	}
-	thread__zput(atoms->thread);
-	free(atoms);
 }
 
 static int latency_switch_event(struct perf_sched *sched,
@@ -1654,7 +1639,6 @@ static int map_switch_event(struct perf_sched *sched, struct evsel *evsel,
 	const char *color = PERF_COLOR_NORMAL;
 	char stimestamp[32];
 	const char *str;
-	int ret = -1;
 
 	BUG_ON(this_cpu.cpu >= MAX_CPUS || this_cpu.cpu < 0);
 
@@ -1685,19 +1669,16 @@ static int map_switch_event(struct perf_sched *sched, struct evsel *evsel,
 	sched_in = map__findnew_thread(sched, machine, -1, next_pid);
 	sched_out = map__findnew_thread(sched, machine, -1, prev_pid);
 	if (sched_in == NULL || sched_out == NULL)
-		goto out;
+		return -1;
 
 	tr = thread__get_runtime(sched_in);
-	if (tr == NULL)
-		goto out;
-
-	thread__put(sched->curr_thread[this_cpu.cpu]);
-	thread__put(sched->curr_out_thread[this_cpu.cpu]);
+	if (tr == NULL) {
+		thread__put(sched_in);
+		return -1;
+	}
 
 	sched->curr_thread[this_cpu.cpu] = thread__get(sched_in);
 	sched->curr_out_thread[this_cpu.cpu] = thread__get(sched_out);
-
-	ret = 0;
 
 	str = thread__comm_str(sched_in);
 	new_shortname = 0;
@@ -1793,10 +1774,12 @@ sched_out:
 	color_fprintf(stdout, color, "\n");
 
 out:
-	thread__put(sched_out);
+	if (sched->map.task_name)
+		thread__put(sched_out);
+
 	thread__put(sched_in);
 
-	return ret;
+	return 0;
 }
 
 static int process_sched_switch_event(const struct perf_tool *tool,
@@ -2038,16 +2021,6 @@ static u64 evsel__get_time(struct evsel *evsel, u32 cpu)
 		return 0;
 
 	return r->last_time[cpu];
-}
-
-static void timehist__evsel_priv_destructor(void *priv)
-{
-	struct evsel_runtime *r = priv;
-
-	if (r) {
-		free(r->last_time);
-		free(r);
-	}
 }
 
 static int comm_width = 30;
@@ -3303,8 +3276,6 @@ static int perf_sched__timehist(struct perf_sched *sched)
 
 	setup_pager();
 
-	evsel__set_priv_destructor(timehist__evsel_priv_destructor);
-
 	/* prefer sched_waking if it is captured */
 	if (evlist__find_tracepoint_by_name(session->evlist, "sched:sched_waking"))
 		handlers[1].handler = timehist_sched_wakeup_ignore;
@@ -3405,13 +3376,13 @@ static void __merge_work_atoms(struct rb_root_cached *root, struct work_atoms *d
 			this->total_runtime += data->total_runtime;
 			this->nb_atoms += data->nb_atoms;
 			this->total_lat += data->total_lat;
-			list_splice_init(&data->work_list, &this->work_list);
+			list_splice(&data->work_list, &this->work_list);
 			if (this->max_lat < data->max_lat) {
 				this->max_lat = data->max_lat;
 				this->max_lat_start = data->max_lat_start;
 				this->max_lat_end = data->max_lat_end;
 			}
-			free_work_atoms(data);
+			zfree(&data);
 			return;
 		}
 	}
@@ -3490,6 +3461,7 @@ static int perf_sched__lat(struct perf_sched *sched)
 		work_list = rb_entry(next, struct work_atoms, node);
 		output_lat_thread(sched, work_list);
 		next = rb_next(next);
+		thread__zput(work_list->thread);
 	}
 
 	printf(" -----------------------------------------------------------------------------------------------------------------\n");
@@ -3503,13 +3475,6 @@ static int perf_sched__lat(struct perf_sched *sched)
 
 	rc = 0;
 
-	while ((next = rb_first_cached(&sched->sorted_atom_root))) {
-		struct work_atoms *data;
-
-		data = rb_entry(next, struct work_atoms, node);
-		rb_erase_cached(next, &sched->sorted_atom_root);
-		free_work_atoms(data);
-	}
 out_free_cpus_switch_event:
 	free_cpus_switch_event(sched);
 	return rc;
@@ -3581,10 +3546,10 @@ static int perf_sched__map(struct perf_sched *sched)
 
 	sched->curr_out_thread = calloc(MAX_CPUS, sizeof(*(sched->curr_out_thread)));
 	if (!sched->curr_out_thread)
-		goto out_free_curr_thread;
+		return rc;
 
 	if (setup_cpus_switch_event(sched))
-		goto out_free_curr_out_thread;
+		goto out_free_curr_thread;
 
 	if (setup_map_cpus(sched))
 		goto out_free_cpus_switch_event;
@@ -3615,14 +3580,7 @@ out_put_map_cpus:
 out_free_cpus_switch_event:
 	free_cpus_switch_event(sched);
 
-out_free_curr_out_thread:
-	for (int i = 0; i < MAX_CPUS; i++)
-		thread__put(sched->curr_out_thread[i]);
-	zfree(&sched->curr_out_thread);
-
 out_free_curr_thread:
-	for (int i = 0; i < MAX_CPUS; i++)
-		thread__put(sched->curr_thread[i]);
 	zfree(&sched->curr_thread);
 	return rc;
 }
@@ -3929,15 +3887,13 @@ int cmd_sched(int argc, const char **argv)
 	if (!argc)
 		usage_with_options(sched_usage, sched_options);
 
-	thread__set_priv_destructor(free);
-
 	/*
 	 * Aliased to 'perf script' for now:
 	 */
 	if (!strcmp(argv[0], "script")) {
-		ret = cmd_script(argc, argv);
+		return cmd_script(argc, argv);
 	} else if (strlen(argv[0]) > 2 && strstarts("record", argv[0])) {
-		ret = __cmd_record(argc, argv);
+		return __cmd_record(argc, argv);
 	} else if (strlen(argv[0]) > 2 && strstarts("latency", argv[0])) {
 		sched.tp_handler = &lat_ops;
 		if (argc > 1) {
@@ -3946,7 +3902,7 @@ int cmd_sched(int argc, const char **argv)
 				usage_with_options(latency_usage, latency_options);
 		}
 		setup_sorting(&sched, latency_options, latency_usage);
-		ret = perf_sched__lat(&sched);
+		return perf_sched__lat(&sched);
 	} else if (!strcmp(argv[0], "map")) {
 		if (argc) {
 			argc = parse_options(argc, argv, map_options, map_usage, 0);
@@ -3957,14 +3913,13 @@ int cmd_sched(int argc, const char **argv)
 				sched.map.task_names = strlist__new(sched.map.task_name, NULL);
 				if (sched.map.task_names == NULL) {
 					fprintf(stderr, "Failed to parse task names\n");
-					ret = -1;
-					goto out;
+					return -1;
 				}
 			}
 		}
 		sched.tp_handler = &map_ops;
 		setup_sorting(&sched, latency_options, latency_usage);
-		ret = perf_sched__map(&sched);
+		return perf_sched__map(&sched);
 	} else if (strlen(argv[0]) > 2 && strstarts("replay", argv[0])) {
 		sched.tp_handler = &replay_ops;
 		if (argc) {
@@ -3972,7 +3927,7 @@ int cmd_sched(int argc, const char **argv)
 			if (argc)
 				usage_with_options(replay_usage, replay_options);
 		}
-		ret = perf_sched__replay(&sched);
+		return perf_sched__replay(&sched);
 	} else if (!strcmp(argv[0], "timehist")) {
 		if (argc) {
 			argc = parse_options(argc, argv, timehist_options,
@@ -3988,19 +3943,19 @@ int cmd_sched(int argc, const char **argv)
 				parse_options_usage(NULL, timehist_options, "w", true);
 			if (sched.show_next)
 				parse_options_usage(NULL, timehist_options, "n", true);
-			ret = -EINVAL;
-			goto out;
+			return -EINVAL;
 		}
 		ret = symbol__validate_sym_arguments();
-		if (!ret)
-			ret = perf_sched__timehist(&sched);
+		if (ret)
+			return ret;
+
+		return perf_sched__timehist(&sched);
 	} else {
 		usage_with_options(sched_usage, sched_options);
 	}
 
-out:
 	/* free usage string allocated by parse_options_subcommand */
 	free((void *)sched_usage[0]);
 
-	return ret;
+	return 0;
 }

@@ -9,7 +9,6 @@
 
 #include "xe_device.h"
 #include "xe_gt.h"
-#include "xe_gt_sriov_pf.h"
 #include "xe_gt_sriov_pf_config.h"
 #include "xe_gt_sriov_pf_control.h"
 #include "xe_gt_sriov_pf_helpers.h"
@@ -1009,7 +1008,7 @@ static bool pf_exit_vf_flr_reset_mmio(struct xe_gt *gt, unsigned int vfid)
 	if (!pf_exit_vf_state(gt, vfid, XE_GT_SRIOV_STATE_FLR_RESET_MMIO))
 		return false;
 
-	xe_gt_sriov_pf_sanitize_hw(gt, vfid);
+	/* XXX: placeholder */
 
 	pf_enter_vf_flr_send_finish(gt, vfid);
 	return true;

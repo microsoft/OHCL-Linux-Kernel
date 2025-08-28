@@ -646,7 +646,7 @@ int hv_apicid_to_vp_index(u32 apic_id)
 
 	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
-	control = HV_HYPERCALL_REP_COMP_1 | HVCALL_GET_VP_ID_FROM_APIC_ID;
+	control = HV_HYPERCALL_REP_COMP_1 | HVCALL_GET_VP_INDEX_FROM_APIC_ID;
 	status = hv_do_hypercall(control, input, output);
 	ret = output[0];
 

@@ -332,7 +332,9 @@ static struct file *alloc_file(const struct path *path, int flags,
 static inline int alloc_path_pseudo(const char *name, struct inode *inode,
 				    struct vfsmount *mnt, struct path *path)
 {
-	path->dentry = d_alloc_pseudo(mnt->mnt_sb, &QSTR(name));
+	struct qstr this = QSTR_INIT(name, strlen(name));
+
+	path->dentry = d_alloc_pseudo(mnt->mnt_sb, &this);
 	if (!path->dentry)
 		return -ENOMEM;
 	path->mnt = mntget(mnt);

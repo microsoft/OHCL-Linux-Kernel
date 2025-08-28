@@ -99,7 +99,7 @@ struct idpf_ctlq_info {
 
 	enum idpf_ctlq_type cq_type;
 	int q_id;
-	spinlock_t cq_lock;		/* control queue lock */
+	struct mutex cq_lock;		/* control queue lock */
 	/* used for interrupt processing */
 	u16 next_to_use;
 	u16 next_to_clean;

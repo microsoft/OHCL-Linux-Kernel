@@ -108,7 +108,7 @@ exit_free_device:
 }
 EXPORT_SYMBOL_GPL(rt2x00soc_probe);
 
-void rt2x00soc_remove(struct platform_device *pdev)
+int rt2x00soc_remove(struct platform_device *pdev)
 {
 	struct ieee80211_hw *hw = platform_get_drvdata(pdev);
 	struct rt2x00_dev *rt2x00dev = hw->priv;
@@ -119,6 +119,8 @@ void rt2x00soc_remove(struct platform_device *pdev)
 	rt2x00lib_remove_dev(rt2x00dev);
 	rt2x00soc_free_reg(rt2x00dev);
 	ieee80211_free_hw(hw);
+
+	return 0;
 }
 EXPORT_SYMBOL_GPL(rt2x00soc_remove);
 

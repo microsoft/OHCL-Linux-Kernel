@@ -63,12 +63,13 @@ void *vmem_crst_alloc(unsigned long val)
 
 pte_t __ref *vmem_pte_alloc(void)
 {
+	unsigned long size = PTRS_PER_PTE * sizeof(pte_t);
 	pte_t *pte;
 
 	if (slab_is_available())
-		pte = (pte_t *)page_table_alloc(&init_mm);
+		pte = (pte_t *) page_table_alloc(&init_mm);
 	else
-		pte = (pte_t *)memblock_alloc(PAGE_SIZE, PAGE_SIZE);
+		pte = (pte_t *) memblock_alloc(size, size);
 	if (!pte)
 		return NULL;
 	memset64((u64 *)pte, _PAGE_INVALID, PTRS_PER_PTE);

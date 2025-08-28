@@ -294,8 +294,8 @@ __acquires(&port->port_lock)
 			break;
 	}
 
-	if (do_tty_wake)
-		tty_port_tty_wakeup(&port->port);
+	if (do_tty_wake && port->port.tty)
+		tty_wakeup(port->port.tty);
 	return status;
 }
 
@@ -543,9 +543,12 @@ static int gs_alloc_requests(struct usb_ep *ep, struct list_head *head,
 static int gs_start_io(struct gs_port *port)
 {
 	struct list_head	*head = &port->read_pool;
-	struct usb_ep		*ep = port->port_usb->out;
+	struct usb_ep		*ep;
 	int			status;
 	unsigned		started;
+
+	if (!port->port_usb || !port->port.tty)
+		return -EIO;
 
 	/* Allocate RX and TX I/O buffers.  We can't easily do this much
 	 * earlier (with GFP_KERNEL) because the requests are coupled to
@@ -553,6 +556,7 @@ static int gs_start_io(struct gs_port *port)
 	 * configurations may use different endpoints with a given port;
 	 * and high speed vs full speed changes packet sizes too.
 	 */
+	ep = port->port_usb->out;
 	status = gs_alloc_requests(ep, head, gs_read_complete,
 		&port->read_allocated);
 	if (status)
@@ -573,7 +577,7 @@ static int gs_start_io(struct gs_port *port)
 		gs_start_tx(port);
 		/* Unblock any pending writes into our circular buffer, in case
 		 * we didn't in gs_start_tx() */
-		tty_port_tty_wakeup(&port->port);
+		tty_wakeup(port->port.tty);
 	} else {
 		/* Free reqs only if we are still connected */
 		if (port->port_usb) {

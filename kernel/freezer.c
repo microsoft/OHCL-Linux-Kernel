@@ -201,9 +201,18 @@ static int __restore_freezer_state(struct task_struct *p, void *arg)
 
 void __thaw_task(struct task_struct *p)
 {
-	guard(spinlock_irqsave)(&freezer_lock);
-	if (frozen(p) && !task_call_func(p, __restore_freezer_state, NULL))
-		wake_up_state(p, TASK_FROZEN);
+	unsigned long flags;
+
+	spin_lock_irqsave(&freezer_lock, flags);
+	if (WARN_ON_ONCE(freezing(p)))
+		goto unlock;
+
+	if (!frozen(p) || task_call_func(p, __restore_freezer_state, NULL))
+		goto unlock;
+
+	wake_up_state(p, TASK_FROZEN);
+unlock:
+	spin_unlock_irqrestore(&freezer_lock, flags);
 }
 
 /**

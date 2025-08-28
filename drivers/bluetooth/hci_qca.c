@@ -2363,17 +2363,10 @@ static int qca_serdev_probe(struct serdev_device *serdev)
 			 */
 			qcadev->bt_power->pwrseq = devm_pwrseq_get(&serdev->dev,
 								   "bluetooth");
-
-			/*
-			 * Some modules have BT_EN enabled via a hardware pull-up,
-			 * meaning it is not defined in the DTS and is not controlled
-			 * through the power sequence. In such cases, fall through
-			 * to follow the legacy flow.
-			 */
 			if (IS_ERR(qcadev->bt_power->pwrseq))
-				qcadev->bt_power->pwrseq = NULL;
-			else
-				break;
+				return PTR_ERR(qcadev->bt_power->pwrseq);
+
+			break;
 		}
 		fallthrough;
 	case QCA_WCN3988:

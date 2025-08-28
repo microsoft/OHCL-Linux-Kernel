@@ -714,8 +714,6 @@ static inline void nvmet_req_bio_put(struct nvmet_req *req, struct bio *bio)
 {
 	if (bio != &req->b.inline_bio)
 		bio_put(bio);
-	else
-		bio_uninit(bio);
 }
 
 #ifdef CONFIG_NVME_TARGET_AUTH
