@@ -1141,10 +1141,14 @@ enum hv_register_name {
 
 	/* AMD SEV SNP configuration register */
 	HV_X64_REGISTER_SEV_CONTROL             = 0x00090040,
+	HV_X64_REGISTER_SEV_AVIC_GPA            = 0x00090043,
 #endif
-	HV_REGISTER_REG_PAGE	= 0x0009001C,
+	HV_REGISTER_REG_PAGE			= 0x0009001C,
 
 };
+
+#define		HV_X64_REGISTER_VSM_VP_STATUS   0x000D0003
+#define		HV_X64_VTL_MASK                 GENMASK(3, 0)
 
 /*
  * Arch compatibility regs for use with hv_set/get_register
@@ -1369,6 +1373,36 @@ struct hv_input_get_vp_registers {
 	u8  rsvd_z8;
 	u16 rsvd_z16;
 	u32 names[];
+} __packed;
+
+union hv_x64_register_sev_gpa_page {
+       u64 u64;
+       struct {
+               u64 enabled:1;
+               u64 reserved:11;
+               u64 pagenumber:52;
+       };
+} __packed;
+
+struct hv_set_vp_registers_input {
+        struct {
+                u64 partitionid;
+                u32 vpindex;
+                u8  inputvtl;
+                u8  padding[3];
+        } header;
+        struct {
+                u32 name;
+                u32 padding1;
+                u64 padding2;
+                union {
+                        union hv_register_value value;
+                        struct {
+                                u64 valuelow;
+                                u64 valuehigh;
+                        };
+                };
+        } element[];
 } __packed;
 
 struct hv_input_set_vp_registers {
