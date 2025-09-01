@@ -313,7 +313,6 @@ void hv_synic_enable_regs(unsigned int cpu)
 	if (vmbus_irq != -1)
 		enable_percpu_irq(vmbus_irq, 0);
 	shared_sint.as_uint64 = hv_get_msr(HV_MSR_SINT0 + VMBUS_MESSAGE_SINT);
-
 	shared_sint.vector = vmbus_interrupt;
 	shared_sint.masked = false;
 
