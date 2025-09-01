@@ -44,6 +44,7 @@ extern u64 hv_std_hypercall(u64 control, u64 param1, u64 param2);
 
 #if IS_ENABLED(CONFIG_HYPERV)
 extern void *hv_hypercall_pg;
+extern void *hv_vp_early_input_arg;
 
 extern union hv_ghcb * __percpu *hv_ghcb_pg;
 
@@ -197,6 +198,7 @@ int hv_unmap_ioapic_interrupt(int ioapic_id, struct hv_interrupt_entry *entry);
 bool hv_ghcb_negotiate_protocol(void);
 void __noreturn hv_ghcb_terminate(unsigned int set, unsigned int reason);
 int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu);
+enum es_result hv_set_savic_backing_page(u64 gfn);
 #else
 static inline bool hv_ghcb_negotiate_protocol(void) { return false; }
 static inline void hv_ghcb_terminate(unsigned int set, unsigned int reason) {}
@@ -299,6 +301,14 @@ static inline void hv_vtl_idle(void)
 	else
 		native_safe_halt();
 }
+
+/*
+ * Registers are only accessible via HVCALL_GET_VP_REGISTERS hvcall and
+ * there is not associated MSR address.
+ */
+#define		HV_X64_REGISTER_VSM_VP_STATUS   0x000D0003
+#define		HV_X64_VTL_MASK                 GENMASK(3, 0)
+#define		HV_X64_REGISTER_SEV_AVIC_GPA    0x00090043
 
 #ifdef CONFIG_HYPERV_VTL_MODE
 void __init hv_vtl_init_platform(void);

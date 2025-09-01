@@ -14,6 +14,7 @@
 
 #include <asm/apic.h>
 #include <asm/sev.h>
+#include <asm/mshyperv.h>
 
 #include "local.h"
 
@@ -354,9 +355,16 @@ static void savic_setup(void)
 	void *ap = this_cpu_ptr(savic_page);
 	enum es_result res;
 	unsigned long gpa;
+	unsigned long gfn;
+	int ret;
+
+	if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
+		return;
 
 	x2apic_savic_init_backing_page(ap);
 	gpa = __pa(ap);
+
+	gfn = gpa >> PAGE_SHIFT;
 
 	/*
 	 * The NPT entry for a vCPU's APIC backing page must always be
@@ -368,7 +376,11 @@ static void savic_setup(void)
 	 * VMRUN, the hypervisor makes use of this information to make sure
 	 * the APIC backing page is mapped in NPT.
 	 */
-	res = savic_register_gpa(gpa);
+	if (hv_isolation_type_snp())
+		ret = hv_set_savic_backing_page(gfn);
+	else
+		ret = savic_register_gpa(gpa);
+
 	if (res != ES_OK)
 		sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_SAVIC_FAIL);
 
