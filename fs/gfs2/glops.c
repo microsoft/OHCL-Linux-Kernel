@@ -11,6 +11,7 @@
 #include <linux/bio.h>
 #include <linux/posix_acl.h>
 #include <linux/security.h>
+#include <linux/log2.h>
 
 #include "gfs2.h"
 #include "incore.h"
@@ -450,6 +451,11 @@ static int gfs2_dinode_in(struct gfs2_inode *ip, const void *buf)
 		gfs2_consist_inode(ip);
 		return -EIO;
 	}
+	if ((ip->i_diskflags & GFS2_DIF_EXHASH) &&
+	    depth < ilog2(sdp->sd_hash_ptrs)) {
+		gfs2_consist_inode(ip);
+		return -EIO;
+	}
 	ip->i_depth = (u8)depth;
 	ip->i_entries = be32_to_cpu(str->di_entries);
 
@@ -494,11 +500,18 @@ int gfs2_inode_refresh(struct gfs2_inode *ip)
 static int inode_go_instantiate(struct gfs2_glock *gl)
 {
 	struct gfs2_inode *ip = gl->gl_object;
+	struct gfs2_glock *io_gl;
+	int error;
 
 	if (!ip) /* no inode to populate - read it in later */
 		return 0;
 
-	return gfs2_inode_refresh(ip);
+	error = gfs2_inode_refresh(ip);
+	if (error)
+		return error;
+	io_gl = ip->i_iopen_gh.gh_gl;
+	io_gl->gl_no_formal_ino = ip->i_no_formal_ino;
+	return 0;
 }
 
 static int inode_go_held(struct gfs2_holder *gh)
