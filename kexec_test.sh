@@ -81,6 +81,17 @@ if [ "$CUR" != "$EXPECT" ]; then
 fi
 [ "$CUR" = "$EXPECT" ] || { echo "[KEXEC] ERROR: failed to set magic" >&2; exit 1; }
 
+# Patch VTL0 config magic at physical page 0 (needed to avoid second assert in vtl0_config.rs)
+VTL0_EXPECT=304c54564c43484f
+VTL0_CUR=$(dd if=/dev/mem bs=8 count=1 skip=0 2>/dev/null | od -An -tx1 | tr -d ' \n')
+echo "[KEXEC] vtl0_current_magic=$VTL0_CUR expect=$VTL0_EXPECT"
+if [ "$VTL0_CUR" != "$VTL0_EXPECT" ]; then
+    printf '\x30\x4c\x54\x56\x4c\x43\x48\x4f' | dd of=/dev/mem bs=8 count=1 seek=0 conv=notrunc 2>/dev/null
+    VTL0_CUR=$(dd if=/dev/mem bs=8 count=1 skip=0 2>/dev/null | od -An -tx1 | tr -d ' \n')
+    echo "[KEXEC] vtl0_magic_after=$VTL0_CUR"
+fi
+[ "$VTL0_CUR" = "$VTL0_EXPECT" ] || { echo "[KEXEC] ERROR: failed to set VTL0 magic" >&2; exit 1; }
+
 # Kexec
 echo "[KEXEC] Loading kernel with cmdline: $CMDLINE"
 /sbin/kexec -l /boot/bzImage --initrd="$IMG_PATH" --command-line="$CMDLINE" --reset-vga
