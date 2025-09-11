@@ -32,16 +32,20 @@ cp "$TARGET" "$INITRD_DIR/underhill-init"
 cp "$TARGET" "$INITRD_DIR/bin/openvmm_hcl"
 chmod 755 "$INITRD_DIR/underhill-init" "$INITRD_DIR/bin/openvmm_hcl"
 
-# Module staging (original minimal set)
+# Module staging (updated layout: modules are flat under /boot/modules)
 echo "[KEXEC] Staging required kernel modules"
-mkdir -p "$INITRD_DIR/lib/modules/000" "$INITRD_DIR/lib/modules/001" "$INITRD_DIR/lib/modules/999"
-copy_mod() {
-    n=$1; s=$2; src="/boot/modules/$s/$n"; dst="$INITRD_DIR/lib/modules/$s/$n";
-    if [ -f "$src" ]; then cp "$src" "$dst"; else echo "[KEXEC] WARN missing $src" >&2; fi
+mkdir -p "$INITRD_DIR/lib/modules"
+stage_mod() {
+    m=$1; src="/boot/modules/$m"; dst="$INITRD_DIR/lib/modules/$m";
+    if [ -f "$src" ]; then
+        cp "$src" "$dst"
+    else
+        echo "[KEXEC] WARN missing $src" >&2
+    fi
 }
-copy_mod pci-hyperv-intf.ko 000
-copy_mod pci-hyperv.ko 001
-copy_mod hv_storvsc.ko 999
+stage_mod pci-hyperv-intf.ko
+stage_mod pci-hyperv.ko
+stage_mod hv_storvsc.ko
 
 # Initramfs
 IMG_PATH="/tmp/initramfs.gz"
