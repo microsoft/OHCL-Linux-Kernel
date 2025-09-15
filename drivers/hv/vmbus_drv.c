@@ -2458,6 +2458,13 @@ static int vmbus_device_add(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	int ret;
 
+	pr_info("VMBUS_DEBUG: vmbus_device_add called! pdev=%p\n", pdev);
+	pr_info("VMBUS_DEBUG: Device node: %p\n", np);
+	if (np) {
+		pr_info("VMBUS_DEBUG: Device node name: %s\n", np->name ? np->name : "NULL");
+		pr_info("VMBUS_DEBUG: Device node full_name: %s\n", np->full_name ? np->full_name : "NULL");
+	}
+
 	pr_info("VMBus is present in DeviceTree\n");
 
 	vmbus_root_device = &pdev->dev;
@@ -2500,10 +2507,18 @@ static int vmbus_device_add(struct platform_device *pdev)
 
 static int vmbus_platform_driver_probe(struct platform_device *pdev)
 {
-	if (acpi_disabled)
+	pr_info("VMBUS_DEBUG: Platform driver probe called! pdev=%p, name=%s\n", 
+		pdev, pdev->name ? pdev->name : "NULL");
+	pr_info("VMBUS_DEBUG: ACPI disabled: %s\n", acpi_disabled ? "YES" : "NO");
+	pr_info("VMBUS_DEBUG: Device node: %p\n", pdev->dev.of_node);
+	
+	if (acpi_disabled) {
+		pr_info("VMBUS_DEBUG: Taking DeviceTree path - calling vmbus_device_add\n");
 		return vmbus_device_add(pdev);
-	else
+	} else {
+		pr_info("VMBUS_DEBUG: Taking ACPI path - calling vmbus_acpi_add\n");
 		return vmbus_acpi_add(pdev);
+	}
 }
 
 static void vmbus_platform_driver_remove(struct platform_device *pdev)
@@ -2770,6 +2785,11 @@ static int __init hv_acpi_init(void)
 {
 	int ret;
 
+	pr_info("VMBUS_DEBUG: hv_acpi_init called\n");
+	pr_info("VMBUS_DEBUG: hv_is_hyperv_initialized(): %s\n", 
+		hv_is_hyperv_initialized() ? "YES" : "NO");
+	pr_info("VMBUS_DEBUG: ACPI disabled: %s\n", acpi_disabled ? "YES" : "NO");
+
 	if (!hv_is_hyperv_initialized())
 		return -ENODEV;
 
@@ -2779,9 +2799,13 @@ static int __init hv_acpi_init(void)
 	/*
 	 * Get ACPI resources first.
 	 */
+	pr_info("VMBUS_DEBUG: Registering VMBus platform driver...\n");
 	ret = platform_driver_register(&vmbus_platform_driver);
-	if (ret)
+	if (ret) {
+		pr_err("VMBUS_DEBUG: Failed to register platform driver: %d\n", ret);
 		return ret;
+	}
+	pr_info("VMBUS_DEBUG: Platform driver registered successfully\n");
 
 	if (!vmbus_root_device) {
 		ret = -ENODEV;

@@ -348,25 +348,44 @@ void __init x86_flattree_get_config(void)
 	u32 size, map_len;
 	void *dt;
 
+	pr_info("DTB_DEBUG: x86_flattree_get_config called\n");
+	pr_info("DTB_DEBUG: initial_dtb = 0x%llx\n", initial_dtb);
+	pr_info("DTB_DEBUG: CONFIG_OF_EARLY_FLATTREE is enabled\n");
+
 	if (initial_dtb) {
 		map_len = max(PAGE_SIZE - (initial_dtb & ~PAGE_MASK), (u64)128);
 
 		dt = early_memremap(initial_dtb, map_len);
 		size = fdt_totalsize(dt);
+		pr_info("DTB_DEBUG: DTB found at 0x%llx, size = %u bytes\n", initial_dtb, size);
+		
 		if (map_len < size) {
 			early_memunmap(dt, map_len);
 			dt = early_memremap(initial_dtb, size);
 			map_len = size;
+			pr_info("DTB_DEBUG: Remapped DTB with full size %u\n", size);
 		}
 
+		pr_info("DTB_DEBUG: Calling early_init_dt_verify...\n");
 		early_init_dt_verify(dt, __pa(dt));
+		pr_info("DTB_DEBUG: early_init_dt_verify completed\n");
+	} else {
+		pr_info("DTB_DEBUG: initial_dtb is NULL - no DTB available\n");
 	}
 
+	pr_info("DTB_DEBUG: Calling unflatten_and_copy_device_tree...\n");
 	unflatten_and_copy_device_tree();
+	pr_info("DTB_DEBUG: unflatten_and_copy_device_tree completed\n");
 
 	if (initial_dtb)
 		early_memunmap(dt, map_len);
 #endif
-	if (acpi_disabled && of_have_populated_dt())
+	pr_info("DTB_DEBUG: acpi_disabled = %s, of_have_populated_dt() = %s\n",
+		acpi_disabled ? "YES" : "NO", 
+		of_have_populated_dt() ? "YES" : "NO");
+	
+	if (acpi_disabled && of_have_populated_dt()) {
+		pr_info("DTB_DEBUG: Setting x86_init.mpparse.parse_smp_cfg to x86_dtb_parse_smp_config\n");
 		x86_init.mpparse.parse_smp_cfg = x86_dtb_parse_smp_config;
+	}
 }
