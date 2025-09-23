@@ -159,6 +159,8 @@ struct kimage_arch {
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte;
+#ifdef CONFIG_KEXEC_FILE
+#endif
 };
 #endif /* CONFIG_X86_32 */
 

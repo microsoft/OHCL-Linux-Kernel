@@ -63,7 +63,7 @@ CMDLINE="$CMDLINE hv_storvsc.storvsc_vcpus_per_sub_channel=2048 hv_storvsc.storv
 CMDLINE="$CMDLINE MIMALLOC_ARENA_EAGER_COMMIT=0"
 CMDLINE="$CMDLINE clearcpuid=pcid iommu=off pci=off swiotlb=1,1"
 CMDLINE="$CMDLINE console=ttyS2,115200 boot_cpus=0 hv_vmbus.message_connection_id=0x800074"
-CMDLINE="$CMDLINE rdinit=/underhill-init UNDERHILL_DIAG=1 HVLITE_LOG=debug RUST_BACKTRACE=full OPENHCL_NVME_VFIO=1"
+CMDLINE="$CMDLINE rdinit=/underhill-init UNDERHILL_DIAG=1 HVLITE_LOG=debug RUST_BACKTRACE=full OPENHCL_NVME_VFIO=1 OPENHCL_FORCE_LOAD_VTL0_IMAGE=uefi"
 [ -n "${EXTRA_CMDLINE:-}" ] && CMDLINE="$CMDLINE $EXTRA_CMDLINE"
 
 # Locate measured VTL2 config page
@@ -98,6 +98,22 @@ fi
 
 # Kexec
 echo "[KEXEC] Loading kernel with cmdline: $CMDLINE"
-/sbin/kexec -l /boot/bzImage --initrd="$IMG_PATH" --command-line="$CMDLINE" --reset-vga
+# Optionally supply a DTB if present (needed for Device Tree based VMBus path)
+DTB_ARG=
+if [ -f /sys/firmware/fdt ]; then
+    DTB_TMP=/tmp/kexec.dtb
+    cp /sys/firmware/fdt "$DTB_TMP" 2>/dev/null || true
+    if [ -s "$DTB_TMP" ]; then
+        echo "[KEXEC] Using DTB from /sys/firmware/fdt (size $(stat -c%s "$DTB_TMP"))"
+        DTB_ARG="--dtb=$DTB_TMP"
+    fi
+fi
+# Allow caller to override via pre-supplied KEXEC_DTB path
+if [ -n "${KEXEC_DTB:-}" ] && [ -f "$KEXEC_DTB" ]; then
+    echo "[KEXEC] Overriding DTB with $KEXEC_DTB (size $(stat -c%s "$KEXEC_DTB"))"
+    DTB_ARG="--dtb=$KEXEC_DTB"
+fi
+
+/sbin/kexec -l /boot/bzImage $DTB_ARG --initrd="$IMG_PATH" --command-line="$CMDLINE" --reset-vga
 echo "[KEXEC] Executing kexec"
 exec /sbin/kexec -e

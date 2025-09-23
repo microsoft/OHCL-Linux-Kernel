@@ -18,13 +18,18 @@
 #include <linux/mm.h>
 #include <linux/efi.h>
 #include <linux/random.h>
+#include <linux/libfdt.h>
+#include <linux/of.h>
 
 #include <asm/bootparam.h>
 #include <asm/setup.h>
 #include <asm/crash.h>
 #include <asm/efi.h>
 #include <asm/e820/api.h>
+#include <asm/hyperv-tlfs.h>
+#include <asm/mshyperv.h>
 #include <asm/kexec-bzimage64.h>
+
 
 #define MAX_ELFCOREHDR_STR_LEN	30	/* elfcorehdr=0x<64bit-value> */
 
@@ -389,10 +394,12 @@ static int bzImage64_probe(const char *buf, unsigned long len)
 	return ret;
 }
 
+/* DTB setup via setup_data chain will be handled inside bzImage64_load */
+
 static void *bzImage64_load(struct kimage *image, char *kernel,
-			    unsigned long kernel_len, char *initrd,
-			    unsigned long initrd_len, char *cmdline,
-			    unsigned long cmdline_len)
+		    unsigned long kernel_len, char *initrd,
+		    unsigned long initrd_len, char *cmdline,
+		    unsigned long cmdline_len)
 {
 
 	struct setup_header *header;
@@ -406,9 +413,13 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 	unsigned int setup_hdr_offset = offsetof(struct boot_params, hdr);
 	unsigned int efi_map_offset, efi_map_sz, efi_setup_data_offset;
 	struct kexec_buf kbuf = { .image = image, .buf_max = ULONG_MAX,
-				  .top_down = true };
+			  .top_down = true };
 	struct kexec_buf pbuf = { .image = image, .buf_min = MIN_PURGATORY_ADDR,
-				  .buf_max = ULONG_MAX, .top_down = true };
+			  .buf_max = ULONG_MAX, .top_down = true };
+	/* DTB related */
+	void *dtb_src = NULL;
+	unsigned long dtb_size = 0; /* size actually copied */
+	unsigned int dtb_setup_data_offset = 0; /* offset within params buffer */
 
 	header = (struct setup_header *)(kernel + setup_hdr_offset);
 	setup_sects = header->setup_sects;
@@ -456,6 +467,33 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 
 	kexec_dprintk("Loaded purgatory at 0x%lx\n", pbuf.mem);
 
+	/* Discover DTB segment (kexec --dtb) before allocating bootparams */
+#ifdef CONFIG_KEXEC_FILE
+	for (int i = 0; i < image->nr_segments; i++) {
+		void *seg_buf = image->segment[i].kbuf; /* kernel buffer for this segment */
+		size_t seg_len = image->segment[i].bufsz; /* original size */
+		if (!seg_buf)
+			continue;
+		if (seg_len < sizeof(struct fdt_header))
+			continue;
+		if (fdt_magic(seg_buf) != FDT_MAGIC)
+			continue;
+		if (fdt_check_header(seg_buf)) {
+			pr_warn("kexec: candidate DTB segment %d invalid header\n", i);
+			continue;
+		}
+		unsigned long total = fdt_totalsize(seg_buf);
+		if (total > seg_len)
+			total = seg_len;
+		dtb_src = seg_buf;
+		dtb_size = total;
+		pr_info("kexec: Discovered DTB segment index %d size=%lu bytes (bufsz=%zu)\n", i, dtb_size, seg_len);
+		break;
+	}
+	if (!dtb_size)
+		pr_info("kexec: No DTB segment found in %d segments\n", image->nr_segments);
+#endif /* CONFIG_KEXEC_FILE */
+
 
 	/*
 	 * Load Bootparams and cmdline and space for efi stuff.
@@ -470,14 +508,24 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 				MAX_ELFCOREHDR_STR_LEN;
 	params_cmdline_sz = ALIGN(params_cmdline_sz, 16);
 	kbuf.bufsz = params_cmdline_sz + ALIGN(efi_map_sz, 16) +
-				sizeof(struct setup_data) +
-				sizeof(struct efi_setup_data) +
-				sizeof(struct setup_data) +
-				RNG_SEED_LENGTH;
+			sizeof(struct setup_data) +
+			sizeof(struct efi_setup_data) +
+			sizeof(struct setup_data) +
+			RNG_SEED_LENGTH;
 
 	if (IS_ENABLED(CONFIG_IMA_KEXEC))
 		kbuf.bufsz += sizeof(struct setup_data) +
 			      sizeof(struct ima_setup_data);
+
+	/* Reserve space at end for DTB setup_data if a DTB was found */
+#ifdef CONFIG_KEXEC_FILE
+	if (dtb_size) {
+		/* place DTB setup_data at the end of params buffer */
+		dtb_setup_data_offset = kbuf.bufsz;
+		kbuf.bufsz += sizeof(struct setup_data) + dtb_size;
+		pr_info("kexec: Reserving %lu bytes (+setup_data) for DTB blob\n", dtb_size);
+	}
+#endif
 
 	params = kzalloc(kbuf.bufsz, GFP_KERNEL);
 	if (!params)
@@ -572,6 +620,20 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 				    efi_setup_data_offset);
 	if (ret)
 		goto out_free_params;
+
+#ifdef CONFIG_KEXEC_FILE
+	/* Append DTB setup_data entry (after RNG seed) and link into chain */
+	if (dtb_size) {
+		struct setup_data *sd = (void *)params + dtb_setup_data_offset;
+		unsigned long sd_phys = bootparam_load_addr + dtb_setup_data_offset;
+		sd->type = SETUP_DTB;
+		sd->len = dtb_size;
+		memcpy(sd->data, dtb_src, dtb_size);
+		sd->next = params->hdr.setup_data; /* prepend */
+		params->hdr.setup_data = sd_phys;
+		pr_info("kexec: Added DTB setup_data entry phys=0x%lx len=%lu\n", sd_phys, dtb_size);
+	}
+#endif
 
 	/* Allocate loader specific data */
 	ldata = kzalloc(sizeof(struct bzimage64_data), GFP_KERNEL);

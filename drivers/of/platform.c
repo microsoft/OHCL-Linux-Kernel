@@ -599,9 +599,9 @@ static int __init of_platform_default_populate_init(void)
 		pr_info("OF_PLATFORM_DEBUG: About to call of_platform_default_populate...\n");
 		of_platform_default_populate(NULL, NULL, NULL);
 		pr_info("OF_PLATFORM_DEBUG: of_platform_default_populate completed\n");
-	} else {
+	} /*else {
 		pr_info("OF_PLATFORM_DEBUG: IS_ENABLED(CONFIG_PPC) is false, taking else branch\n");
-	}
+	}*/
 
 	pr_info("OF_PLATFORM_DEBUG: of_platform_default_populate_init completed\n");
 	return 0;
