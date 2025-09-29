@@ -109,7 +109,12 @@ struct rmp_state {
 	u32 asid;
 } __packed;
 
-#define RMPADJUST_VMSA_PAGE_BIT		BIT(16)
+/* Target VMPL takes the first byte */
+#define RMPADJUST_ENABLE_READ			BIT(8)
+#define RMPADJUST_ENABLE_WRITE			BIT(9)
+#define RMPADJUST_USER_EXECUTE			BIT(10)
+#define RMPADJUST_KERNEL_EXECUTE		BIT(11)
+#define RMPADJUST_VMSA_PAGE_BIT			BIT(16)
 
 /* SNP Guest message request */
 struct snp_req_data {
@@ -414,6 +419,9 @@ u64 sev_get_status(void);
 void sev_show_status(void);
 void snp_update_svsm_ca(void);
 void snp_mshv_vtl_return(u8 target_vtl);
+enum es_result sev_notify_savic_gpa(u64 gpa);
+enum es_result sev_ghcb_msr_read(u64 msr, u64 *value);
+enum es_result sev_ghcb_msr_write(u64 msr, u64 value);
 
 #else	/* !CONFIG_AMD_MEM_ENCRYPT */
 
@@ -451,6 +459,9 @@ static inline u64 sev_get_status(void) { return 0; }
 static inline void sev_show_status(void) { }
 static inline void snp_update_svsm_ca(void) { }
 static inline void snp_mshv_vtl_return(u8 input_vtl) { }
+static inline enum es_result sev_notify_savic_gpa(u64 gpa) { return ES_UNSUPPORTED; }
+static inline enum es_result sev_ghcb_msr_read(u64 msr, u64 *value) { return ES_UNSUPPORTED; }
+static inline enum es_result sev_ghcb_msr_write(u64 msr, u64 value) { return ES_UNSUPPORTED; }
 
 #endif	/* CONFIG_AMD_MEM_ENCRYPT */
 

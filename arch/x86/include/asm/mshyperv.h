@@ -43,6 +43,7 @@ static inline unsigned char hv_get_nmi_reason(void)
 extern bool hyperv_paravisor_present;
 
 extern void *hv_hypercall_pg;
+extern void *hv_vp_early_input_arg;
 
 extern u64 hv_current_partition_id;
 
@@ -160,7 +161,7 @@ static inline u64 _hv_do_fast_hypercall8(u64 control, u64 input1)
 				      : "cc", "edi", "esi");
 	}
 #endif
-		return hv_status;
+	return hv_status;
 }
 
 static inline u64 hv_do_fast_hypercall8(u16 code, u64 input1)
@@ -265,6 +266,7 @@ int hv_unmap_ioapic_interrupt(int ioapic_id, struct hv_interrupt_entry *entry);
 bool hv_ghcb_negotiate_protocol(void);
 void __noreturn hv_ghcb_terminate(unsigned int set, unsigned int reason);
 int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu);
+enum es_result hv_set_savic_backing_page(u64 gfn);
 #else
 static inline bool hv_ghcb_negotiate_protocol(void) { return false; }
 static inline void hv_ghcb_terminate(unsigned int set, unsigned int reason) {}

@@ -1181,6 +1181,9 @@ static int wakeup_cpu_via_vmgexit(u32 apic_id, unsigned long start_ip, unsigned 
 	vmsa->x87_ftw		= AP_INIT_X87_FTW_DEFAULT;
 	vmsa->x87_fcw		= AP_INIT_X87_FCW_DEFAULT;
 
+	if (cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
+		vmsa->vintr_ctrl	|= (V_GIF_MASK | V_NMI_ENABLE_MASK);
+
 	/* SVME must be set. */
 	vmsa->efer		= EFER_SVME;
 
@@ -1322,18 +1325,15 @@ int __init sev_es_efi_map_ghcbs(pgd_t *pgd)
 	return 0;
 }
 
-static enum es_result vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt)
+static enum es_result __vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt, bool write)
 {
 	struct pt_regs *regs = ctxt->regs;
+	u64 exit_info_1 = write ? 1 : 0;
 	enum es_result ret;
-	u64 exit_info_1;
-
-	/* Is it a WRMSR? */
-	exit_info_1 = (ctxt->insn.opcode.bytes[1] == 0x30) ? 1 : 0;
 
 	if (regs->cx == MSR_SVSM_CAA) {
 		/* Writes to the SVSM CAA msr are ignored */
-		if (exit_info_1)
+		if (write)
 			return ES_OK;
 
 		regs->ax = lower_32_bits(this_cpu_read(svsm_caa_pa));
@@ -1343,18 +1343,93 @@ static enum es_result vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt)
 	}
 
 	ghcb_set_rcx(ghcb, regs->cx);
-	if (exit_info_1) {
+	if (write) {
 		ghcb_set_rax(ghcb, regs->ax);
 		ghcb_set_rdx(ghcb, regs->dx);
 	}
 
 	ret = sev_es_ghcb_hv_call(ghcb, ctxt, SVM_EXIT_MSR, exit_info_1, 0);
 
-	if ((ret == ES_OK) && (!exit_info_1)) {
+	if (ret == ES_OK && !write) {
 		regs->ax = ghcb->save.rax;
 		regs->dx = ghcb->save.rdx;
 	}
 
+	return ret;
+}
+
+static enum es_result vc_handle_msr(struct ghcb *ghcb, struct es_em_ctxt *ctxt)
+{
+	return __vc_handle_msr(ghcb, ctxt, ctxt->insn.opcode.bytes[1] == 0x30);
+}
+
+enum es_result sev_ghcb_msr_read(u64 msr, u64 *value)
+{
+	struct pt_regs regs = { .cx = msr };
+	struct es_em_ctxt ctxt = { .regs = &regs };
+	struct ghcb_state state;
+	unsigned long flags;
+	enum es_result ret;
+	struct ghcb *ghcb;
+
+	local_irq_save(flags);
+	ghcb = __sev_get_ghcb(&state);
+	vc_ghcb_invalidate(ghcb);
+
+	ret = __vc_handle_msr(ghcb, &ctxt, false);
+	if (ret == ES_OK)
+		*value = regs.ax | regs.dx << 32;
+
+	__sev_put_ghcb(&state);
+	local_irq_restore(flags);
+
+	return ret;
+}
+
+enum es_result sev_ghcb_msr_write(u64 msr, u64 value)
+{
+	struct pt_regs regs = {
+		.cx = msr,
+		.ax = lower_32_bits(value),
+		.dx = upper_32_bits(value)
+	};
+	struct es_em_ctxt ctxt = { .regs = &regs };
+	struct ghcb_state state;
+	unsigned long flags;
+	enum es_result ret;
+	struct ghcb *ghcb;
+
+	local_irq_save(flags);
+	ghcb = __sev_get_ghcb(&state);
+	vc_ghcb_invalidate(ghcb);
+
+	ret = __vc_handle_msr(ghcb, &ctxt, true);
+
+	__sev_put_ghcb(&state);
+	local_irq_restore(flags);
+
+	return ret;
+}
+
+enum es_result sev_notify_savic_gpa(u64 gpa)
+{
+	struct ghcb_state state;
+	struct es_em_ctxt ctxt;
+	unsigned long flags;
+	struct ghcb *ghcb;
+	int ret = 0;
+
+	local_irq_save(flags);
+
+	ghcb = __sev_get_ghcb(&state);
+
+	vc_ghcb_invalidate(ghcb);
+
+	ret = sev_es_ghcb_hv_call(ghcb, &ctxt, SVM_VMGEXIT_SECURE_AVIC_GPA, gpa, 0);
+
+	__sev_put_ghcb(&state);
+
+	local_irq_restore(flags);
 	return ret;
 }
 

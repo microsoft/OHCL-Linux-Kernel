@@ -241,6 +241,16 @@ static inline u64 native_x2apic_icr_read(void)
 	return val;
 }
 
+#if defined(CONFIG_AMD_SECURE_AVIC)
+extern void x2apic_savic_update_vector(unsigned int cpu,
+				unsigned int vector,
+				bool set);
+extern void x2apic_savic_init_backing_page(void *backing_page);
+#else
+static inline void x2apic_savic_update_vector(unsigned int cpu,
+					      unsigned int vector,								      bool set) { }
+#endif
+
 extern int x2apic_mode;
 extern int x2apic_phys;
 extern void __init x2apic_set_max_apicid(u32 apicid);
@@ -305,6 +315,7 @@ struct apic {
 
 	/* Probe, setup and smpboot functions */
 	int	(*probe)(void);
+	void	(*setup)(void);
 	int	(*acpi_madt_oem_check)(char *oem_id, char *oem_table_id);
 
 	void	(*init_apic_ldr)(void);
@@ -316,6 +327,8 @@ struct apic {
 	int	(*wakeup_secondary_cpu)(u32 apicid, unsigned long start_eip, unsigned int cpu);
 	/* wakeup secondary CPU using 64-bit wakeup point */
 	int	(*wakeup_secondary_cpu_64)(u32 apicid, unsigned long start_eip, unsigned int cpu);
+
+	void	(*update_vector)(unsigned int cpu, unsigned int vector, bool set);
 
 	char	*name;
 };

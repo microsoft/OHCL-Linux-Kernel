@@ -591,6 +591,10 @@ static void setup_APIC_timer(void)
 						0xF, ~0UL);
 	} else
 		clockevents_register_device(levt);
+
+	if (apic->update_vector)
+		apic->update_vector(smp_processor_id(), LOCAL_TIMER_VECTOR,
+				    true);
 }
 
 /*
@@ -1504,6 +1508,8 @@ static void setup_local_APIC(void)
 		return;
 	}
 
+	if (apic->setup)
+		apic->setup();
 	/*
 	 * If this comes from kexec/kcrash the APIC might be enabled in
 	 * SPIV. Soft disable it before doing further initialization.
