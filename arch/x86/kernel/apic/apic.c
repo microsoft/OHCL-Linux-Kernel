@@ -591,6 +591,8 @@ static void setup_APIC_timer(void)
 						0xF, ~0UL);
 	} else
 		clockevents_register_device(levt);
+
+	apic_update_vector(smp_processor_id(), LOCAL_TIMER_VECTOR, true);
 }
 
 /*
@@ -1167,6 +1169,9 @@ void disable_local_APIC(void)
 	if (!apic_accessible())
 		return;
 
+	if (apic->teardown)
+		apic->teardown();
+
 	apic_soft_disable();
 
 #ifdef CONFIG_X86_32
@@ -1503,6 +1508,9 @@ static void setup_local_APIC(void)
 		disable_ioapic_support();
 		return;
 	}
+
+	if (apic->setup)
+		apic->setup();
 
 	/*
 	 * If this comes from kexec/kcrash the APIC might be enabled in

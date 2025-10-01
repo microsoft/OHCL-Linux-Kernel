@@ -27,6 +27,7 @@
 #include <linux/export.h>
 #include <linux/math64.h>
 #include <linux/slab.h>
+#include <asm/apic.h>
 #include <asm/processor.h>
 #include <asm/mce.h>
 #include <asm/msr.h>
@@ -55,9 +56,6 @@
 /* 14 is the version for Xeon and Pentium 8.4.8*/
 #define APIC_VERSION			0x14UL
 #define LAPIC_MMIO_LENGTH		(1 << 12)
-/* followed define is not in apicdef.h */
-#define MAX_APIC_VECTOR			256
-#define APIC_VECTORS_PER_REG		32
 
 /*
  * Enable local APIC timer advancement (tscdeadline mode only) with adaptive
@@ -78,44 +76,6 @@ module_param(lapic_timer_advance, bool, 0444);
 #define LAPIC_TIMER_ADVANCE_ADJUST_STEP 8
 static int kvm_lapic_msr_read(struct kvm_lapic *apic, u32 reg, u64 *data);
 static int kvm_lapic_msr_write(struct kvm_lapic *apic, u32 reg, u64 data);
-
-static inline void __kvm_lapic_set_reg(char *regs, int reg_off, u32 val)
-{
-	*((u32 *) (regs + reg_off)) = val;
-}
-
-static inline void kvm_lapic_set_reg(struct kvm_lapic *apic, int reg_off, u32 val)
-{
-	__kvm_lapic_set_reg(apic->regs, reg_off, val);
-}
-
-static __always_inline u64 __kvm_lapic_get_reg64(char *regs, int reg)
-{
-	BUILD_BUG_ON(reg != APIC_ICR);
-	return *((u64 *) (regs + reg));
-}
-
-static __always_inline u64 kvm_lapic_get_reg64(struct kvm_lapic *apic, int reg)
-{
-	return __kvm_lapic_get_reg64(apic->regs, reg);
-}
-
-static __always_inline void __kvm_lapic_set_reg64(char *regs, int reg, u64 val)
-{
-	BUILD_BUG_ON(reg != APIC_ICR);
-	*((u64 *) (regs + reg)) = val;
-}
-
-static __always_inline void kvm_lapic_set_reg64(struct kvm_lapic *apic,
-						int reg, u64 val)
-{
-	__kvm_lapic_set_reg64(apic->regs, reg, val);
-}
-
-static inline int apic_test_vector(int vec, void *bitmap)
-{
-	return test_bit(VEC_POS(vec), (bitmap) + REG_POS(vec));
-}
 
 bool kvm_apic_pending_eoi(struct kvm_vcpu *vcpu, int vector)
 {
