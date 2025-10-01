@@ -656,6 +656,44 @@ e_free:
 	return ret;
 }
 
+static int handle_tio_request(struct snp_guest_dev *snp_dev, struct snp_guest_request_ioctl *arg)
+{
+	void *req = NULL, *resp = NULL;
+	int rc = 0;
+
+	lockdep_assert_held(&snp_cmd_mutex);
+
+	req = kmalloc(arg->req_size, GFP_KERNEL);
+	if (!req) {
+		rc = -ENOMEM;
+		goto exit;
+	}
+	resp = kmalloc(arg->resp_size, GFP_KERNEL);
+	if (!resp) {
+		rc = -ENOMEM;
+		goto exit;
+	}
+
+	if (copy_from_user(req, (void __user *)arg->req_data, arg->req_size))
+		rc = -EFAULT;
+
+	rc = handle_guest_request(snp_dev, SVM_VMGEXIT_TIO_GUEST_REQUEST, arg, arg->tio_msg,
+				  req, arg->req_size, resp, arg->resp_size);
+	if (rc)
+		goto exit;
+
+	if (copy_to_user((void __user *)arg->resp_data, resp, arg->resp_size))
+		rc = -EFAULT;
+
+exit:
+	if (req)
+		kfree(req);
+	if (resp)
+		kfree(resp);
+
+	return rc;
+}
+
 static long snp_guest_ioctl(struct file *file, unsigned int ioctl, unsigned long arg)
 {
 	struct snp_guest_dev *snp_dev = to_snp_dev(file);
@@ -698,6 +736,9 @@ static long snp_guest_ioctl(struct file *file, unsigned int ioctl, unsigned long
 		io.req_data = USER_SOCKPTR((void __user *)input.req_data);
 		io.resp_data = USER_SOCKPTR((void __user *)input.resp_data);
 		ret = get_ext_report(snp_dev, &input, &io);
+		break;
+	case SNP_TIO_GUEST_REQUEST:
+		ret = handle_tio_request(snp_dev, &input);
 		break;
 	default:
 		break;

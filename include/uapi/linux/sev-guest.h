@@ -62,6 +62,28 @@ struct snp_guest_request_ioctl {
 			__u32 vmm_error;
 		};
 	};
+
+	/* For the TIO requests; MESSY, just to unblock */
+	__u64 exitinfo1;
+	
+	/* 19 - TIO_MSG_TDI_INFO_REQ */
+	/* 20 - TIO_MSG_TDI_INFO_RSP */
+	/* 21 - TIO_MSG_MMIO_VALIDATE_REQ */
+	/* 22 - TIO_MSG_MMIO_VALIDATE_RSP */
+	/* 23 - TIO_MSG_MMIO_CONFIG_REQ */
+	/* 24 - TIO_MSG_MMIO_CONFIG_RSP */
+	/* 25 - TIO_MSG_SDTE_WRITE_REQ */
+	/* 26 - TIO_MSG_SDTE_WRITE_RSP */
+	__u64 tio_msg;
+
+	__u64 req_size;
+	__u64 resp_size;
+
+	__u64 pci_id;
+	union {
+		__u64 mmio_range;
+		__u64 tdisp_state;
+	};
 };
 
 struct snp_ext_report_req {
@@ -84,6 +106,9 @@ struct snp_ext_report_req {
 
 /* Get SNP extended report as defined in the GHCB specification version 2. */
 #define SNP_GET_EXT_REPORT _IOWR(SNP_GUEST_REQ_IOC_TYPE, 0x2, struct snp_guest_request_ioctl)
+
+/* Get SNP extended report as defined in the GHCB specification version 2. */
+#define SNP_TIO_GUEST_REQUEST _IOWR(SNP_GUEST_REQ_IOC_TYPE, 0x3, struct snp_guest_request_ioctl)
 
 /* Guest message request EXIT_INFO_2 constants */
 #define SNP_GUEST_FW_ERR_MASK		GENMASK_ULL(31, 0)
