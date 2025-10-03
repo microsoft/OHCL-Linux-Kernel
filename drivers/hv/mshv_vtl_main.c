@@ -31,6 +31,7 @@
 #include <asm/set_memory.h>
 
 #ifdef CONFIG_X86_64
+#include <linux/cleanup.h>
 
 #include <asm/apic.h>
 #include <uapi/asm/mtrr.h>
@@ -1609,6 +1610,18 @@ static const struct irq_domain_ops hyperv_vtl_redirected_intr_ops = {
 	.free = irq_domain_free_irqs_common,
 };
 
+#define REDIRECTED_INTR_NAME_LEN 64
+struct redirected_intr {
+	int irq;
+	int proxy_vector;
+	u32 apic_id;
+	char name[REDIRECTED_INTR_NAME_LEN];
+	struct list_head list;
+};
+
+static struct list_head redirected_intr_list;
+static struct mutex redirected_intr_lock;
+
 static struct irq_domain *redirected_intr_domain;
 static struct fwnode_handle *redirected_intr_fwnode;
 
@@ -1627,13 +1640,25 @@ static int __init ms_hyperv_init_redirected_intr(void)
 		return -ENODEV;
 	}
 
+	INIT_LIST_HEAD(&redirected_intr_list);
+	mutex_init(&redirected_intr_lock);
+
 	return 0;
 }
 
 static void ms_hyperv_free_redirected_intr(void)
 {
+	struct redirected_intr *rintr, *tmp;
+
+	guard(mutex)(&redirected_intr_lock);
 	if (!redirected_intr_domain)
 		return;
+
+	list_for_each_entry_safe(rintr, tmp, &redirected_intr_list, list) {
+		free_irq(rintr->irq, rintr);
+		list_del(&rintr->list);
+		kfree(rintr);
+	}
 
 	irq_domain_remove(redirected_intr_domain);
 	irq_domain_free_fwnode(redirected_intr_fwnode);
@@ -1641,9 +1666,95 @@ static void ms_hyperv_free_redirected_intr(void)
 	redirected_intr_fwnode = NULL;
 }
 
+static irqreturn_t handle_single_proxy_intr(int irq, void *data)
+{
+	struct mshv_vtl_run *run = mshv_vtl_this_run();
+	struct redirected_intr *rintr = data;
+
+	/*
+	 * This function is called when the proxy interrupt is triggered.
+	 * We assert that only one proxy interrupt is active at a time.
+	 */
+	do_assert_single_proxy_intr(rintr->proxy_vector, run);
+	WRITE_ONCE(run->scan_proxy_irr, 1);
+
+	apic_eoi();
+
+	return IRQ_HANDLED;
+}
+
+/* must be called with redirected_intr_lock */
+static struct redirected_intr *find_redirect_intr(u32 proxy_vector, u32 apic_id)
+{
+	struct redirected_intr *rintr;
+
+	list_for_each_entry(rintr, &redirected_intr_list, list) {
+		if (rintr->proxy_vector == proxy_vector &&
+		    rintr->apic_id == apic_id)
+			return rintr;
+	}
+
+	return NULL;
+}
+
 static int mshv_vtl_map_redirected_intr(u32 proxy_vector, u32 apic_id)
 {
-	return -ENODEV;
+	struct irq_affinity_desc affinity_desc = {};
+	struct irq_alloc_info info = {};
+	struct redirected_intr *rintr;
+	int irq, ret, cpu;
+
+	if (proxy_vector > 255)
+		return -EINVAL;
+
+	cpu = get_cpuid(apic_id);
+	if (cpu < 0 || !cpu_online(cpu))
+		return -EINVAL;
+
+	guard(mutex)(&redirected_intr_lock);
+
+	rintr = find_redirect_intr(proxy_vector, apic_id);
+	if (rintr)
+		/* Already mapped. Just return the HW vector we are using. */
+		return irq_cfg(rintr->irq)->vector;
+
+	rintr = kzalloc(sizeof(*rintr), GFP_KERNEL);
+	if (!rintr)
+		return -ENOMEM;
+
+	cpumask_set_cpu(cpu, &affinity_desc.mask);
+
+	/* The x86_vector_domain needs a non-NULL info. */
+	irq = __irq_domain_alloc_irqs(redirected_intr_domain, -1, 1, NUMA_NO_NODE,
+				      &info, false, &affinity_desc);
+	if (irq < 0) {
+		ret = irq;
+		goto out;
+	}
+
+	snprintf(rintr->name, REDIRECTED_INTR_NAME_LEN,
+		 "hyperv-redir-intr-%x.%x", apic_id, proxy_vector);
+	/*
+	 * We do not want the IRQ to be moved to a different CPU. Both user
+	 * space and the hypervisor have agreed on the CPU that the interrupt
+	 * should target.
+	 */
+	ret = request_irq(irq, handle_single_proxy_intr, IRQF_NOBALANCING,
+			  rintr->name, rintr);
+	if (ret)
+		goto out;
+
+	rintr->irq = irq;
+	rintr->proxy_vector = proxy_vector;
+	rintr->apic_id = apic_id;
+	INIT_LIST_HEAD(&rintr->list);
+	list_add(&rintr->list, &redirected_intr_list);
+
+	return irq_cfg(irq)->vector;
+
+out:
+	kfree(rintr);
+	return ret;
 }
 
 static int mshv_vtl_unmap_redirected_intr(u32 hw_vector, u32 apic_id)
