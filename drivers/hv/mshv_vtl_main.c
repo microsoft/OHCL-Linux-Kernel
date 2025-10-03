@@ -221,19 +221,29 @@ struct apicid_to_cpuid_entry {
 	struct hlist_node node;
 };
 
+static int get_cpuid(int apicid)
+{
+	struct apicid_to_cpuid_entry *found;
+
+	hash_for_each_possible(apicid_to_cpuid, found, node, apicid) {
+		if (found->apicid == apicid)
+			return found->cpuid;
+	}
+
+	return -EINVAL;
+}
+
 /*
  * Sets the cpu described by apicid in cpu_mask.
  * Returns 0 on success, -EINVAL if no cpu matches the apicid.
  */
 static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask)
 {
-	struct apicid_to_cpuid_entry *found;
 
-	hash_for_each_possible(apicid_to_cpuid, found, node, apicid) {
-		if (found->apicid != apicid)
-			continue;
+	int cpu = get_cpuid(apicid);
 
-		cpumask_set_cpu(found->cpuid, cpu_mask);
+	if (cpu >= 0) {
+		cpumask_set_cpu(cpu, cpu_mask);
 		return 0;
 	}
 
