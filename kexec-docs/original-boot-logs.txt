@@ -1,0 +1,542 @@
+<5>[    0.000000] Linux version 6.12.36-microsoft-hcl+ (hargar@UbuntuVM-22) (gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #1 SMP PREEMPT_DYNAMIC Tue Sep  2 23:15:05 UTC 2025
+<6>[    0.000000] Command line: loglevel=8 log_buf_len=128K printk.time=1 console_msg_format=syslog uio_hv_generic.no_mask=1 coredump_filter=0x33 cpufreq.off=1 cpuidle.off=1 cryptomgr.notests idle=halt initcall_blacklist=init_real_mode,sbf_init lpj=3000000 no_timer_check noxsave oops=panic panic_on_warn=0 panic_print=0 panic=-1 printk.devkmsg=on reboot=t rootfstype=tmpfs sysctl.vm.compaction_proactiveness=0 tsc=reliable unknown_nmi_panic=1 vfio_pci.ids=1414:00ba vfio.enable_unsafe_noiommu_mode=1 rdinit=/underhill-init OPENHCL_NVME_VFIO=1 hv_storvsc.storvsc_vcpus_per_sub_channel=2048 hv_storvsc.storvsc_max_hw_queues=2 hv_storvsc.storvsc_ringbuffer_size=0x8000 MIMALLOC_ARENA_EAGER_COMMIT=0 clearcpuid=pcid iommu=off pci=off swiotlb=1,1 console=ttyS2,115200 boot_cpus=0 hv_vmbus.message_connection_id=0x800074  UNDERHILL_DIAG=1 HVLITE_LOG=debug RUST_BACKTRACE=full
+<6>[    0.000000] KERNEL supported cpus:
+<6>[    0.000000]   Intel GenuineIntel
+<6>[    0.000000]   AMD AuthenticAMD
+<6>[    0.000000] Clearing CPUID bits: pcid
+<6>[    0.000000] BIOS-provided physical RAM map:
+<6>[    0.000000] BIOS-e820: [mem 0x0000000408000000-0x0000000408dfffff] usable
+<6>[    0.000000] BIOS-e820: [mem 0x0000000408e00000-0x0000000408e19fff] reserved
+<6>[    0.000000] BIOS-e820: [mem 0x0000000408e1a000-0x0000000409b1afff] usable
+<6>[    0.000000] BIOS-e820: [mem 0x0000000409b1b000-0x0000000409b46fff] reserved
+<6>[    0.000000] BIOS-e820: [mem 0x0000000409b47000-0x0000000409b86fff] usable
+<6>[    0.000000] BIOS-e820: [mem 0x0000000409b87000-0x0000000409b88fff] reserved
+<6>[    0.000000] BIOS-e820: [mem 0x0000000409b89000-0x000000041325efff] usable
+<6>[    0.000000] BIOS-e820: [mem 0x000000041325f000-0x00000004133fffff] reserved
+<6>[    0.000000] software IO TLB: area num 1.
+<6>[    0.000000] NX (Execute Disable) protection: active
+<6>[    0.000000] APIC: Static calls initialized
+<7>[    0.000000] e820: update [mem 0x408e9a000-0x408ed9fff] usable ==> usable
+<6>[    0.000000] extended physical RAM map:
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408000000-0x0000000408dfffff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408e00000-0x0000000408e19fff] reserved
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408e1a000-0x0000000408e99fff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408e9a000-0x0000000408ed9fff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408eda000-0x0000000409b1afff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000409b1b000-0x0000000409b46fff] reserved
+<6>[    0.000000] reserve setup_data: [mem 0x0000000409b47000-0x0000000409b86fff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000409b87000-0x0000000409b88fff] reserved
+<6>[    0.000000] reserve setup_data: [mem 0x0000000409b89000-0x000000041325efff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x000000041325f000-0x00000004133fffff] reserved
+<6>[    0.000000] Hypervisor detected: Microsoft Hyper-V
+<6>[    0.000000] Hyper-V: privilege flags low 0xae7f, high 0x3b8030, hints 0x9e0e24, misc 0xf0bed7b2
+<6>[    0.000000] Hyper-V: Nested features: 0x0
+<6>[    0.000000] Hyper-V: LAPIC Timer Frequency: 0x1e8480
+<6>[    0.000000] Hyper-V: Using hypercall for remote TLB flush
+<6>[    0.000000] clocksource: hyperv_clocksource_tsc_page: mask: 0xffffffffffffffff max_cycles: 0x24e6a1710, max_idle_ns: 440795202120 ns
+<6>[    0.000000] clocksource: hyperv_clocksource_msr: mask: 0xffffffffffffffff max_cycles: 0x24e6a1710, max_idle_ns: 440795202120 ns
+<6>[    0.000000] Linux runs in Hyper-V Virtual Trust Level
+<6>[    0.000000] tsc: Detected 2000.000 MHz processor
+<7>[    0.000004] e820: update [mem 0x00000000-0x00000fff] usable ==> reserved
+<7>[    0.000006] e820: remove [mem 0x000a0000-0x000fffff] usable
+<6>[    0.000010] last_pfn = 0x41325f max_arch_pfn = 0x1000000000
+<6>[    0.000011] x86/PAT: PAT support disabled because CONFIG_X86_PAT is disabled in the kernel.
+<6>[    0.000013] x86/PAT: Configuration [0-7]: WB  WT  UC- UC  WB  WT  UC- UC
+<6>[    0.000015] last_pfn = 0x0 max_arch_pfn = 0x1000000000
+<6>[    0.000018] Using GB pages for direct mapping
+<6>[    0.000425] printk: log_buf_len: 131072 bytes
+<6>[    0.000425] printk: early log buf free: 12432(75%)
+<6>[    0.000426] RAMDISK: [mem 0x408edf000-0x409b17fff]
+<6>[    0.000427] DTB_DEBUG: x86_flattree_get_config called
+<6>[    0.000428] DTB_DEBUG: initial_dtb = 0x408e9a010
+<6>[    0.000428] DTB_DEBUG: CONFIG_OF_EARLY_FLATTREE is enabled
+<6>[    0.000429] DTB_DEBUG: DTB found at 0x408e9a010, size = 8156 bytes
+<6>[    0.000430] DTB_DEBUG: Remapped DTB with full size 8156
+<6>[    0.000430] DTB_DEBUG: Calling early_init_dt_verify...
+<6>[    0.000440] DTB_DEBUG: early_init_dt_verify completed
+<6>[    0.000440] DTB_DEBUG: Calling unflatten_and_copy_device_tree...
+<6>[    0.000455] OF: reserved mem: Reserved memory: No reserved-memory node in the DT
+<6>[    0.000548] DTB_DEBUG: unflatten_and_copy_device_tree completed
+<6>[    0.000549] DTB_DEBUG: acpi_disabled = YES, of_have_populated_dt() = YES
+<6>[    0.000550] DTB_DEBUG: Setting x86_init.mpparse.parse_smp_cfg to x86_dtb_parse_smp_config
+<6>[    0.000574] NODE_DATA(0) allocated [mem 0x413213380-0x413217bff]
+<6>[    0.000607] Zone ranges:
+<6>[    0.000608]   DMA      empty
+<6>[    0.000609]   DMA32    empty
+<6>[    0.000610]   Normal   [mem 0x0000000408000000-0x000000041325efff]
+<6>[    0.000611]   Device   empty
+<6>[    0.000611] Movable zone start for each node
+<6>[    0.000612] Early memory node ranges
+<6>[    0.000612]   node   0: [mem 0x0000000408000000-0x0000000408dfffff]
+<6>[    0.000613]   node   0: [mem 0x0000000408e1a000-0x0000000409b1afff]
+<6>[    0.000614]   node   0: [mem 0x0000000409b47000-0x0000000409b86fff]
+<6>[    0.000615]   node   0: [mem 0x0000000409b89000-0x000000041325efff]
+<6>[    0.000615] Initmem setup node 0 [mem 0x0000000408000000-0x000000041325efff]
+<6>[    0.000729] On node 0, zone Normal: 26 pages in unavailable ranges
+<6>[    0.000731] On node 0, zone Normal: 44 pages in unavailable ranges
+<6>[    0.000953] On node 0, zone Normal: 2 pages in unavailable ranges
+<6>[    0.001150] On node 0, zone Normal: 19873 pages in unavailable ranges
+<6>[    0.001176] IMCR and PIC compatibility mode.
+<6>[    0.001192] TSC deadline timer available
+<6>[    0.001195] CPU topo: Max. logical packages:   1
+<6>[    0.001196] CPU topo: Max. logical dies:       1
+<6>[    0.001196] CPU topo: Max. dies per package:   1
+<6>[    0.001199] CPU topo: Max. threads per core:   2
+<6>[    0.001199] CPU topo: Num. cores per package:    16
+<6>[    0.001200] CPU topo: Num. threads per package:  32
+<6>[    0.001201] CPU topo: Allowing 32 present CPUs plus 0 hotplug CPUs
+<6>[    0.001205] Cannot find an available gap in the 32-bit address range
+<6>[    0.001205] PCI devices with unassigned 32-bit BARs may not work!
+<6>[    0.001206] [mem 0x41335f000-0x41375efff] available for PCI devices
+<6>[    0.001207] Booting paravirtualized kernel on Hyper-V
+<6>[    0.001211] clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+<6>[    0.001216] setup_percpu: NR_CPUS:2048 nr_cpumask_bits:32 nr_cpu_ids:32 nr_node_ids:1
+<6>[    0.002305] percpu: Embedded 45 pages/cpu s144448 r8192 d31680 u262144
+<7>[    0.002309] pcpu-alloc: s144448 r8192 d31680 u262144 alloc=1*2097152
+<7>[    0.002311] pcpu-alloc: [0] 00 01 02 03 04 05 06 07 [0] 08 09 10 11 12 13 14 15
+<7>[    0.002316] pcpu-alloc: [0] 16 17 18 19 20 21 22 23 [0] 24 25 26 27 28 29 30 31
+<6>[    0.002331] Hyper-V: PV spinlocks enabled
+<6>[    0.002333] PV qspinlock hash table entries: 256 (order: 0, 4096 bytes, linear)
+<5>[    0.002335] Kernel command line: loglevel=8 log_buf_len=128K printk.time=1 console_msg_format=syslog uio_hv_generic.no_mask=1 coredump_filter=0x33 cpufreq.off=1 cpuidle.off=1 cryptomgr.notests idle=halt initcall_blacklist=init_real_mode,sbf_init lpj=3000000 no_timer_check noxsave oops=panic panic_on_warn=0 panic_print=0 panic=-1 printk.devkmsg=on reboot=t rootfstype=tmpfs sysctl.vm.compaction_proactiveness=0 tsc=reliable unknown_nmi_panic=1 vfio_pci.ids=1414:00ba vfio.enable_unsafe_noiommu_mode=1 rdinit=/underhill-init OPENHCL_NVME_VFIO=1 hv_storvsc.storvsc_vcpus_per_sub_channel=2048 hv_storvsc.storvsc_max_hw_queues=2 hv_storvsc.storvsc_ringbuffer_size=0x8000 MIMALLOC_ARENA_EAGER_COMMIT=0 clearcpuid=pcid iommu=off pci=off swiotlb=1,1 console=ttyS2,115200 boot_cpus=0 hv_vmbus.message_connection_id=0x800074  UNDERHILL_DIAG=1 HVLITE_LOG=debug RUST_BACKTRACE=full
+<7>[    0.002379] blacklisting initcall init_real_mode
+<7>[    0.002381] blacklisting initcall sbf_init
+<5>[    0.002477] Unknown kernel command line parameters "OPENHCL_NVME_VFIO=1 MIMALLOC_ARENA_EAGER_COMMIT=0 UNDERHILL_DIAG=1 HVLITE_LOG=debug RUST_BACKTRACE=full", will be passed to user space.
+<5>[    0.002488] random: crng init done
+<6>[    0.002515] Dentry cache hash table entries: 32768 (order: 6, 262144 bytes, linear)
+<6>[    0.002529] Inode-cache hash table entries: 16384 (order: 5, 131072 bytes, linear)
+<6>[    0.002760] Fallback order for Node 0: 0
+<6>[    0.002763] Built 1 zonelists, mobility grouping on.  Total pages: 45591
+<6>[    0.002764] Policy zone: Normal
+<6>[    0.002765] mem auto-init: stack:off, heap alloc:off, heap free:off
+<6>[    0.003183] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=32, Nodes=1
+<6>[    0.003492] Dynamic Preempt: none
+<6>[    0.003624] rcu: Preemptible hierarchical RCU implementation.
+<6>[    0.003624] rcu:  RCU restricting CPUs from NR_CPUS=2048 to nr_cpu_ids=32.
+<6>[    0.003626] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+<6>[    0.003626] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=32
+<6>[    0.003650] Using NULL legacy PIC
+<6>[    0.003651] NR_IRQS: 131328, nr_irqs: 528, preallocated irqs: 0
+<6>[    0.003697] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+<4>[    0.003698] Persistent clock returned invalid value
+<6>[    0.003936] printk: legacy console [ttyS2] enabled
+<6>[    0.443194] APIC: Switch to symmetric I/O mode setup
+<6>[    0.447960] x2apic enabled
+<6>[    0.449700] APIC: Switched APIC routing to: physical x2apic
+<6>[    0.452753] Hyper-V: Host Build 10.0.27792.1000-1-0
+<6>[    0.455450] Hyper-V: enabling crash_kexec_post_notifiers
+<6>[    0.458367] Hyper-V: Using IPI hypercalls
+<6>[    0.460509] APIC: send_IPI() replaced with hv_send_ipi()
+<6>[    0.463369] APIC: send_IPI_mask() replaced with hv_send_ipi_mask()
+<6>[    0.466683] APIC: send_IPI_mask_allbutself() replaced with hv_send_ipi_mask_allbutself()
+<6>[    0.471220] APIC: send_IPI_allbutself() replaced with hv_send_ipi_allbutself()
+<6>[    0.475274] APIC: send_IPI_all() replaced with hv_send_ipi_all()
+<6>[    0.478699] APIC: send_IPI_self() replaced with hv_send_ipi_self()
+<6>[    0.482104] APIC: wakeup_secondary_cpu_64() replaced with hv_vtl_wakeup_secondary_cpu()
+<6>[    0.486429] clocksource: tsc-early: mask: 0xffffffffffffffff max_cycles: 0x39a85c9bff6, max_idle_ns: 881590591483 ns
+<6>[    0.491997] Calibrating delay loop (skipped) preset value.. 600.00 BogoMIPS (lpj=3000000)
+<6>[    0.496573] x86/cpu: User Mode Instruction Prevention (UMIP) activated
+<6>[    0.500264] Last level iTLB entries: 4KB 0, 2MB 0, 4MB 0
+<6>[    0.501993] Last level dTLB entries: 4KB 0, 2MB 0, 4MB 0, 1GB 0
+<6>[    0.501993] Spectre V1 : Vulnerable: __user pointer sanitization and usercopy barriers only; no swapgs barriers
+<6>[    0.501993] Spectre V2 : User space: Vulnerable
+<6>[    0.501993] Speculative Store Bypass: Vulnerable
+<6>[    0.501993] x86/fpu: x87 FPU will use FXSAVE
+<6>[    0.501993] Freeing SMP alternatives memory: 20K
+<6>[    0.501993] pid_max: default: 32768 minimum: 301
+<6>[    0.501993] Mount-cache hash table entries: 512 (order: 0, 4096 bytes, linear)
+<6>[    0.501993] Mountpoint-cache hash table entries: 512 (order: 0, 4096 bytes, linear)
+<6>[    0.501993] smpboot: CPU0: Intel(R) Xeon(R) Platinum 8460Y+ (family: 0x6, model: 0x8f, stepping: 0x8)
+<6>[    0.501993] Performance Events: unsupported p6 CPU model 143 no PMU driver, software events only.
+<6>[    0.502007] signal: max sigframe size: 1040
+<6>[    0.504545] rcu: Hierarchical SRCU implementation.
+<6>[    0.507341] rcu:  Max phase no-delay instances is 1000.
+<6>[    0.510366] Timer migration: 2 hierarchy levels; 8 children per group; 2 crossnode level
+<6>[    0.512193] smp: Bringing up secondary CPUs ...
+<6>[    0.515022] smp: Brought up 1 node, 1 CPU
+<6>[    0.517525] smpboot: Total of 1 processors activated (600.00 BogoMIPS)
+<6>[    0.521517] Memory: 143608K/182364K available (4605K kernel code, 468K rwdata, 1596K rodata, 1328K init, 2236K bss, 36080K reserved, 0K cma-reserved)
+<6>[    0.522071] devtmpfs: initialized
+<6>[    0.523907] x86/mm: Memory block size: 128MB
+<6>[    0.526585] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+<6>[    0.531102] futex hash table entries: 8192 (order: 7, 524288 bytes, linear)
+<6>[    0.532110] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+<7>[    0.535192] initcall sbf_init blacklisted
+<6>[    0.537538] PCI: Fatal: No config space access function found
+<6>[    0.540666] OF: OF_PLATFORM_DEBUG: of_platform_default_populate_init called
+<6>[    0.541997] OF: OF_PLATFORM_DEBUG: of_have_populated_dt() = YES
+<6>[    0.545414] OF: OF_PLATFORM_DEBUG: About to call of_platform_default_populate...
+<6>[    0.549492] OF: OF_PLATFORM_DEBUG: of_platform_default_populate completed
+<6>[    0.551995] OF: OF_PLATFORM_DEBUG: of_platform_default_populate_init completed
+<6>[    0.556186] iommu: Default domain type: Translated
+<6>[    0.558996] iommu: DMA domain TLB invalidation policy: lazy mode
+<5>[    0.562065] SCSI subsystem initialized
+<6>[    0.564295] hv_vmbus: VMBus is present in DeviceTree
+<6>[    0.567360] hv_vmbus: Vmbus version:5.3
+<6>[    0.572040] PCI: System does not support PCI
+<6>[    0.574776] clocksource: Switched to clocksource tsc-early
+<6>[    0.578172] NET: Registered PF_UNIX/PF_LOCAL protocol family
+<6>[    0.581502] clocksource: tsc: mask: 0xffffffffffffffff max_cycles: 0x39a85c9bff6, max_idle_ns: 881590591483 ns
+<6>[    0.584063] Unpacking initramfs...
+<6>[    0.592135] clocksource: Switched to clocksource tsc
+<6>[    0.594757] workingset: timestamp_bits=56 max_order=16 bucket_order=0
+<6>[    0.597818] io scheduler mq-deadline registered
+<6>[    0.600245] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+<6>[    0.620645] serial8250: ttyS2 at I/O 0x3e8 (irq = 4, base_baud = 115200) is a 16550A
+<6>[    0.642713] serial8250: ttyS3 at I/O 0x2e8 (irq = 3, base_baud = 115200) is a 16550A
+<6>[    0.662703] hv_vmbus: registering driver uio_hv_generic
+<6>[    0.672083] VFIO - User Level meta-driver version: 0.3
+<6>[    0.674941] vfio_pci: add [1414:00ba[ffffffff:ffffffff]] class 0x000000/00000000
+<6>[    0.692324] NET: Registered PF_VSOCK protocol family
+<6>[    0.694839] hv_vmbus: registering driver hv_sock
+<6>[    0.697622] IPI shorthand broadcast: enabled
+<6>[    0.700534] sched_clock: Marking stable (200006310, 491993219)->(758809972, -66810443)
+<6>[    0.722747] Demotion targets for Node 0: null
+<6>[    0.725457] clk: Disabling unused clocks
+<6>[    0.795101] Freeing initrd memory: 12516K
+<6>[    0.797422] Freeing unused kernel image (initmem) memory: 1328K
+<6>[    0.800317] Write protecting the kernel read-only data: 8192k
+<6>[    0.803789] Freeing unused kernel image (text/rodata gap) memory: 1536K
+<6>[    0.807537] Freeing unused kernel image (rodata/data gap) memory: 452K
+<6>[    0.811552] Freeing unused kernel image (bss_decrypted gap) memory: 1980K
+<6>[    0.842004] Run /underhill-init as init process
+<7>[    0.844713]   with arguments:
+<7>[    0.846635]     /underhill-init
+<7>[    0.848568]   with environment:
+<7>[    0.850711]     HOME=/
+<7>[    0.852226]     TERM=linux
+<7>[    0.853939]     OPENHCL_NVME_VFIO=1
+<7>[    0.856192]     MIMALLOC_ARENA_EAGER_COMMIT=0
+<7>[    0.858808]     UNDERHILL_DIAG=1
+<7>[    0.860745]     HVLITE_LOG=debug
+<7>[    0.862673]     RUST_BACKTRACE=full
+<21>[    0.865884] underhill_init: Initial process: crate_name=underhill_init, crate_revision=d3874d08d4116feb0959d07565a730b5d4775cf6, crate_branch=user/hargar/kexec
+<21>[    0.873712] underhill_init: Mounting filesystems
+<21>[    0.876559] underhill_init: Command line args: Options { setup_script: [], underhill_args: [] }
+<21>[    0.883250] underhill_init: Setting system resource limits and parameters
+<21>[    0.887626] underhill_init: Using 64 bytes of entropy from the host
+<21>[    0.891324] underhill_init: registered vfio-pci as driver for nvme
+<21>[    0.894900] underhill_init: running KERNEL_BOOT_TIME="373851452" "/bin/openvmm_hcl" "--pid" "/run/underhill.pid"
+<21>[    0.900757] underhill_init: loading kernel module /lib/modules/000/pci-hyperv-intf.ko:
+<21>[    0.906697] underhill_init: load complete for /lib/modules/000/pci-hyperv-intf.ko
+<30>[    0.911612] underhill_core:  INFO  VMM process crate_name="build_info" crate_revision="d3874d08d4116feb0959d07565a730b5d4775cf6"
+<21>[    0.918588] underhill_init: loading kernel module /lib/modules/001/pci-hyperv.ko:
+<30>[    0.922902] underhill_core:  INFO  boot loader times start=0x3c753 end=0x54268 sidecar_start=0x40db7 sidecar_end=0x4b38d elapsed=9.7045ms sidecar_elapsed=4.2454ms
+<6>[    0.930485] hv_vmbus: registering driver hv_pci
+<6>[    0.933026] hv_pci aefcb170-9feb-4984-b6e7-cd80b5843236: PCI VMBus probing: Using version 0x10004
+<30>[    0.937393] diag_server:  INFO  control starting control_address=VmAddress(Address { cid: ffffffff, port: 1 })
+<30>[    0.942165] diag_server:  INFO  data starting data_address=VmAddress(Address { cid: ffffffff, port: 2 })
+<6>[    0.947421] hv_pci aefcb170-9feb-4984-b6e7-cd80b5843236: PCI host bridge to bus 9feb:00
+<6>[    0.951162] pci_bus 9feb:00: root bus resource [mem 0x413480000-0x41350ffff window]
+<6>[    0.954849] pci_bus 9feb:00: No busn resource found for root bus, will use [bus 00-ff]
+<6>[    0.959748] pci 9feb:00:00.0: [1414:00a9] type 00 class 0x010802 conventional PCI endpoint
+<6>[    0.965755] pci 9feb:00:00.0: BAR 0 [mem 0x413480000-0x4134fffff 64bit]
+<6>[    0.970179] pci 9feb:00:00.0: BAR 2 [mem 0x413500000-0x41350ffff 64bit]
+<6>[    0.978666] pci_bus 9feb:00: busn_res: [bus 00-ff] end is updated to 00
+<6>[    0.982348] pci 9feb:00:00.0: BAR 0 [mem 0x413480000-0x4134fffff 64bit]: assigned
+<6>[    0.987246] pci 9feb:00:00.0: BAR 2 [mem 0x413500000-0x41350ffff 64bit]: assigned
+<6>[    0.992428] vfio-pci 9feb:00:00.0: Adding to iommu group 0
+<4>[    0.995529] vfio-pci 9feb:00:00.0: Adding kernel taint for vfio-noiommu group on device
+<31>[    1.000307] mesh_remote::unix_node: DEBUG run_leader{ local_id=N-57397172f294302dd1d99ebc9b1bcbe6}:  invitation request remote_id=N-57397172f294302dd1d99ebc9b1bcbe6
+<31>[    1.008285] mesh_remote::unix_node: DEBUG run_leader{ local_id=N-57397172f294302dd1d99ebc9b1bcbe6}:  connected remote_id=N-77f6953bbbcdfaef8b6c4be3e79c19e3
+<31>[    1.015637] mesh_remote::unix_node: DEBUG run_leader{ local_id=N-57397172f294302dd1d99ebc9b1bcbe6}:  inviting invite_id=N-77f6953bbbcdfaef8b6c4be3e79c19e3 remote_id=N-57397172f294302dd1d99ebc9b1bcbe6
+<21>[    1.024243] underhill_init: load complete for /lib/modules/001/pci-hyperv.ko
+<21>[    1.028350] underhill_init: loading kernel module /lib/modules/999/hv_storvsc.ko: storvsc_vcpus_per_sub_channel=2048 storvsc_max_hw_queues=2 storvsc_ringbuffer_size=0x8000
+<31>[    1.036374] mesh_remote::unix_node: DEBUG mesh_spawn_process{ mesh_name="underhill"}:invite{ local_id=N-57397172f294302dd1d99ebc9b1bcbe6}:  received invitation invite_id=N-77f6953bbbcdfaef8b6c4be3e79c19e3
+<6>[    1.048189] hv_vmbus: registering driver hv_storvsc
+<31>[    1.052217] vmbus_user_channel: DEBUG worker_new{ name="UnderhillWorker" action="new"}:  opening device dev_path=/dev/uio0 instance_id=d3e4454d-62af-44ec-b851-3170915e5f56
+<21>[    1.060481] underhill_init: load complete for /lib/modules/999/hv_storvsc.ko
+<30>[    1.064727] guest_emulation_transport::process_loop:  INFO  [GET] version negotiated protocol=NICKEL_REV2
+<31>[    1.070819] underhill_core::worker: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/dps:  device platform settings DevicePlatformSettings { smbios: Smbios { serial_number: [48, 54, 56, 53, 45, 57, 57, 54, 51, 45, 49, 56, 53, 48, 45, 51, 57, 49, 57, 45, 52, 54, 54, 55, 45, 55, 54, 53, 51, 45, 50, 49], base_board_serial_number: [48, 54, 56, 53, 45, 57, 57, 54, 51, 45, 49, 56, 53, 48, 45, 51, 57, 49, 57, 45, 52, 54, 54, 55, 45, 55, 54, 53, 51, 45, 50, 49], chassis_serial_number: [48, 54, 56, 53, 45, 57, 57, 54, 51, 45, 49, 56, 53, 48, 45, 51, 57, 49, 57, 45, 52, 54, 54, 55, 45, 55, 54, 53, 51, 45, 50, 49], chassis_asset_tag: [48, 54, 56, 53, 45, 57, 57, 54, 51, 45, 49, 56, 53, 48, 45, 51, 57, 49, 57, 45, 52, 54, 54, 55, 45, 55, 54, 53, 51, 45, 50, 49], system_manufacturer: [], system_product_name: [], system_version: [], system_sku_number: [], system_family: [], bios_lock_string: [], memory_device_serial_number: [], processor_manufacturer: [73, 110, 116, 1
+<31>[    1.070822] underhill_core::worker: 01, 108, 0], processor_version: [73, 110, 116, 101, 108, 40, 82, 41, 32, 88, 101, 111, 110, 40, 82, 41, 32, 80, 108, 97, 116, 105, 110, 117, 109, 32, 56, 52, 54, 48, 89, 43, 0], processor_id: 0, external_clock: 16000, max_speed: 4000, current_speed: 2000, processor_characteristics: 252, processor_family2: 179, processor_type: 3, voltage: 144, status: 65, processor_upgrade: 6 }, general: General { secure_boot_enabled: false, secure_boot_template: MicrosoftWindows, bios_guid: 2257bb14-baa1-4b9d-a01e-c6703495fd81, console_mode: Default, battery_enabled: false, processor_idle_enabled: false, tpm_enabled: false, com1_enabled: true, com1_debugger_mode: true, com1_vmbus_redirector: true, com2_enabled: false, com2_debugger_mode: false, com2_vmbus_redirector: false, firmware_debugging_enabled: false, hibernation_enabled: false, suppress_attestation: Some(false), generation_id: Some([96, 139, 102, 100, 122, 110, 10, 133, 183, 11, 95, 146, 160,
+<31>[    1.114333] underhill_core::worker: 221, 149, 102]), legacy_memory_map: false, pause_after_boot_failure: false, pxe_ip_v6: false, measure_additional_pcrs: true, disable_frontpage: false, disable_sha384_pcr: false, media_present_enabled_by_default: false, vpci_boot_enabled: false, memory_protection_mode: Disabled, default_boot_always_attempt: false, num_lock_enabled: false, pcat_boot_device_order: [Optical, HardDrive, Network, Floppy], vpci_instance_filter: None, nvdimm_count: 0, psp_enabled: false, vmbus_redirection_enabled: true, always_relay_host_mmio: false, vtl2_settings: Some(Vtl2Settings { fixed: Vtl2SettingsFixed { scsi_sub_channels: 31, io_ring_size: 256, max_bounce_buffer_pages: None }, dynamic: Vtl2SettingsDynamic { ide_controller: None, scsi_controllers: [ScsiController { instance_id: ca56751f-e643-4bef-bf54-f73678e8b7b5, disks: [ScsiDisk { location: 0, disk_params: DiskParameters { device_id: "d32872fd-e6a6-474c-a1a6-dd0d5248857e", vendor_id: "SCSI", product
+<31>[    1.157275] underhill_core::worker: _id: "SCSI Disk ", product_revision_level: "1.0", serial_number: "some serial number", model_number: "some module number", medium_rotation_rate: 0, physical_sector_size: None, fua: Some(false), write_cache: Some(true), scsi_disk_size_in_bytes: None, odx: None, unmap: None, max_transfer_length: None }, physical_devices: Single { device: PhysicalDevice { device_type: NVMe, vmbus_instance_id: aefcb170-9feb-4984-b6e7-cd80b5843236, sub_device_path: 1 } }, ntfs_guid: None, is_dvd: false }], io_queue_depth: None }], nic_devices: [], nvme_controllers: [] } }), is_servicing_scenario: false, watchdog_enabled: false, firmware_mode_is_pcat: false, imc_enabled: false, cxl_memory_enabled: false, guest_state_lifetime: Default }, acpi_tables: [] }
+<30>[    1.234828] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  kernel boot time kernel_boot_time_ns=0x1648853c
+<30>[    1.243403] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  memory allocation mode memory_allocation_mode=Host
+<30>[    1.252046] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  vtl2 ram vtl2_ram="0x408000000-0x413400000"
+<31>[    1.260321] underhill_threadpool: DEBUG  starting threadpool thread cpu=0x0
+<30>[    1.264424] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  vtl0 ram vtl0_ram="0x0-0xf8000000(0), 0x100000000-0x408000000(0)"
+<31>[    1.272896] pal_uring::threadpool: DEBUG  AffinitizedWorker running io_ring_size=0x100
+<30>[    1.276656] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  vtl0 mmio vtl0_mmio="0xf8000000-0x100000000, 0xfe0000000-0x1000000000"
+<30>[    1.284516] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  shared pool shared_pool=""
+<31>[    1.291110] vmgs::vmgs_impl: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:vmgs_open:  opening VMGS datastore
+<30>[    1.298047] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  enabling alias map alias_map=0x200000000000
+<31>[    1.305205] sidecar_client: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  sidecar node 0 started, cpus 0..=31
+<31>[    1.311620] hcl::ioctl: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  HCL capabilities supports_vtl_ret_action=true supports_register_page=true
+<6>[    1.319141] misc mshv_hvcall: Hypercall allow map has been set, pid 45
+<31>[    1.322290] underhill_mem::init: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  Applying VTL2 protections
+<6>[    1.329212] misc mshv_hvcall: Hypercall allow map has been set, pid 45
+<31>[    1.332841] underhill_mem::init: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:apply_vtl2_protections:  applying protections cpu=0x0 range=0x408000000-0x413400000
+<31>[    1.349808] underhill_mem::init: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  Creating VTL0 guest memory
+<31>[    1.357255] underhill_mem::init: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  Creating VTL 1 memory map
+<30>[    1.364380] underhill_mem::init:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  VTL 1 memory map created
+<6>[    1.370309] misc mshv_hvcall: Hypercall allow map has been set, pid 45
+<30>[    1.373732] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  starting guest memory self test
+<30>[    1.381006] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  guest memory self test complete
+<30>[    1.389096] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  Reading security profile attestation_type=Host secure_boot=false tpm_enabled=false tpm_persisted=true
+<30>[    1.401374] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  Key-encryption key retrieval not required
+<30>[    1.410602] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  Reading key protector from VMGS dek_minimal_size=0x100
+<30>[    1.420146] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  Reading VM ID from VMGS
+<30>[    1.428179] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  First booting of the VM
+<30>[    1.436412] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  Deriving keys tcb_version=None vmgs_encrypted=false
+<30>[    1.446711] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  GSP response request_data_length_in_vmgs=0x0 no_rpc_server=true requires_rpc_server=false encrypted_gsp_length=0x0
+<30>[    1.459265] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  Encryption sources kek=false gsp=false gsp_by_id=false
+<30>[    1.468351] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  Unlocking VMGS
+<30>[    1.476473] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  Encryption disabled, skipping unlock vmgs data store
+<30>[    1.486098] underhill_attestation:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:initialize_platform_security:  determine if refreshing tpm seeds is needed state_refresh_request_from_gsp=false vm_id_changed=false
+<30>[    1.498697] underhill_core::dispatch::vtl2_settings_worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:new_initial_controllers:  Initial VTL2 settings vtl2_settings=Some(Vtl2Settings { fixed: Vtl2SettingsFixed { scsi_sub_channels: 1f, io_ring_size: 100, max_bounce_buffer_pages: None }, dynamic: Vtl2SettingsDynamic { ide_controller: None, scsi_controllers: [ScsiController { instance_id: ca56751f-e643-4bef-bf54-f73678e8b7b5, disks: [ScsiDisk { location: 0, disk_params: DiskParameters { device_id: "d32872fd-e6a6-474c-a1a6-dd0d5248857e", vendor_id: "SCSI", product_id: "SCSI Disk ", product_revision_level: "1.0", serial_number: "some serial number", model_number: "some module number", medium_rotation_rate: 0, physical_sector_size: None, fua: Some(false), write_cache: Some(true), scsi_disk_size_in_bytes: None, odx: None, unmap: None, max_transfer_length: None }, physical_devices: Single { device: PhysicalDevice { device_type: NVMe, vmbus
+<30>[    1.498700] underhill_core::dispatch::vtl2_settings_worker: _instance_id: aefcb170-9feb-4984-b6e7-cd80b5843236, sub_device_path: 1 } }, ntfs_guid: None, is_dvd: false }], io_queue_depth: None }], nic_devices: [], nvme_controllers: [] } })
+<31>[    1.555993] underhill_core::dispatch::vtl2_settings_worker: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:new_initial_controllers:make_scsi_controller_config:make_disk_type_from_physical_device:  nvme vfio devpath pre-check devpath=/sys/bus/vmbus/devices/aefcb170-9feb-4984-b6e7-cd80b5843236/pci9feb:00/9feb:00:00.0 pre_exists=true skip_wait=false
+<30>[    1.574290] underhill_core::dispatch::vtl2_settings_worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:new_initial_controllers:make_scsi_controller_config:make_disk_type_from_physical_device:  nvme vfio devpath ready devpath=/sys/bus/vmbus/devices/aefcb170-9feb-4984-b6e7-cd80b5843236/pci9feb:00/9feb:00:00.0 pre_exists=true after_exists=true waited_ms=12 skip_wait=false
+<30>[    1.594165] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  Not Instantiating The MCR Device
+<30>[    1.602500] underhill_core::emuplat::local_clock:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  no saved skew found: defaulting to host local time skew=Duration { seconds: ffffffffffff9d90, nanoseconds: 0 }
+<31>[    1.613136] vmbus_user_channel: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  opening device dev_path=/dev/uio2 instance_id=700df40e-b947-4776-b839-d1b0a35af034
+<31>[    1.621366] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="ioapic"}:  map region_name="mmio" addr=fec00000 len=20
+<31>[    1.632296] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="ioapic"}:  unmap region_name="mmio" addr=None len=20
+<31>[    1.643988] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="rtc"}:  map region_name="io" addr=70 len=2
+<31>[    1.655543] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="rtc"}:  unmap region_name="io" addr=None len=2
+<31>[    1.668859] hcl::ioctl: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="pm"}:  set_pm_timer_assist port=None
+<31>[    1.677103] chipset::pm: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="pm"}:  ACPI mode enabled
+<31>[    1.684776] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="pm"}:  map region_name="dynamic" addr=400 len=37
+<31>[    1.697400] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="pm"}:  unmap region_name="dynamic" addr=None len=37
+<30>[    1.708113] hcl_compat_uefi_nvram_storage:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  loading uefi nvram from storage
+<30>[    1.717020] hcl_compat_uefi_nvram_storage:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  flushing uefi nvram to storage
+<30>[    1.728106] hcl_compat_uefi_nvram_storage:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  flushing uefi nvram to storage
+<30>[    1.737135] firmware_uefi::service::nvram:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  configuring secure boot enabled=false
+<30>[    1.747299] hcl_compat_uefi_nvram_storage:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  flushing uefi nvram to storage
+<30>[    1.758344] hcl_compat_uefi_nvram_storage:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  flushing uefi nvram to storage
+<30>[    1.768607] hcl_compat_uefi_nvram_storage:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  flushing uefi nvram to storage
+<31>[    1.779585] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  map region_name="uefi" addr=28 len=8
+<31>[    1.792878] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="uefi"}:  unmap region_name="uefi" addr=None len=8
+<31>[    1.803674] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="serial-com1"}:  map region_name="registers" addr=3f8 len=8
+<31>[    1.813929] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="serial-com1"}:  unmap region_name="registers" addr=None len=8
+<31>[    1.824941] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="serial-com2"}:  map region_name="registers" addr=2f8 len=8
+<31>[    1.836007] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="serial-com2"}:  unmap region_name="registers" addr=None len=8
+<31>[    1.848312] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="serial-com3"}:  map region_name="registers" addr=3e8 len=8
+<31>[    1.861544] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="serial-com3"}:  unmap region_name="registers" addr=None len=8
+<31>[    1.875052] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="serial-com4"}:  map region_name="registers" addr=2e8 len=8
+<31>[    1.887321] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="serial-com4"}:  unmap region_name="registers" addr=None len=8
+<31>[    1.898910] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="io-delay-0xed"}:  map region_name="delay" addr=ed len=1
+<31>[    1.909181] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="io-delay-0xed"}:  unmap region_name="delay" addr=None len=1
+<31>[    1.920004] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-vmware-backdoor"}:  map region_name="backdoor" addr=5658 len=2
+<31>[    1.931430] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-vmware-backdoor"}:  unmap region_name="backdoor" addr=None len=2
+<31>[    1.943791] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-gameport"}:  map region_name="gameport" addr=201 len=1
+<31>[    1.955425] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-gameport"}:  unmap region_name="gameport" addr=None len=1
+<31>[    1.967546] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pic"}:  map region_name="primary" addr=20 len=2
+<31>[    1.978940] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pic"}:  unmap region_name="primary" addr=None len=2
+<31>[    1.989757] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pic"}:  map region_name="secondary" addr=a0 len=2
+<31>[    2.001781] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pic"}:  unmap region_name="secondary" addr=None len=2
+<31>[    2.012348] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pit"}:  map region_name="main" addr=40 len=4
+<31>[    2.022630] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pit"}:  unmap region_name="main" addr=None len=4
+<31>[    2.033388] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pit"}:  map region_name="port61" addr=61 len=1
+<31>[    2.044591] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pit"}:  unmap region_name="port61" addr=None len=1
+<31>[    2.056643] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pci"}:  map region_name="address" addr=cf8 len=4
+<31>[    2.069011] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pci"}:  unmap region_name="address" addr=None len=4
+<31>[    2.081823] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pci"}:  map region_name="data" addr=cfc len=4
+<31>[    2.093372] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-pci"}:  unmap region_name="data" addr=None len=4
+<31>[    2.105840] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-dma"}:  map region_name="io" addr=87 len=1
+<31>[    2.118032] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:base_chipset_build:add_device{ device="missing-dma"}:  unmap region_name="io" addr=None len=1
+<30>[    2.130259] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  Underhill MNF enabled? enable_mnf=false
+<30>[    2.138411] vmbus_server::channels:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:  Limiting VmBus connections to version version=MaxVersionInfo { version: 60000, feature_flags: FeatureFlags { guest_specified_signal_parameters: true, channel_interrupt_redirection: true, modify_connection: true, client_id: false, confidential_channels: false, pause_resume: false } }
+<31>[    2.156284] vmbus_client: DEBUG  VmBus client connecting version=Copper feature_flags=FeatureFlags { guest_specified_signal_parameters: true, channel_interrupt_redirection: true, modify_connection: true, client_id: true, confidential_channels: false, pause_resume: true }
+<30>[    2.167402] vmbus_client:  INFO  VmBus client connected, requesting offers version=VersionInfo { version: Copper, feature_flags: FeatureFlags { guest_specified_signal_parameters: true, channel_interrupt_redirection: true, modify_connection: true, client_id: true, confidential_channels: false, pause_resume: false } }
+<30>[    2.180739] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x1 interface_id=525074dc-8985-46e2-8057-a307dc18a502 instance_id=1eccfd72-4b41-45ef-b73a-4a6e44c12924 subchannel_index=0x0
+<30>[    2.189797] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x2 interface_id=f8e65716-3cb3-4a06-9a60-1889c5cccab5 instance_id=99221fa0-24ad-11e2-be98-001aa01bbf6e subchannel_index=0x0
+<30>[    2.199731] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x3 interface_id=cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a instance_id=58f75a6d-d949-4320-99e1-a2a2576d581c subchannel_index=0x0
+<30>[    2.209580] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x4 interface_id=f912ad6d-2b17-48ea-bd65-f927a61c7684 instance_id=d34b2567-b9b6-42b9-8778-0a4ec0b955bf subchannel_index=0x0
+<30>[    2.219850] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x5 interface_id=da0a7802-e377-4aac-8e77-0558eb1073f8 instance_id=5620e0c7-8062-4dce-aeb7-520c7ef76171 subchannel_index=0x0
+<30>[    2.229327] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x6 interface_id=3375baf4-9e15-4b30-b765-67acb10d607b instance_id=4487b255-b88c-403f-bb51-d1f69cf17f87 subchannel_index=0x0
+<30>[    2.237642] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x7 interface_id=57164f39-9115-4e78-ab55-382f3bd5422d instance_id=fd149e91-82e0-4a7d-afa6-2a4166cbd7c0 subchannel_index=0x0
+<30>[    2.246288] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x8 interface_id=a9a0f4e7-5a45-4d96-b827-8a841e8c03e6 instance_id=242ff919-07db-4180-9c2e-b86cb68c8c55 subchannel_index=0x0
+<30>[    2.256259] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0x9 interface_id=0e0b6031-5213-4934-818b-38d90ced39db instance_id=b6650ff7-33bc-4840-8048-e0676786f393 subchannel_index=0x0
+<30>[    2.265877] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0xa interface_id=9527e630-d0ae-497b-adce-e80ab0175caf instance_id=2dd1ce17-079e-403c-b352-a1921ee207ee subchannel_index=0x0
+<30>[    2.274493] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0xb interface_id=35fa2e29-ea23-4236-96ae-3a6ebacba440 instance_id=2450ee40-33bf-4fbd-892e-9fb06e9214cf subchannel_index=0x0
+<30>[    2.283986] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0xc interface_id=276aacf4-ac15-426c-98dd-7521ad3f01fe instance_id=f5bee29c-1741-4aad-a4c2-8fdedb46dcc2 subchannel_index=0x0
+<30>[    2.295140] vmbus_client:  INFO  received offer state=RequestingOffers channel_id=0xd interface_id=ba6163d9-04a1-4d29-b605-72e2ffb1dc7f instance_id=e9a3cf2e-ccfc-4974-8822-8d52e31b8174 subchannel_index=0x0
+<30>[    2.305438] vmbus_client:  INFO  VmBus client connected, offers delivered version=VersionInfo { version: Copper, feature_flags: FeatureFlags { guest_specified_signal_parameters: true, channel_interrupt_redirection: true, modify_connection: true, client_id: true, confidential_channels: false, pause_resume: false } }
+<30>[    2.320924] vmbus_server::channels:  INFO  new channel offer_id=OfferId(0) key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.330638] vmbus_server: DEBUG  offered channel offer_id=OfferId(0) key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0
+<30>[    2.337399] vmbus_server::channels:  INFO  new channel offer_id=OfferId(1) key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.348225] vmbus_server: DEBUG  offered channel offer_id=OfferId(1) key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0
+<30>[    2.355694] vmbus_server::channels:  INFO  new channel offer_id=OfferId(2) key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.367128] vmbus_server: DEBUG  offered channel offer_id=OfferId(2) key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0
+<30>[    2.374500] vmbus_server::channels:  INFO  new channel offer_id=OfferId(3) key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.384683] vmbus_server: DEBUG  offered channel offer_id=OfferId(3) key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0
+<30>[    2.392013] vmbus_server::channels:  INFO  new channel offer_id=OfferId(4) key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.402984] vmbus_server: DEBUG  offered channel offer_id=OfferId(4) key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0
+<30>[    2.410691] vmbus_server::channels:  INFO  new channel offer_id=OfferId(5) key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.421657] vmbus_server: DEBUG  offered channel offer_id=OfferId(5) key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0
+<30>[    2.428509] vmbus_server::channels:  INFO  new channel offer_id=OfferId(6) key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.437436] vmbus_server: DEBUG  offered channel offer_id=OfferId(6) key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0
+<30>[    2.443811] vmbus_server::channels:  INFO  new channel offer_id=OfferId(7) key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.453316] vmbus_server: DEBUG  offered channel offer_id=OfferId(7) key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0
+<30>[    2.460010] vmbus_server::channels:  INFO  new channel offer_id=OfferId(8) key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.470333] vmbus_server: DEBUG  offered channel offer_id=OfferId(8) key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0
+<30>[    2.477701] vmbus_server::channels:  INFO  new channel offer_id=OfferId(9) key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.488378] vmbus_server: DEBUG  offered channel offer_id=OfferId(9) key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0
+<30>[    2.496370] vmbus_server::channels:  INFO  new channel offer_id=OfferId(a) key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.506642] vmbus_server: DEBUG  offered channel offer_id=OfferId(a) key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0
+<30>[    2.512880] vmbus_server::channels:  INFO  new channel offer_id=OfferId(b) key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{e9a3cf2e-ccfc-4974-8822-8d52e31b8174}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.521836] vmbus_server: DEBUG  offered channel offer_id=OfferId(b) key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{e9a3cf2e-ccfc-4974-8822-8d52e31b8174}-0
+<28>[    2.529373] underhill_core::nvme_manager:  WARN create_nvme_device{ pci_id=9feb:00:00.0}:  Failed to update reset_method method=NoReset err=failed to create file `/sys/bus/pci/devices/9feb:00:00.0/reset_method`: Permission denied (os error 13)
+<6>[    2.540293] vfio-pci 9feb:00:00.0: enabling device (0000 -> 0002)
+<4>[    2.548580] vfio-pci 9feb:00:00.0: vfio-noiommu device opened by user (tp:48)
+<30>[    2.564402] vmbus_relay_intercept_device:  INFO  matching channel offered offer=OfferInfo { offer: OfferChannel { interface_id: 0e0b6031-5213-4934-818b-38d90ced39db, instance_id: b6650ff7-33bc-4840-8048-e0676786f393, rsvd: [0, 0, 0, 0], flags: OfferFlags { enumerate_device_interface: true, confidential_ring_buffer: false, confidential_external_memory: false, named_pipe_mode: true, tlnpi_provider: false }, mmio_megabytes: 0, user_defined: UserDefinedData([4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), subchannel_index: 0, mmio_megabytes_optional: 0, channel_id: ChannelId(9), monitor_id: ff, monitor_allocated: 0, is_dedicated: 1, connection_id: 2009 }, request_se
+<30>[    2.564406] vmbus_relay_intercept_device: nd: SenderCore(ManuallyDrop { value: Queue { remote: OnceLock(<uninit>), local: Mutex { data: LocalQueue { messages: ErasedVecDeque { cap: 0, head: 0, len: 0 }, ports: [], waker: Some(Waker { data: 0x5451a130390, vtable: 0x7fa52b09cae0 }), remote: false, receiver_gone: false, remove_closed: false, new_handler: 0x7fa52a2a8bc0 } }, receiver: UnsafeCell { .. } } }), revoke_recv: ManuallyDrop { value: OneshotReceiverCore(Slot { state: Mutex { data: Waiting(None) }, receiver: UnsafeCell { .. } }) } }
+<30>[    2.634463] vmbus_client:  INFO  opening channel on host channel_id=0x9
+<31>[    2.637843] nvme_driver::driver: DEBUG create_nvme_device{ pci_id=9feb:00:00.0}:nvme_driver_init{ pci_id="9feb:00:00.0"}:nvme_enable{ pci_id="9feb:00:00.0"}:  creating io queue cpu=0x0 qid=0x1
+<31>[    2.646319] vmbus_client: DEBUG  received open result channel_id=0x9 result=0x0
+<30>[    2.649856] hyperv_ic_guest::shutdown:  INFO  version negotiated framework_version=3.0 message_version=3.2
+<31>[    2.656330] nvme_driver::namespace: DEBUG  rescan
+<30>[    2.659323] vmbus_server::channels:  INFO  new channel offer_id=OfferId(c) key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{ca56751f-e643-4bef-bf54-f73678e8b7b5}-0 confidential_ring_buffer=true confidential_external_memory=false
+<31>[    2.671214] vmbus_server: DEBUG  offered channel offer_id=OfferId(c) key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{ca56751f-e643-4bef-bf54-f73678e8b7b5}-0
+<30>[    2.679313] vmbus_server::channels:  INFO  new channel offer_id=OfferId(d) key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0 confidential_ring_buffer=true confidential_external_memory=false
+<31>[    2.690643] vmbus_server: DEBUG  offered channel offer_id=OfferId(d) key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0
+<30>[    2.698391] underhill_core::loader:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm:load_firmware:  loading UEFI into VTL0
+<31>[    2.706124] pal_uring::threadpool: DEBUG  new idle task
+<31>[    2.709527] nvme_driver::namespace: DEBUG  rescanned, no change
+<30>[    2.721409] underhill_core:  INFO  vm worker started
+<31>[    2.726651] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="vmtime"}:  device state change complete duration=23.417µs
+<31>[    2.733693] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="input"}:  device state change complete duration=16.639µs
+<31>[    2.740678] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="chipset" dependency="ioapic" operation="start"
+<31>[    2.748148] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="lines/irq" dependency="ioapic" operation="start"
+<31>[    2.755228] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="ioapic"}:  device state change complete duration=15.453µs
+<31>[    2.762619] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="rtc" dependency="lines/irq" operation="start"
+<31>[    2.769375] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="lines/gpe0" dependency="pm" operation="start"
+<31>[    2.776017] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="pm" dependency="lines/irq" operation="start"
+<31>[    2.782216] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="uefi" dependency="lines/gpe0" operation="start"
+<31>[    2.788404] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com1" dependency="lines/irq" operation="start"
+<31>[    2.795203] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com2" dependency="lines/irq" operation="start"
+<31>[    2.802409] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com3" dependency="lines/irq" operation="start"
+<31>[    2.809467] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com4" dependency="lines/irq" operation="start"
+<31>[    2.816506] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="io-delay-0xed"}:  device state change complete duration=25.228µs
+<31>[    2.824323] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-vmware-backdoor"}:  device state change complete duration=10.821µs
+<31>[    2.832538] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-gameport"}:  device state change complete duration=10.579µs
+<31>[    2.840773] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-pit"}:  device state change complete duration=6.993µs
+<31>[    2.848904] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-pci"}:  device state change complete duration=10.823µs
+<31>[    2.856823] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-dma"}:  device state change complete duration=23.276µs
+<31>[    2.863921] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="vmbus"}:  device state change complete duration=55.71µs
+<31>[    2.870584] vmbus_server: DEBUG  handle_request request=Start
+<31>[    2.874141] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="vmbus_relay"}:  device state change complete duration=41.21µs
+<31>[    2.882855] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="scsi:ca56751f-e643-4bef-bf54-f73678e8b7b5"}:  device state change complete duration=83.656µs
+<31>[    2.892343] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="shutdown_ic:b6650ff7-33bc-4840-8048-e0676786f393"}:  device state change complete duration=80.658µs
+<31>[    2.901266] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="partition" dependency="chipset" operation="start"
+<31>[    2.907863] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="chipset" dependency="rtc" operation="start"
+<31>[    2.914380] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="lines/irq"}:  device state change complete duration=11.346µs
+<31>[    2.920937] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="rtc"}:  device state change complete duration=15.63µs
+<31>[    2.927482] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="pm"}:  device state change complete duration=8.764µs
+<31>[    2.934225] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="serial-com1"}:  device state change complete duration=21.607µs
+<31>[    2.941259] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="serial-com2"}:  device state change complete duration=10.064µs
+<31>[    2.949091] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="serial-com3"}:  device state change complete duration=11.069µs
+<31>[    2.956102] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="serial-com4"}:  device state change complete duration=10.779µs
+<31>[    2.962762] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-pic"}:  device state change complete duration=122.035915ms
+<31>[    2.969999] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="lines/bsp_lint"}:  device state change complete duration=106.176582ms
+<31>[    2.978258] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="chipset" dependency="uefi" operation="start"
+<31>[    2.985180] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="lines/gpe0"}:  device state change complete duration=10.204µs
+<31>[    2.992472] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="uefi"}:  device state change complete duration=11.587µs
+<31>[    2.999236] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="chipset"}:  device state change complete duration=9.647µs
+<31>[    3.008659] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="partition"}:  device state change complete duration=2.557634ms
+<30>[    3.015652] vmotherboard::chipset:  INFO run_vp{ vp_index=0x0}:  device io device="<unknown>" range_name="<unknown>" kind=Mmio address=0xfa000008 direction="read" data=[ff, ff, ff, ff, ff, ff, ff, ff]
+<30>[    3.025119] state_unit:  INFO state_change{ operation="start"}:  state change complete duration=298.579971ms
+<30>[    3.030500] underhill_core::dispatch:  INFO  starting VM boot_time_ms=0xc3f boot_time="3.1356261s"
+<30>[    3.035597] firmware_uefi:  INFO run_vp{ vp_index=0x0}:  set gpa for diagnostics addr=2b data=0x77000
+<31>[    3.041184] watchdog_core: DEBUG run_vp{ vp_index=0x0}:  read reg=Resolution
+<31>[    3.045258] watchdog_core: DEBUG run_vp{ vp_index=0x0}:  write 13 reg=Config
+<30>[    3.051157] firmware_uefi:  INFO run_vp{ vp_index=0x0}:  set gpa for diagnostics addr=2b data=0x437e000
+<30>[    3.056805] hcl_compat_uefi_nvram_storage:  INFO run_vp{ vp_index=0x0}:  flushing uefi nvram to storage
+<31>[    3.063240] chipset::cmos_rtc: DEBUG run_vp{ vp_index=0x0}:  guest tried to set high-bit in CMOS addr register
+<31>[    3.069378] chipset::cmos_rtc: DEBUG run_vp{ vp_index=0x0}:  clearing rtc interrupts
+<30>[    3.073526] hcl_compat_uefi_nvram_storage:  INFO run_vp{ vp_index=0x0}:  flushing uefi nvram to storage
+<31>[    3.078947] chipset::cmos_rtc: DEBUG run_vp{ vp_index=0x0}:  clearing rtc interrupts
+<28>[    3.083104] vmbus_server::channels:  WARN  Guest requested unsupported feature flags. supported=0x0 requested=0x8
+<30>[    3.087836] vmbus_server::channels:  INFO  Guest negotiated version vtl=0x0 version=VersionInfo { version: Copper, feature_flags: FeatureFlags { guest_specified_signal_parameters: false, channel_interrupt_redirection: false, modify_connection: false, client_id: false, confidential_channels: false, pause_resume: false } } client_id=18dd3964-3e8a-4e42-86fa-c8e6b191ee0e trusted=false
+<31>[    3.103981] vmbus_server::channels: DEBUG  modifying connection parameters complete response=Supported(SUCCESSFUL, FeatureFlags { guest_specified_signal_parameters: true, channel_interrupt_redirection: true, modify_connection: true, client_id: true, confidential_channels: false, pause_resume: false })
+<31>[    3.116283] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[    3.120994] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x1 connection_id=0x2001 key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0
+<30>[    3.130176] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x2 connection_id=0x2002 key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0
+<30>[    3.138827] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x3 connection_id=0x2003 key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0
+<30>[    3.147414] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x4 connection_id=0x2004 key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0
+<30>[    3.155944] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x5 connection_id=0x2005 key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0
+<30>[    3.165525] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x6 connection_id=0x2006 key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0
+<30>[    3.174682] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x7 connection_id=0x2007 key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0
+<30>[    3.183321] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x8 connection_id=0x2008 key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0
+<30>[    3.192688] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x9 connection_id=0x2009 key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{e9a3cf2e-ccfc-4974-8822-8d52e31b8174}-0
+<30>[    3.201690] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xa connection_id=0x200a key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{ca56751f-e643-4bef-bf54-f73678e8b7b5}-0
+<30>[    3.210379] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xb connection_id=0x200b key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0
+<30>[    3.218518] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xc connection_id=0x200c key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0
+<30>[    3.228713] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xd connection_id=0x200d key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0
+<30>[    3.237897] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xe connection_id=0x200e key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0
+<31>[    3.247189] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.252451] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.258658] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.263478] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.268527] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.273294] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.277687] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.281880] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.286108] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.290355] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.295016] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.299474] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.303813] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.308220] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.312997] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.317596] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.322623] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.327605] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.332606] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.337766] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.342974] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.348162] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.353193] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.357787] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.362583] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.367085] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.371551] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.377076] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[    3.382554] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.388112] watchdog_core: DEBUG run_vp{ vp_index=0x0}:  read reg=Resolution
+<30>[    3.400020] hcl_compat_uefi_nvram_storage:  INFO run_vp{ vp_index=0x0}:  flushing uefi nvram to storage
+<30>[    3.406288] hcl_compat_uefi_nvram_storage:  INFO run_vp{ vp_index=0x0}:  flushing uefi nvram to storage
+<30>[    3.412265] hcl_compat_uefi_nvram_storage:  INFO run_vp{ vp_index=0x0}:  flushing uefi nvram to storage
+<30>[    3.418310] hcl_compat_uefi_nvram_storage:  INFO run_vp{ vp_index=0x0}:  flushing uefi nvram to storage
+<31>[    3.424850] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[    3.430057] vmbus_client:  INFO  opening channel on host channel_id=0x5
+<31>[    3.433934] vmbus_client: DEBUG  received open result channel_id=0x5 result=0x0
+<31>[    3.437983] vmbus_server::channels: DEBUG  open complete offer_id=0x4 result=0
+<30>[    3.442057] vmbus_server::channels:  INFO  opened channel offer_id=0x4 channel_id=0xc result=0
+<31>[    3.446934] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.452768] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[    3.457977] vmbus_client:  INFO  opening channel on host channel_id=0x4
+<31>[    3.461888] vmbus_client: DEBUG  received open result channel_id=0x4 result=0x0
+<31>[    3.466134] vmbus_server::channels: DEBUG  open complete offer_id=0x3 result=0
+<30>[    3.470427] vmbus_server::channels:  INFO  opened channel offer_id=0x3 channel_id=0xe result=0
+<31>[    3.475415] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.481504] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[    3.486502] vmbus_client:  INFO  opening channel on host channel_id=0xd
+<31>[    3.490529] vmbus_client: DEBUG  received open result channel_id=0xd result=0x0
+<31>[    3.494189] vmbus_server::channels: DEBUG  open complete offer_id=0xb result=0
+<30>[    3.497519] vmbus_server::channels:  INFO  opened channel offer_id=0xb channel_id=0x9 result=0
+<31>[    3.501649] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.506452] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.511479] storvsp: DEBUG handle_channel_request{ request=Open(Rpc(OpenRequest { open_data: OpenData { target_vp: 0, ring_offset: b, ring_gpadl_id: GpadlId(4), event_flag: a, connection_id: 200a, user_data: UserDefinedData([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) }, interrupt: Interrupt { inner: Fn }, use_confidential_ring: false, use_confidential_external_memory: false }))}:  scsi open channel channel_index=0x0
+<31>[    3.543658] storvsp: DEBUG handle_channel_request{ request=Open(Rpc(OpenRequest { open_data: OpenData { target_vp: 0, ring_offset: b, ring_gpadl_id: GpadlId(4), event_flag: a, connection_id: 200a, user_data: UserDefinedData([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) }, interrupt: Interrupt { inner: Fn }, use_confidential_ring: false, use_confidential_external_memory: false }))}:  packet processing starting... target_vp=0x0 channel_index=0x0
+<31>[    3.578763] vmbus_server::channels: DEBUG  open complete offer_id=0xc result=0
+<30>[    3.582889] vmbus_server::channels:  INFO  opened channel offer_id=0xc channel_id=0xa result=0
+<31>[    3.587764] storvsp: DEBUG  process_primary state=Begin
+<31>[    3.590737] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[    3.595660] storvsp: DEBUG  parse_packet transaction_id=0x8 data=BeginInitialization
+<31>[    3.600909] storvsp: DEBUG  process_primary state=QueryVersion
+<31>[    3.604427] storvsp: DEBUG  parse_packet transaction_id=0x9 data=QueryProtocolVersion(600)
+<30>[    3.608955] storvsp:  INFO  scsi version negotiated version=Blue
+<31>[    3.612391] storvsp: DEBUG  process_primary state=QueryProperties { version: Blue }
+<31>[    3.616785] storvsp: DEBUG  parse_packet transaction_id=0xa data=QueryProperties
+<31>[    3.621051] storvsp: DEBUG  process_primary state=EndInitialization { version: Blue, subchannel_count: None }
+<31>[    3.626857] storvsp: DEBUG  parse_packet transaction_id=0xb data=EndInitialization
+<31>[    5.670041] watchdog_core: DEBUG run_vp{ vp_index=0x0}:  write 0 reg=Config
+<31>[    5.674402] watchdog_core: DEBUG run_vp{ vp_index=0x0}:  write 12c reg=Count
+<31>[    5.678669] watchdog_core: DEBUG run_vp{ vp_index=0x0}:  write 13 reg=Config
+<31>[    8.408114] watchdog_core: DEBUG run_vp{ vp_index=0x0}:  write 0 reg=Config
+<31>[   14.008026] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing rx fifo
+<31>[   14.012156] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing tx fifo
+<31>[   14.016030] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: true, out1: false, out2: false, loopback: false, reserved: 0 }
+

@@ -504,10 +504,6 @@ static int __init of_platform_default_populate_init(void)
 {
 	struct device_node *node;
 
-	pr_info("OF_PLATFORM_DEBUG: of_platform_default_populate_init called\n");
-	pr_info("OF_PLATFORM_DEBUG: of_have_populated_dt() = %s\n", 
-		of_have_populated_dt() ? "YES" : "NO");
-
 	device_links_supplier_sync_state_pause();
 
 	if (IS_ENABLED(CONFIG_PPC)) {
@@ -596,14 +592,9 @@ static int __init of_platform_default_populate_init(void)
 		}
 
 		/* Populate everything else. */
-		pr_info("OF_PLATFORM_DEBUG: About to call of_platform_default_populate...\n");
 		of_platform_default_populate(NULL, NULL, NULL);
-		pr_info("OF_PLATFORM_DEBUG: of_platform_default_populate completed\n");
-	} else {
-		pr_info("OF_PLATFORM_DEBUG: IS_ENABLED(CONFIG_PPC) is false, taking else branch\n");
 	}
 
-	pr_info("OF_PLATFORM_DEBUG: of_platform_default_populate_init completed\n");
 	return 0;
 }
 arch_initcall_sync(of_platform_default_populate_init);

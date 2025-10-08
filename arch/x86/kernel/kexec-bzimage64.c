@@ -18,6 +18,8 @@
 #include <linux/mm.h>
 #include <linux/efi.h>
 #include <linux/random.h>
+#include <linux/libfdt.h>
+#include <linux/of_fdt.h>
 
 #include <asm/bootparam.h>
 #include <asm/setup.h>
@@ -237,7 +239,8 @@ static int
 setup_boot_parameters(struct kimage *image, struct boot_params *params,
 		      unsigned long params_load_addr,
 		      unsigned int efi_map_offset, unsigned int efi_map_sz,
-		      unsigned int setup_data_offset)
+		      unsigned int setup_data_offset,
+		      void *dtb_data, unsigned long dtb_size, unsigned int dtb_setup_data_offset)
 {
 	unsigned int nr_e820_entries;
 	unsigned long long mem_k, start, end;
@@ -314,6 +317,24 @@ setup_boot_parameters(struct kimage *image, struct boot_params *params,
 
 	/* Setup RNG seed */
 	setup_rng_seed(params, params_load_addr, setup_data_offset);
+
+#ifdef CONFIG_OF_EARLY_FLATTREE
+	/* Setup DTB */
+	if (dtb_data && dtb_size) {
+		struct setup_data *sd = (void *)params + dtb_setup_data_offset;
+		unsigned long phys = params_load_addr + dtb_setup_data_offset;
+		sd->type = SETUP_DTB;
+		sd->len = dtb_size;
+		memcpy(sd->data, dtb_data, dtb_size);
+		/* Prepend to existing chain */
+		sd->next = params->hdr.setup_data;
+		params->hdr.setup_data = phys;
+		pr_info("kexec: inserted DTB setup_data entry phys=0x%lx len=%lu\n", phys, dtb_size);
+		
+		/* Free the temporary DTB copy */
+		kfree(dtb_data);
+	}
+#endif
 
 	/* Setup EDD info */
 	memcpy(params->eddbuf, boot_params.eddbuf,
@@ -456,6 +477,34 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 
 	kexec_dprintk("Loaded purgatory at 0x%lx\n", pbuf.mem);
 
+	/* DTB support - preserve current system DTB for acpi=off compatibility */
+	void *dtb_data = NULL;
+	unsigned long dtb_size = 0;
+	
+#ifdef CONFIG_OF_EARLY_FLATTREE
+	if (initial_boot_params) {
+		/* Validate and preserve the current DTB */
+		if (fdt_check_header(initial_boot_params) == 0) {
+			unsigned long total = fdt_totalsize(initial_boot_params);
+			if (total > 0 && total < SZ_1M) { /* sanity check */
+				dtb_data = kmalloc(total, GFP_KERNEL);
+				if (dtb_data) {
+					memcpy(dtb_data, initial_boot_params, total);
+					dtb_size = total;
+					pr_info("kexec: preserving current DTB (size=%lu bytes)\n", dtb_size);
+				} else {
+					pr_warn("kexec: failed to allocate memory for DTB preservation\n");
+				}
+			} else {
+				pr_warn("kexec: current DTB has invalid size %lu\n", total);
+			}
+		} else {
+			pr_warn("kexec: current DTB has invalid header\n");
+		}
+	} else {
+		pr_debug("kexec: no current DTB to preserve\n");
+	}
+#endif
 
 	/*
 	 * Load Bootparams and cmdline and space for efi stuff.
@@ -478,6 +527,16 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 	if (IS_ENABLED(CONFIG_IMA_KEXEC))
 		kbuf.bufsz += sizeof(struct setup_data) +
 			      sizeof(struct ima_setup_data);
+
+#ifdef CONFIG_OF_EARLY_FLATTREE
+	unsigned int dtb_setup_data_offset = 0;
+	if (dtb_size) {
+		/* Reserve space for DTB setup_data (header + blob) */
+		dtb_setup_data_offset = kbuf.bufsz;
+		kbuf.bufsz += sizeof(struct setup_data) + dtb_size;
+		pr_info("kexec: reserving %lu bytes for DTB setup_data entry\n", dtb_size);
+	}
+#endif
 
 	params = kzalloc(kbuf.bufsz, GFP_KERNEL);
 	if (!params)
@@ -569,7 +628,7 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 
 	ret = setup_boot_parameters(image, params, bootparam_load_addr,
 				    efi_map_offset, efi_map_sz,
-				    efi_setup_data_offset);
+				    efi_setup_data_offset, dtb_data, dtb_size, dtb_setup_data_offset);
 	if (ret)
 		goto out_free_params;
 

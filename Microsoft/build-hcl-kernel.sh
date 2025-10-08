@@ -72,7 +72,7 @@ fi
 
 objcopy=("objcopy")
 makeargs=("ARCH=x86_64")
-targets=("vmlinux modules")
+targets=("vmlinux bzImage modules")
 if [ "$arch" = "arm64" ]; then
 	objcopy=("aarch64-linux-gnu-objcopy")
 	makeargs=("ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-")
