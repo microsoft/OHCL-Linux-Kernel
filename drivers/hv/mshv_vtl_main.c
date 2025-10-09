@@ -2754,6 +2754,21 @@ static int __init mshv_vtl_init_memory(void)
 
 extern struct platform_driver mshv_vtl_sidecar;
 
+static u64 tdg_vm_wr(u64 field, u64 value, u64 mask)
+{
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	struct tdx_module_args args = {
+		.rdx = field,
+		.r8 = value,
+		.r9 = mask,
+	};
+
+	return __tdcall(TDG_VM_WR, &args);
+#else
+	return 0;
+#endif
+}
+
 static int __init mshv_vtl_init(void)
 {
 	int ret;
@@ -2777,6 +2792,15 @@ static int __init mshv_vtl_init(void)
 	ret = mshv_tdx_create_apicid_to_cpuid_mapping(dev);
 	if (ret)
 		goto unset_func;
+
+	if (hv_isolation_type_tdx())
+#define TDX_TDCS_FEATURE_PARAVIRT_CTLS_FIELD_ID  0x9110000300000022ULL
+#define TDX_PARAVIRT_MCA	BIT_ULL(3)
+#define TDX_PARAVIRT_MTRR	BIT_ULL(4)
+		/* Ignore the result in case of VE_REDUCTION isn't supported. */
+		tdg_vm_wr(TDX_TDCS_FEATURE_PARAVIRT_CTLS_FIELD_ID,
+			  TDX_PARAVIRT_MCA | TDX_PARAVIRT_MTRR,
+			  TDX_PARAVIRT_MCA | TDX_PARAVIRT_MTRR);
 
 	ret = hv_vtl_setup_synic();
 	if (ret)
