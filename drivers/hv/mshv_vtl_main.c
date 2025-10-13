@@ -577,11 +577,24 @@ struct vmx_vmcs_field {
 	};
 };
 
+#define TDG_VP_WR	10
+
+static u64 tdg_vp_wr(u64 field, u64 value, u64 mask)
+{
+	struct tdx_module_args args = {
+		.rcx = 0,
+		.rdx = field,
+		.r8 = value,
+		.r9 = mask,
+	};
+
+	return __tdcall(TDG_VP_WR, &args);
+}
+
 static void mshv_write_tdx_apic_page(u64 apic_page_gpa)
 {
     struct tdx_extended_field_code extended_field_code;
     struct vmx_vmcs_field vmcs_field;
-    struct tdx_module_args args = {};
     u64 status = 0;
 
     extended_field_code.as_u64 = 0;
@@ -592,13 +605,9 @@ static void mshv_write_tdx_apic_page(u64 apic_page_gpa)
     vmcs_field.as_u32 = 0x00002012;
     extended_field_code.field_size = 3;	     /* TDX_FIELD_SIZE_64_BIT	   */
 
-    args.rcx = 0;
-    args.rdx = extended_field_code.as_u64;
-    args.r8 = apic_page_gpa;
-    args.r9 = 0xFFFFFFFFFFFFFFFF;
-
     /* Issue tdg_vp_wr to set the apic page. */
-    status = __tdcall(10, &args);
+    status = tdg_vp_wr(extended_field_code.as_u64, apic_page_gpa,
+		       0xFFFFFFFFFFFFFFFF);
     pr_debug("set_apic_page gpa: %llx status: %llx\n", apic_page_gpa, status);
 
     if (status != 0)
