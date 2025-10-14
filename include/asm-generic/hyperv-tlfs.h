@@ -749,6 +749,23 @@ struct hv_get_vp_registers_output {
 	};
 };
 
+union hv_x64_register_sev_gpa_page {
+	u64 u64;
+	struct {
+		u64 enabled:1;
+		u64 reserved:11;
+		u64 pagenumber:52;
+	};
+} __packed;
+
+union hv_register_value {
+	u128 reg128;
+	u64 reg64;
+	u32 reg32;
+	u16 reg16;
+	u8 reg8;
+};
+
 /* HvSetVpRegisters hypercall with variable size reg name/value list*/
 struct hv_set_vp_registers_input {
 	struct {
@@ -761,8 +778,13 @@ struct hv_set_vp_registers_input {
 		u32 name;
 		u32 padding1;
 		u64 padding2;
-		u64 valuelow;
-		u64 valuehigh;
+		union {
+			union hv_register_value value;
+			struct {
+				u64 valuelow;
+				u64 valuehigh;
+			};
+		};
 	} element[];
 } __packed;
 

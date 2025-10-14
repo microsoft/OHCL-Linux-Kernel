@@ -305,6 +305,8 @@ struct apic {
 
 	/* Probe, setup and smpboot functions */
 	int	(*probe)(void);
+	void	(*setup)(void);
+	void	(*teardown)(void);
 	int	(*acpi_madt_oem_check)(char *oem_id, char *oem_table_id);
 
 	void	(*init_apic_ldr)(void);
@@ -316,6 +318,8 @@ struct apic {
 	int	(*wakeup_secondary_cpu)(u32 apicid, unsigned long start_eip, unsigned int cpu);
 	/* wakeup secondary CPU using 64-bit wakeup point */
 	int	(*wakeup_secondary_cpu_64)(u32 apicid, unsigned long start_eip, unsigned int cpu);
+
+	void	(*update_vector)(unsigned int cpu, unsigned int vector, bool set);
 
 	char	*name;
 };
@@ -470,6 +474,12 @@ static __always_inline bool apic_id_valid(u32 apic_id)
 	return apic_id <= apic->max_apic_id;
 }
 
+static __always_inline void apic_update_vector(unsigned int cpu, unsigned int vector, bool set)
+{
+	if (apic->update_vector)
+		apic->update_vector(cpu, vector, set);
+}
+
 #else /* CONFIG_X86_LOCAL_APIC */
 
 static inline u32 apic_read(u32 reg) { return 0; }
@@ -481,6 +491,7 @@ static inline void apic_wait_icr_idle(void) { }
 static inline u32 safe_apic_wait_icr_idle(void) { return 0; }
 static inline void apic_native_eoi(void) { WARN_ON_ONCE(1); }
 static inline void apic_setup_apic_calls(void) { }
+static inline void apic_update_vector(unsigned int cpu, unsigned int vector, bool set) { }
 
 #define apic_update_callback(_callback, _fn) do { } while (0)
 
@@ -488,16 +499,104 @@ static inline void apic_setup_apic_calls(void) { }
 
 extern void apic_ack_irq(struct irq_data *data);
 
+#define APIC_VECTOR_TO_BIT_NUMBER(v) ((unsigned int)(v) % 32)
+#define APIC_VECTOR_TO_REG_OFFSET(v) ((unsigned int)(v) / 32 * 0x10)
+
 static inline bool lapic_vector_set_in_irr(unsigned int vector)
 {
-	u32 irr = apic_read(APIC_IRR + (vector / 32 * 0x10));
+	u32 irr = apic_read(APIC_IRR + APIC_VECTOR_TO_REG_OFFSET(vector));
 
-	return !!(irr & (1U << (vector % 32)));
+	return !!(irr & (1U << APIC_VECTOR_TO_BIT_NUMBER(vector)));
 }
 
 static inline bool is_vector_pending(unsigned int vector)
 {
 	return lapic_vector_set_in_irr(vector) || pi_pending_this_cpu(vector);
+}
+
+#define MAX_APIC_VECTOR			256
+#define APIC_VECTORS_PER_REG		32
+
+/*
+ * Vector states are maintained by APIC in 32-bit registers that are
+ * 16 bytes aligned. The status of each vector is kept in a single
+ * bit.
+ */
+static inline int apic_find_highest_vector(void *bitmap)
+{
+	int vec;
+	u32 *reg;
+
+	for (vec = MAX_APIC_VECTOR - APIC_VECTORS_PER_REG; vec >= 0; vec -= APIC_VECTORS_PER_REG) {
+		reg = bitmap + APIC_VECTOR_TO_REG_OFFSET(vec);
+		if (*reg)
+			return __fls(*reg) + vec;
+	}
+
+	return -1;
+}
+
+struct apic_page {
+	union {
+		u64     regs64[PAGE_SIZE / 8];
+		u32     regs[PAGE_SIZE / 4];
+		u8      bytes[PAGE_SIZE];
+	};
+} __aligned(PAGE_SIZE);
+
+static inline u32 apic_get_reg(void *regs, int reg)
+{
+	struct apic_page *ap = regs;
+
+	return ap->regs[reg / 4];
+}
+
+static inline void apic_set_reg(void *regs, int reg, u32 val)
+{
+	struct apic_page *ap = regs;
+
+	ap->regs[reg / 4] = val;
+}
+
+static __always_inline u64 apic_get_reg64(void *regs, int reg)
+{
+	struct apic_page *ap = regs;
+
+	BUILD_BUG_ON(reg != APIC_ICR);
+
+	return ap->regs64[reg / 8];
+}
+
+static __always_inline void apic_set_reg64(void *regs, int reg, u64 val)
+{
+	struct apic_page *ap = regs;
+
+	BUILD_BUG_ON(reg != APIC_ICR);
+	ap->regs64[reg / 8] = val;
+}
+
+static inline unsigned int get_vec_bit(unsigned int vec)
+{
+	/*
+	 * The registers are 32-bit wide and 16-byte aligned.
+	 * Compensate for the resulting bit number spacing.
+	 */
+	return vec + 96 * (vec / 32);
+}
+
+static inline void apic_clear_vector(int vec, void *bitmap)
+{
+	clear_bit(get_vec_bit(vec), bitmap);
+}
+
+static inline void apic_set_vector(int vec, void *bitmap)
+{
+	set_bit(get_vec_bit(vec), bitmap);
+}
+
+static inline int apic_test_vector(int vec, void *bitmap)
+{
+	return test_bit(get_vec_bit(vec), bitmap);
 }
 
 /*

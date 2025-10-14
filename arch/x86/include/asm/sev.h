@@ -414,6 +414,10 @@ u64 sev_get_status(void);
 void sev_show_status(void);
 void snp_update_svsm_ca(void);
 void snp_mshv_vtl_return(u8 target_vtl);
+enum es_result savic_register_gpa(u64 gpa);
+enum es_result savic_unregister_gpa(u64 *gpa);
+u64 savic_ghcb_msr_read(u32 reg);
+void savic_ghcb_msr_write(u32 reg, u64 value);
 
 #else	/* !CONFIG_AMD_MEM_ENCRYPT */
 
@@ -451,6 +455,10 @@ static inline u64 sev_get_status(void) { return 0; }
 static inline void sev_show_status(void) { }
 static inline void snp_update_svsm_ca(void) { }
 static inline void snp_mshv_vtl_return(u8 input_vtl) { }
+static inline enum es_result savic_register_gpa(u64 gpa) { return ES_UNSUPPORTED; }
+static inline enum es_result savic_unregister_gpa(u64 *gpa) { return ES_UNSUPPORTED; }
+static inline void savic_ghcb_msr_write(u32 reg, u64 value) { }
+static inline u64 savic_ghcb_msr_read(u32 reg) { return 0; }
 
 #endif	/* CONFIG_AMD_MEM_ENCRYPT */
 
