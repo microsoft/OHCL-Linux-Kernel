@@ -209,6 +209,7 @@ struct mshv_vtl_per_cpu {
 	u64 l1_msr_sfmask;
 	u64 l1_msr_tsc_aux;
 	u64 l2_tsc_deadline_prev[MSHV_VTL_NUM_L2_VM];
+	u64 l2_hlt_tsc_deadline;
 	bool msrs_are_guest;
 	struct user_return_notifier mshv_urn;
 #endif
@@ -221,6 +222,20 @@ static union hv_register_vsm_capabilities mshv_vsm_capabilities;
 static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
 static DEFINE_PER_CPU(unsigned long long, num_vtl0_transitions);
 static DEFINE_PER_CPU(struct mshv_vtl_per_cpu, mshv_vtl_per_cpu);
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+static DEFINE_PER_CPU(struct hrtimer, mshv_tdx_halt_timer);
+static struct hrtimer *tdx_this_halt_timer(void)
+{
+	return this_cpu_ptr(&mshv_tdx_halt_timer);
+}
+#else
+static struct hrtimer *tdx_this_halt_timer(void)
+{
+	return NULL;
+}
+#endif
+static void mshv_tdx_init_halt_timer(void);
 
 noinline void mshv_vtl_return_tdx(void);
 struct mshv_vtl_run *mshv_vtl_this_run(void);
@@ -711,7 +726,9 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		for (vm_idx = 1; vm_idx <= MSHV_VTL_NUM_L2_VM; vm_idx++)
 			mshv_vtl_set_tsc_deadline(vm_idx,
 						  TDVPS_TSC_DEADLINE_DISARMED);
+		per_cpu->l2_hlt_tsc_deadline = TDVPS_TSC_DEADLINE_DISARMED;
 #endif
+		mshv_tdx_init_halt_timer();
 	} else if (hv_isolation_type_snp()) {
 #ifdef CONFIG_X86_64
 		int ret;
@@ -1041,6 +1058,144 @@ static bool mshv_vtl_process_intercept(void)
 	return false;
 }
 
+/*
+ * The purpose is to get interrupt on this vCPU to wake up from
+ * L0 VMM HLT emulation.
+ *
+ * The sequence is
+ * - local_irq_save()
+ * - Start the timer if necessary.
+ * - tdx_halt(irq_disabled=false)
+ *   The L0 VMM wakes up vCPU from HLT due to timer interrupt even with
+ *   rflags.if=0.
+ * - Cancel the timer if timer was started.
+ *   The callback isn't be invoked because of rflags.if=0.
+ * - local_irq_restore()
+ */
+static enum hrtimer_restart mshv_tdx_timer_fn(struct hrtimer *timer)
+{
+	return HRTIMER_NORESTART;
+}
+
+static void mshv_tdx_init_halt_timer(void)
+{
+	struct hrtimer *timer = tdx_this_halt_timer();
+
+	if (!timer)
+		return;
+
+	hrtimer_init(timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+	timer->function = mshv_tdx_timer_fn;
+}
+
+enum TDX_HALT_TIMER {
+	TIMER_ARMED,
+	TIMER_NOTARMED,
+};
+
+/*
+ * The L1 VMM needs to tell wake up time from HLT emulation because the host
+ * (L0) VMM doesn't have access to TDVPS_TSC_DEADLINE with the production TDX
+ * module.
+ * Set up a timer interrupt instead.
+ */
+static enum TDX_HALT_TIMER mshv_tdx_setup_halt_timer(void)
+{
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	struct tdx_vp_context *context = &mshv_vtl_this_run()->tdx_context;
+#endif
+	u64 now, deadline = TDVPS_TSC_DEADLINE_DISARMED;
+	struct hrtimer *timer = tdx_this_halt_timer();
+	ktime_t time;
+
+	if (!timer)
+		return TIMER_NOTARMED;
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	/* Get the timeout value to wake up from HLT. */
+	if (context->l2_tsc_deadline.update & MSHV_VTL_TDX_L2_DEADLINE_UPDATE)
+		deadline = tsc_deadline_to_tdvps(context->l2_tsc_deadline.deadline);
+	else {
+		struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+		u64 vm_idx = TDG_VP_ENTRY_VM_IDX(context->entry_rcx);
+
+		/*
+		 * If we run L2 vCPU before entering the L0 HLT emulation, we
+		 * may have issued tdg.vp.wr(TSC DEADLINE).
+		 */
+		if (is_tdx_vm_idx_valid(vm_idx))
+			deadline = per_cpu->l2_tsc_deadline_prev[vm_idx - 1];
+	}
+#endif
+	if (deadline == TDVPS_TSC_DEADLINE_DISARMED)
+		return TIMER_NOTARMED;
+
+	time = 0;
+	now = rdtsc();
+	if (deadline > now) {
+		/*
+		 * ktime_t is nsec.
+		 * 1 TSC tick = 1 / (tsc_khz * 1000) sec
+		 *            = 1000 * 1000 / tsc_khz nsec
+		 */
+		time = mul_u64_u64_div_u64(deadline - now, 1000 * 1000, tsc_khz);
+		if (time < 0)
+			time = KTIME_MAX;
+	}
+
+	hrtimer_start(timer, time, HRTIMER_MODE_REL_PINNED);
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	this_cpu_ptr(&mshv_vtl_per_cpu)->l2_hlt_tsc_deadline = deadline;
+#endif
+	return TIMER_ARMED;
+}
+
+static enum TDX_HALT_TIMER mshv_tdx_halt_timer_pre(bool try_arm)
+{
+	if (!hv_isolation_type_tdx())
+		return TIMER_NOTARMED;
+
+	if (!try_arm)
+		return TIMER_NOTARMED;
+
+	return mshv_tdx_setup_halt_timer();
+}
+
+static void mshv_tdx_halt_timer_post(enum TDX_HALT_TIMER armed)
+{
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	struct mshv_vtl_per_cpu *per_cpu;
+	struct tdx_vp_context *context;
+#endif
+	struct hrtimer *timer;
+
+	if (armed != TIMER_ARMED)
+		return;
+
+	timer = tdx_this_halt_timer();
+	if (!timer)
+		return;
+
+	hrtimer_cancel(timer);
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	if (per_cpu->l2_hlt_tsc_deadline > rdtsc())
+		return;
+
+	/*
+	 * Emulate timer expiry as if preemption timer expires with
+	 * tdg.vp.enter().
+	 */
+	context = &mshv_vtl_this_run()->tdx_context;
+	context->exit_info.rax = EXIT_REASON_PREEMPTION_TIMER;
+
+	mshv_tdx_tsc_deadline_expired(context);
+
+	context->l2_tsc_deadline.update &= ~MSHV_VTL_TDX_L2_DEADLINE_UPDATE;
+#endif
+}
+
 static bool in_idle_is_enabled;
 DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 
@@ -1051,8 +1206,11 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 	struct hv_vtl_cpu_context *cpu_ctx = &this_run->cpu_context;
 	u32 flags = READ_ONCE(this_run->flags);
 	union hv_input_vtl target_vtl = READ_ONCE(this_run->target_vtl);
+	enum TDX_HALT_TIMER armed;
 
 	trace_mshv_vtl_enter_vtl0_rcuidle(cpu_ctx);
+
+	armed = mshv_tdx_halt_timer_pre(flags & MSHV_VTL_RUN_FLAG_HALTED);
 
 	/* A VTL2 TDX kernel doesn't allocate hv_vp_assist_page at the moment */
 	hvp = hv_vp_assist_page ? hv_vp_assist_page[smp_processor_id()] : NULL;
@@ -1075,6 +1233,8 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 	}
 
 	hv_vtl_return(cpu_ctx, target_vtl, flags, mshv_vsm_page_offsets.vtl_return_offset);
+
+	mshv_tdx_halt_timer_post(armed);
 
 	if (!hvp)
 		return;
@@ -1105,7 +1265,13 @@ static void mshv_vtl_idle(void)
 		}
 		raw_local_irq_enable();
 	} else {
+		enum TDX_HALT_TIMER armed;
+
+		armed = mshv_tdx_halt_timer_pre(true);
+
 		hv_vtl_idle();
+
+		mshv_tdx_halt_timer_post(armed);
 	}
 }
 
