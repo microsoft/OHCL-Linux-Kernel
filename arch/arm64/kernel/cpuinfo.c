@@ -24,6 +24,7 @@
 #include <linux/sched.h>
 #include <linux/smp.h>
 #include <linux/delay.h>
+#include <linux/ktime.h>
 
 /*
  * In case the boot CPU is hotpluggable, we record its initial state and
@@ -494,8 +495,20 @@ static void __cpuinfo_store_cpu(struct cpuinfo_arm64 *info)
 void cpuinfo_store_cpu(void)
 {
 	struct cpuinfo_arm64 *info = this_cpu_ptr(&cpu_data);
+	unsigned int cpu = smp_processor_id();
+	ktime_t t_start, t_now;
+
+	t_start = ktime_get();
 	__cpuinfo_store_cpu(info);
+	t_now = ktime_get();
+	pr_info("CPU%u: [CPUINFO] __cpuinfo_store_cpu: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
+
+	t_start = t_now;
 	update_cpu_features(smp_processor_id(), info, &boot_cpu_data);
+	t_now = ktime_get();
+	pr_info("CPU%u: [CPUINFO] update_cpu_features: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
 }
 
 void __init cpuinfo_store_boot_cpu(void)

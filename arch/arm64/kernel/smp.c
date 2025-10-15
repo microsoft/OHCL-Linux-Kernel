@@ -35,6 +35,7 @@
 #include <linux/kgdb.h>
 #include <linux/kvm_host.h>
 #include <linux/nmi.h>
+#include <linux/ktime.h>
 
 #include <asm/alternative.h>
 #include <asm/atomic.h>
@@ -206,6 +207,9 @@ asmlinkage notrace void secondary_start_kernel(void)
 	struct mm_struct *mm = &init_mm;
 	const struct cpu_operations *ops;
 	unsigned int cpu = smp_processor_id();
+	ktime_t t_start, t_now;
+
+	t_start = ktime_get();
 
 	/*
 	 * All kernel threads share the same mm context; grab a
@@ -214,17 +218,29 @@ asmlinkage notrace void secondary_start_kernel(void)
 	mmgrab(mm);
 	current->active_mm = mm;
 
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] mmgrab+active_mm: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
+
 	/*
 	 * TTBR0 is only used for the identity mapping at this stage. Make it
 	 * point to zero page to avoid speculatively fetching new entries.
 	 */
 	cpu_uninstall_idmap();
 
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] cpu_uninstall_idmap: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
+
 	if (system_uses_irq_prio_masking())
 		init_gic_priority_masking();
 
 	rcutree_report_cpu_starting(cpu);
 	trace_hardirqs_off();
+
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] pre-check_local_cpu_capabilities: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
 
 	/*
 	 * If the system has established the capabilities, make sure
@@ -233,24 +249,53 @@ asmlinkage notrace void secondary_start_kernel(void)
 	 */
 	check_local_cpu_capabilities();
 
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] check_local_cpu_capabilities: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
+
 	ops = get_cpu_ops(cpu);
 	if (ops->cpu_postboot)
 		ops->cpu_postboot();
+
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] cpu_postboot: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
 
 	/*
 	 * Log the CPU info before it is marked online and might get read.
 	 */
 	cpuinfo_store_cpu();
+
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] cpuinfo_store_cpu: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
+
 	store_cpu_topology(cpu);
+
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] store_cpu_topology: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
 
 	/*
 	 * Enable GIC and timers.
 	 */
 	notify_cpu_starting(cpu);
 
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] notify_cpu_starting: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
+
 	ipi_setup(cpu);
 
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] ipi_setup: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
+
 	numa_add_cpu(cpu);
+
+	t_now = ktime_get();
+	pr_info("CPU%u: [TIMING] numa_add_cpu: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(t_now, t_start)));
 
 	/*
 	 * OK, now it's safe to let the boot CPU continue.  Wait for
@@ -260,6 +305,8 @@ asmlinkage notrace void secondary_start_kernel(void)
 	pr_info("CPU%u: Booted secondary processor 0x%010lx [0x%08x]\n",
 					 cpu, (unsigned long)mpidr,
 					 read_cpuid_id());
+	pr_info("CPU%u: [TIMING] TOTAL secondary_start_kernel: %lld us\n", cpu, 
+		ktime_to_us(ktime_sub(ktime_get(), t_start)));
 	update_cpu_boot_status(CPU_BOOT_SUCCESS);
 	set_cpu_online(cpu, true);
 	complete(&cpu_running);
