@@ -239,6 +239,19 @@ mshv_ioctl_create_vtl(void __user *user_arg, struct device *module_dev)
 	return fd;
 }
 
+static long mshv_tdx_vtl_ioctl_check_extension(u32 arg)
+{
+	if (!IS_ENABLED(CONFIG_INTEL_TDX_GUEST))
+		return -EOPNOTSUPP;
+
+	switch (arg) {
+	case MSHV_CAP_LOWER_VTL_TIMER_VIRT:
+		return 1;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static long
 mshv_ioctl_check_extension(void __user *user_arg)
 {
@@ -256,6 +269,10 @@ mshv_ioctl_check_extension(void __user *user_arg)
 		return mshv_vsm_capabilities.return_action_available;
 	case MSHV_CAP_DR6_SHARED:
 		return mshv_vsm_capabilities.dr6_shared;
+	case MSHV_CAP_LOWER_VTL_TIMER_VIRT:
+		if (hv_isolation_type_tdx())
+			return mshv_tdx_vtl_ioctl_check_extension(arg);
+		return 0;
 	}
 
 	return -EOPNOTSUPP;
