@@ -294,6 +294,7 @@ struct mshv_get_set_vp_state {
 #define MSHV_CAP_REGISTER_PAGE          0x1
 #define MSHV_CAP_VTL_RETURN_ACTION      0x2
 #define MSHV_CAP_DR6_SHARED             0x3
+#define MSHV_CAP_LOWER_VTL_TIMER_VIRT   0x4
 #define MSHV_MAX_RUN_MSG_SIZE                256
 
 struct mshv_vp_registers {
