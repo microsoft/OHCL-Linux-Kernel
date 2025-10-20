@@ -312,6 +312,19 @@ static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask
 }
 #endif
 
+static long mshv_tdx_vtl_ioctl_check_extension(u32 arg)
+{
+	if (!IS_ENABLED(CONFIG_INTEL_TDX_GUEST))
+		return -EOPNOTSUPP;
+
+	switch (arg) {
+	case MSHV_CAP_LOWER_VTL_TIMER_VIRT:
+		return 1;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static long __mshv_vtl_ioctl_check_extension(u32 arg)
 {
 	switch (arg) {
@@ -321,6 +334,10 @@ static long __mshv_vtl_ioctl_check_extension(u32 arg)
 		return mshv_vsm_capabilities.return_action_available;
 	case MSHV_CAP_DR6_SHARED:
 		return mshv_vsm_capabilities.dr6_shared;
+	case MSHV_CAP_LOWER_VTL_TIMER_VIRT:
+		if (hv_isolation_type_tdx())
+			return mshv_tdx_vtl_ioctl_check_extension(arg);
+		break;
 	}
 
 	return -EOPNOTSUPP;
