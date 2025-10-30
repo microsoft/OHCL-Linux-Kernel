@@ -1759,7 +1759,24 @@ out:
 
 static int mshv_vtl_unmap_redirected_intr(u32 hw_vector, u32 apic_id)
 {
-	return -ENODEV;
+	struct redirected_intr *rintr;
+
+	if (hw_vector  > 255)
+		return -EINVAL;
+
+	guard(mutex)(&redirected_intr_lock);
+	list_for_each_entry(rintr, &redirected_intr_list, list) {
+		unsigned int vector = irq_cfg(rintr->irq)->vector;
+
+		if (vector == hw_vector && rintr->apic_id == apic_id) {
+			free_irq(rintr->irq, rintr);
+			list_del(&rintr->list);
+			kfree(rintr);
+			return 0;
+		}
+	}
+
+	return -ENOENT;
 }
 
 static long mshv_vtl_ioctl_setup_redirected_intr(void __user *user_arg)
