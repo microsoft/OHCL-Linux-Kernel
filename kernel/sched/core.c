@@ -2233,8 +2233,12 @@ unsigned long wait_task_inactive(struct task_struct *p, unsigned int match_state
 		 * If task is sched_delayed, force dequeue it, to avoid always
 		 * hitting the tick timeout in the queued case
 		 */
-		if (p->se.sched_delayed)
+		if (p->se.sched_delayed) {
 			dequeue_task(rq, p, DEQUEUE_SLEEP | DEQUEUE_DELAYED);
+			/* Instrumentation: observe how often we hit the delayed dequeue path */
+			pr_info("wait_task_inactive: CPU%d dequeued delayed task pid=%d (%s)\n",
+			       rq->cpu, p->pid, p->comm);
+		}
 		trace_sched_wait_task(p);
 		running = task_on_cpu(rq, p);
 		queued = task_on_rq_queued(p);
