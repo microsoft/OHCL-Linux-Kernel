@@ -1,0 +1,22 @@
+# Reproducible Build Environment Record
+# Auto-generated on first build
+# Generated: 2025-11-12 06:00:12 UTC
+#
+# This file records the exact versions of all build dependencies.
+# Subsequent builds will verify against these versions to ensure reproducibility.
+
+[CRITICAL - Toolchain]
+# These directly affect binary output - must match for reproducibility
+GCC_VERSION=13.3.0
+BINUTILS_VERSION=2.42
+MAKE_VERSION=4.3
+
+[IMPORTANT - Build Tools]
+# These can affect generated code - version differences cause warnings
+FLEX_VERSION=2.6.4
+BISON_VERSION=3.8.2
+
+[ENVIRONMENT]
+# System information for complete reproducibility record
+OS_RELEASE=Ubuntu 24.04.3 LTS
+BASELINE_DATE=2025-11-12 06:00:12 UTC
