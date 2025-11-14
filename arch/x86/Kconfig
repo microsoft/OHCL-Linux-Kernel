@@ -1135,13 +1135,6 @@ config X86_LOCAL_APIC
 	depends on X86_64 || SMP || X86_32_NON_STANDARD || X86_UP_APIC || PCI_MSI
 	select IRQ_DOMAIN_HIERARCHY
 
-config X86_MAILBOX_WAKEUP
-	def_bool y
-	depends on ACPI_MADT_WAKEUP
-	depends on X86_64
-	depends on SMP
-	depends on X86_LOCAL_APIC
-
 config ACPI_MADT_WAKEUP
 	def_bool y
 	depends on X86_64
