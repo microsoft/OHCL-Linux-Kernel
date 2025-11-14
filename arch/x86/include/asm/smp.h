@@ -154,7 +154,6 @@ static inline struct cpumask *cpu_l2c_shared_mask(int cpu)
 
 void acpi_setup_mp_wakeup_mailbox(u64 addr);
 struct acpi_madt_multiproc_wakeup_mailbox *acpi_get_mp_wakeup_mailbox(void);
-u64 acpi_get_mp_wakeup_mailbox_paddr(void);
 
 #else /* !CONFIG_SMP */
 #define wbinvd_on_cpu(cpu)     wbinvd()
