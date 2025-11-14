@@ -278,8 +278,7 @@ int __init hv_vtl_early_init(void)
 	 * Otherwise, use an enlightened path since SIPI is not
 	 * available for VTL2.
 	 */
-	if (!((hv_isolation_type_snp() || hv_isolation_type_tdx())
-	    && !hyperv_paravisor_present))
+	if (!(hv_isolation_type_snp() && !hyperv_paravisor_present))
 		apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
 
 	return 0;
