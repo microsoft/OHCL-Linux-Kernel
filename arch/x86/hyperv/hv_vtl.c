@@ -260,7 +260,7 @@ static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip, unsi
 		return -EINVAL;
 	}
 
-	return hv_vtl_bringup_vcpu(vp_index, apicid, start_eip);
+	return hv_vtl_bringup_vcpu(vp_index, cpu, start_eip);
 }
 
 /*
@@ -290,7 +290,8 @@ int __init hv_vtl_early_init(void)
 	 * Otherwise, use an enlightened path since SIPI is not
 	 * available for VTL2.
 	 */
-	if (!(hv_isolation_type_snp() && !ms_hyperv.paravisor_present))
+	if (!((hv_isolation_type_snp() || hv_isolation_type_tdx()) &&
+	      !ms_hyperv.paravisor_present))
 		apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
 
 	return 0;
