@@ -210,6 +210,7 @@ struct mshv_vtl_per_cpu {
 	u64 l1_msr_tsc_aux;
 	u64 l2_tsc_deadline_prev[MSHV_VTL_NUM_L2_VM];
 	u64 l2_hlt_tsc_deadline;
+	bool l2_tsc_deadline_expired[MSHV_VTL_NUM_L2_VM];
 	bool msrs_are_guest;
 	struct user_return_notifier mshv_urn;
 #endif
@@ -677,6 +678,8 @@ static void mshv_vtl_set_tsc_deadline(u64 vm_idx, u64 deadline)
 {
 	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
 
+	per_cpu->l2_tsc_deadline_expired[vm_idx - 1] = false;
+
 	if (deadline == per_cpu->l2_tsc_deadline_prev[vm_idx - 1])
 		return;
 
@@ -955,6 +958,7 @@ static void mshv_vtl_on_user_return(struct user_return_notifier *urn)
 static void mshv_vtl_return_tdx_tsc_deadline(struct mshv_vtl_run *vtl_run)
 {
 	struct tdx_vp_context *context = &vtl_run->tdx_context;
+	struct mshv_vtl_per_cpu *per_cpu;
 	u64 vm_idx, deadline;
 
 	/* L2 VM index is encoded in entry_rcx for TDG.VP.ENTER(). */
@@ -962,8 +966,13 @@ static void mshv_vtl_return_tdx_tsc_deadline(struct mshv_vtl_run *vtl_run)
 	if (!is_tdx_vm_idx_valid(vm_idx))
 		return;
 
-	if (!(context->l2_tsc_deadline.update & MSHV_VTL_TDX_L2_DEADLINE_UPDATE))
+	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	if (!(context->l2_tsc_deadline.update & MSHV_VTL_TDX_L2_DEADLINE_UPDATE)) {
+		if (per_cpu->l2_tsc_deadline_expired[vm_idx - 1])
+			mshv_vtl_set_tsc_deadline(vm_idx, TDVPS_TSC_DEADLINE_DISARMED);
+
 		return;
+	}
 
 	deadline = tsc_deadline_to_tdvps(context->l2_tsc_deadline.deadline);
 	mshv_vtl_set_tsc_deadline(vm_idx, deadline);
@@ -974,12 +983,13 @@ static void mshv_vtl_return_tdx_tsc_deadline(struct mshv_vtl_run *vtl_run)
 
 static void mshv_tdx_tsc_deadline_expired(struct tdx_vp_context *context)
 {
+	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
 	u64 vm_idx = TDG_VP_ENTRY_VM_IDX(context->entry_rcx);
 
 	if (!is_tdx_vm_idx_valid(vm_idx))
 		return;
 
-	mshv_vtl_set_tsc_deadline(vm_idx, TDVPS_TSC_DEADLINE_DISARMED);
+	per_cpu->l2_tsc_deadline_expired[vm_idx - 1] = true;
 }
 
 void mshv_vtl_return_tdx(void)
@@ -1121,9 +1131,11 @@ static enum TDX_HALT_TIMER mshv_tdx_setup_halt_timer(void)
 
 		/*
 		 * If we run L2 vCPU before entering the L0 HLT emulation, we
-		 * may have issued tdg.vp.wr(TSC DEADLINE).
+		 * may have issued tdg.vp.wr(TSC DEADLINE) and the timer may
+		 * have been expired.
 		 */
-		if (is_tdx_vm_idx_valid(vm_idx))
+		if (is_tdx_vm_idx_valid(vm_idx) &&
+		    !per_cpu->l2_tsc_deadline_expired[vm_idx - 1])
 			deadline = per_cpu->l2_tsc_deadline_prev[vm_idx - 1];
 	}
 #endif
