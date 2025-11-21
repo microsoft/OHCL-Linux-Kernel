@@ -208,6 +208,7 @@ struct mshv_vtl_per_cpu {
 	u64 l1_msr_lstar;
 	u64 l1_msr_sfmask;
 	u64 l1_msr_tsc_aux;
+	u64 l2_tsc_deadline_prev[MSHV_VTL_NUM_L2_VM];
 	bool msrs_are_guest;
 	struct user_return_notifier mshv_urn;
 #endif
@@ -657,6 +658,17 @@ static void mshv_write_tdx_apic_page(u64 apic_page_gpa)
         panic("write tdx apic page failed: %llx\n", status);
 }
 
+static void mshv_vtl_set_tsc_deadline(u64 vm_idx, u64 deadline)
+{
+	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+
+	if (deadline == per_cpu->l2_tsc_deadline_prev[vm_idx - 1])
+		return;
+
+	tdg_vp_wr(TDVPS_TSC_DEADLINE + vm_idx, deadline, ~0ULL);
+	per_cpu->l2_tsc_deadline_prev[vm_idx - 1] = deadline;
+}
+
 #endif
 
 static int mshv_vtl_alloc_context(unsigned int cpu)
@@ -697,7 +709,8 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		mshv_vtl_this_run()->tdx_context.l2_tsc_deadline.deadline =
 			MSHV_VTL_TDX_L2_DEADLINE_DISARMED;
 		for (vm_idx = 1; vm_idx <= MSHV_VTL_NUM_L2_VM; vm_idx++)
-			tdg_vp_wr(TDVPS_TSC_DEADLINE + vm_idx, TDVPS_TSC_DEADLINE_DISARMED, ~0ULL);
+			mshv_vtl_set_tsc_deadline(vm_idx,
+						  TDVPS_TSC_DEADLINE_DISARMED);
 #endif
 	} else if (hv_isolation_type_snp()) {
 #ifdef CONFIG_X86_64
@@ -936,7 +949,7 @@ static void mshv_vtl_return_tdx_tsc_deadline(struct mshv_vtl_run *vtl_run)
 		return;
 
 	deadline = tsc_deadline_to_tdvps(context->l2_tsc_deadline.deadline);
-	tdg_vp_wr(TDVPS_TSC_DEADLINE + vm_idx, deadline, ~0ULL);
+	mshv_vtl_set_tsc_deadline(vm_idx, deadline);
 
 	/* Tell the userspace that the kernel consumed the deadline */
 	context->l2_tsc_deadline.update &= ~MSHV_VTL_TDX_L2_DEADLINE_UPDATE;
@@ -949,7 +962,7 @@ static void mshv_tdx_tsc_deadline_expired(struct tdx_vp_context *context)
 	if (!is_tdx_vm_idx_valid(vm_idx))
 		return;
 
-	tdg_vp_wr(TDVPS_TSC_DEADLINE + vm_idx, TDVPS_TSC_DEADLINE_DISARMED, ~0ULL);
+	mshv_vtl_set_tsc_deadline(vm_idx, TDVPS_TSC_DEADLINE_DISARMED);
 }
 
 void mshv_vtl_return_tdx(void)
