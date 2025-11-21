@@ -31,6 +31,7 @@
 #include <asm/set_memory.h>
 
 #ifdef CONFIG_X86_64
+#include <linux/cleanup.h>
 
 #include <asm/apic.h>
 #include <uapi/asm/mtrr.h>
@@ -221,19 +222,29 @@ struct apicid_to_cpuid_entry {
 	struct hlist_node node;
 };
 
+static int get_cpuid(int apicid)
+{
+	struct apicid_to_cpuid_entry *found;
+
+	hash_for_each_possible(apicid_to_cpuid, found, node, apicid) {
+		if (found->apicid == apicid)
+			return found->cpuid;
+	}
+
+	return -EINVAL;
+}
+
 /*
  * Sets the cpu described by apicid in cpu_mask.
  * Returns 0 on success, -EINVAL if no cpu matches the apicid.
  */
 static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask)
 {
-	struct apicid_to_cpuid_entry *found;
 
-	hash_for_each_possible(apicid_to_cpuid, found, node, apicid) {
-		if (found->apicid != apicid)
-			continue;
+	int cpu = get_cpuid(apicid);
 
-		cpumask_set_cpu(found->cpuid, cpu_mask);
+	if (cpu >= 0) {
+		cpumask_set_cpu(cpu, cpu_mask);
 		return 0;
 	}
 
@@ -432,13 +443,22 @@ static int mshv_vtl_get_vsm_regs(void)
 	return ret;
 }
 
+static void do_assert_single_proxy_intr(const u32 vector, struct mshv_vtl_run *run)
+{
+	/* See mshv_tdx_handle_simple_icr_write() on how the bank and bit are computed. */
+	const u32 bank = vector >> 5;
+	const u32 masked_irr = BIT(vector & 0x1f) & ~READ_ONCE(run->proxy_irr_blocked[bank]);
+
+	/* nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write */
+	atomic_or(masked_irr, (atomic_t *)&run->proxy_irr[bank]);
+}
+
 static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 {
 	struct hv_message *msg;
 	u32 message_type;
 	struct hv_x64_proxy_interrupt_message_payload *proxy;
 	struct mshv_vtl_run *run;
-	u32 vector;
 
 	msg = (struct hv_message *)per_cpu->synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
 	for (;;) {
@@ -468,13 +488,9 @@ static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 			}
 		} else {
 			/* A malicious hypervisor might set a vector > 255. */
-			vector = READ_ONCE(proxy->u.asserted_vector) & 0xff;
-			const u32 bank = vector / 32;
-			const u32 masked_irr = BIT(vector % 32) &
-				~READ_ONCE(run->proxy_irr_blocked[bank]);
+			const u32 vector = READ_ONCE(proxy->u.asserted_vector) & 0xff;
 
-			/* nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write */
-			atomic_or(masked_irr, (atomic_t *)&run->proxy_irr[bank]);
+			do_assert_single_proxy_intr(vector, run);
 		}
 
 		WRITE_ONCE(run->scan_proxy_irr, 1);
@@ -1122,8 +1138,8 @@ static int mshv_tdx_handle_simple_icr_write(struct tdx_vp_context *context)
 	const u32 dest = context->l2_enter_guest_state.rdx;
 	const u8 shorthand = (icr_lo >> 18) & 0b11;
 	const u8 vector = icr_lo;
-	const u64 bank = vector / 32;
-	const u32 mask = BIT(vector % 32);
+	const u64 bank = vector >> 5; /* Each bank is 32 bits. Divide by 32 to find the bank. */
+	const u32 mask = BIT(vector & 0x1f); /* Bit in the bank is the remainder of the division. */
 	const u32 self = smp_processor_id();
 
 	bool send_ipi = false;
@@ -1569,6 +1585,234 @@ static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
 
 	return copy_to_user(user_arg, &value, sizeof(value)) ? -EFAULT : 0;
 }
+
+static int hyperv_vtl_redirected_intr_alloc(struct irq_domain *domain, unsigned int virq,
+					    unsigned int nr_irqs, void *arg)
+{
+	int ret;
+
+	ret = irq_domain_alloc_irqs_parent(domain, virq, nr_irqs, arg);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * The dummy chip does not have irq_set_affinity(). The affinity of an
+	 * IRQ cannot be changed after initialization (see
+	 * __irq_can_set_affinity()).
+	 */
+	irq_set_chip_and_handler(virq, &dummy_irq_chip, handle_simple_irq);
+
+	return 0;
+}
+
+static const struct irq_domain_ops hyperv_vtl_redirected_intr_ops = {
+	.alloc = hyperv_vtl_redirected_intr_alloc,
+	.free = irq_domain_free_irqs_common,
+};
+
+#define REDIRECTED_INTR_NAME_LEN 64
+struct redirected_intr {
+	int irq;
+	int proxy_vector;
+	u32 apic_id;
+	char name[REDIRECTED_INTR_NAME_LEN];
+	struct list_head list;
+};
+
+static struct list_head redirected_intr_list;
+static struct mutex redirected_intr_lock;
+
+static struct irq_domain *redirected_intr_domain;
+static struct fwnode_handle *redirected_intr_fwnode;
+
+static int __init ms_hyperv_init_redirected_intr(void)
+{
+	redirected_intr_fwnode = irq_domain_alloc_named_fwnode("hyperv-redirected-intr");
+	if (!redirected_intr_fwnode)
+		return -ENODEV;
+
+	redirected_intr_domain = irq_domain_create_hierarchy(x86_vector_domain, 0, 0,
+							     redirected_intr_fwnode,
+							     &hyperv_vtl_redirected_intr_ops,
+							     NULL);
+	if (!redirected_intr_domain) {
+		irq_domain_free_fwnode(redirected_intr_fwnode);
+		return -ENODEV;
+	}
+
+	INIT_LIST_HEAD(&redirected_intr_list);
+	mutex_init(&redirected_intr_lock);
+
+	return 0;
+}
+
+static void ms_hyperv_free_redirected_intr(void)
+{
+	struct redirected_intr *rintr, *tmp;
+
+	guard(mutex)(&redirected_intr_lock);
+	if (!redirected_intr_domain)
+		return;
+
+	list_for_each_entry_safe(rintr, tmp, &redirected_intr_list, list) {
+		free_irq(rintr->irq, rintr);
+		list_del(&rintr->list);
+		kfree(rintr);
+	}
+
+	irq_domain_remove(redirected_intr_domain);
+	irq_domain_free_fwnode(redirected_intr_fwnode);
+	redirected_intr_domain = NULL;
+	redirected_intr_fwnode = NULL;
+}
+
+static irqreturn_t handle_single_proxy_intr(int irq, void *data)
+{
+	struct mshv_vtl_run *run = mshv_vtl_this_run();
+	struct redirected_intr *rintr = data;
+
+	/*
+	 * This function is called when the proxy interrupt is triggered.
+	 * We assert that only one proxy interrupt is active at a time.
+	 */
+	do_assert_single_proxy_intr(rintr->proxy_vector, run);
+	WRITE_ONCE(run->scan_proxy_irr, 1);
+
+	apic_eoi();
+
+	return IRQ_HANDLED;
+}
+
+/* must be called with redirected_intr_lock */
+static struct redirected_intr *find_redirect_intr(u32 proxy_vector, u32 apic_id)
+{
+	struct redirected_intr *rintr;
+
+	list_for_each_entry(rintr, &redirected_intr_list, list) {
+		if (rintr->proxy_vector == proxy_vector &&
+		    rintr->apic_id == apic_id)
+			return rintr;
+	}
+
+	return NULL;
+}
+
+static int mshv_vtl_map_redirected_intr(u32 proxy_vector, u32 apic_id)
+{
+	struct irq_affinity_desc affinity_desc = {};
+	struct irq_alloc_info info = {};
+	struct redirected_intr *rintr;
+	int irq, ret, cpu;
+
+	if (proxy_vector > 255)
+		return -EINVAL;
+
+	cpu = get_cpuid(apic_id);
+	if (cpu < 0 || !cpu_online(cpu))
+		return -EINVAL;
+
+	guard(mutex)(&redirected_intr_lock);
+
+	rintr = find_redirect_intr(proxy_vector, apic_id);
+	if (rintr)
+		/* Already mapped. Just return the HW vector we are using. */
+		return irq_cfg(rintr->irq)->vector;
+
+	rintr = kzalloc(sizeof(*rintr), GFP_KERNEL);
+	if (!rintr)
+		return -ENOMEM;
+
+	cpumask_set_cpu(cpu, &affinity_desc.mask);
+
+	/* The x86_vector_domain needs a non-NULL info. */
+	irq = __irq_domain_alloc_irqs(redirected_intr_domain, -1, 1, NUMA_NO_NODE,
+				      &info, false, &affinity_desc);
+	if (irq < 0) {
+		ret = irq;
+		goto out;
+	}
+
+	snprintf(rintr->name, REDIRECTED_INTR_NAME_LEN,
+		 "hyperv-redir-intr-%x.%x", apic_id, proxy_vector);
+	/*
+	 * We do not want the IRQ to be moved to a different CPU. Both user
+	 * space and the hypervisor have agreed on the CPU that the interrupt
+	 * should target.
+	 */
+	ret = request_irq(irq, handle_single_proxy_intr, IRQF_NOBALANCING,
+			  rintr->name, rintr);
+	if (ret)
+		goto out;
+
+	rintr->irq = irq;
+	rintr->proxy_vector = proxy_vector;
+	rintr->apic_id = apic_id;
+	INIT_LIST_HEAD(&rintr->list);
+	list_add(&rintr->list, &redirected_intr_list);
+
+	return irq_cfg(irq)->vector;
+
+out:
+	kfree(rintr);
+	return ret;
+}
+
+static int mshv_vtl_unmap_redirected_intr(u32 hw_vector, u32 apic_id)
+{
+	struct redirected_intr *rintr;
+
+	if (hw_vector  > 255)
+		return -EINVAL;
+
+	guard(mutex)(&redirected_intr_lock);
+	list_for_each_entry(rintr, &redirected_intr_list, list) {
+		unsigned int vector = irq_cfg(rintr->irq)->vector;
+
+		if (vector == hw_vector && rintr->apic_id == apic_id) {
+			free_irq(rintr->irq, rintr);
+			list_del(&rintr->list);
+			kfree(rintr);
+			return 0;
+		}
+	}
+
+	return -ENOENT;
+}
+
+static long mshv_vtl_ioctl_setup_redirected_intr(void __user *user_arg)
+{
+	struct mshv_map_device_intr intr_data;
+	int ret;
+
+	if (copy_from_user(&intr_data, user_arg, sizeof(intr_data)))
+		return (long)-EFAULT;
+
+	/* User space provides the hardware vector to unmap. */
+	if (!intr_data.create_mapping)
+		return (long)mshv_vtl_unmap_redirected_intr(intr_data.vector,
+							    intr_data.apic_id);
+
+	/*
+	 * User space provides the proxy vector it wants to map to a hardware
+	 * vector.
+	 */
+	ret = mshv_vtl_map_redirected_intr(intr_data.vector, intr_data.apic_id);
+	if (ret < 0)
+		return (long)ret;
+
+	/*
+	 * The return value is the hardware vector to which the proxy vector
+	 * is mapped.
+	 */
+	intr_data.vector = ret;
+	ret = copy_to_user(user_arg, &intr_data, sizeof(intr_data)) ? -EFAULT : 0;
+
+	return (long)ret;
+}
+
+#else
+static inline int ms_hyperv_init_redirected_intr(void) { return 0; }
+static inline void ms_hyperv_free_redirected_intr(void) { }
 #endif
 
 #if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
@@ -2062,6 +2306,9 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;
 	case MSHV_VTL_READ_VMX_CR4_FIXED1:
 		ret = mshv_vtl_ioctl_read_vmx_cr4_fixed1((void __user *)arg);
+		break;
+	case MSHV_VTL_MAP_REDIRECTED_DEVICE_INTERRUPT:
+		ret = mshv_vtl_ioctl_setup_redirected_intr((void __user *)arg);
 		break;
 #endif
 
@@ -2814,6 +3061,10 @@ static int __init mshv_vtl_init(void)
 		goto free_mem;
 	}
 
+	ret = ms_hyperv_init_redirected_intr();
+	if (ret)
+		goto free_mem;
+
 	mshv_vtl_init_memory();
 	mshv_vtl_set_idle(mshv_vtl_idle);
 
@@ -2843,6 +3094,7 @@ unset_func:
 static void __exit mshv_vtl_exit(void)
 {
 	mshv_setup_vtl_func(NULL, NULL, NULL);
+	ms_hyperv_free_redirected_intr();
 	mshv_tdx_free_apicid_to_cpuid_mapping();
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
