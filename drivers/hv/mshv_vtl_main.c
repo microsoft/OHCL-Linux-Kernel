@@ -1428,6 +1428,9 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		hvp = hv_vp_assist_page[smp_processor_id()];
 		this_cpu_inc(num_vtl0_transitions);
 		switch (hvp->vtl_entry_reason) {
+		case 0:
+			pr_warn_once("mshv_vtl: reserved entry reason 0, treating as interrupt\n");
+			fallthrough;
 		case MSHV_ENTRY_REASON_INTERRUPT:
 			if (!mshv_vsm_capabilities.intercept_page_available &&
 			    likely(!mshv_vtl_process_intercept()))
