@@ -21,10 +21,6 @@
  */
 #define HV_IOAPIC_BASE_ADDRESS 0xfec00000
 
-#define HV_VTL_NORMAL 0x0
-#define HV_VTL_SECURE 0x1
-#define HV_VTL_MGMT   0x2
-
 union hv_ghcb;
 
 DECLARE_STATIC_KEY_FALSE(isolation_type_snp);
@@ -305,6 +301,7 @@ void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 void mshv_vtl_return_call_init(u64 vtl_return_offset);
 void mshv_vtl_return_hypercall(void);
 void __mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
+int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set);
 #else
 static inline void __init hv_vtl_init_platform(void) {}
 static inline int __init hv_vtl_early_init(void) { return 0; }

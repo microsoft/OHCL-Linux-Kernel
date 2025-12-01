@@ -26,6 +26,8 @@
  * requires a hypercall.
  */
 
+struct hv_get_vp_registers_output;
+
 void hv_set_vpreg(u32 reg, u64 value);
 u64 hv_get_vpreg(u32 reg);
 void hv_get_vpreg_128(u32 reg, struct hv_get_vp_registers_output *result);
@@ -60,6 +62,46 @@ static inline u64 hv_get_non_nested_msr(unsigned int reg)
 				ARM_SMCCC_SMC_64,		\
 				ARM_SMCCC_OWNER_VENDOR_HYP,	\
 				HV_SMCCC_FUNC_NUMBER)
+
+struct mshv_vtl_cpu_context {
+   /*
+	* NOTE: x18 is managed by the hypervisor. It won't be reloaded from this array.
+	* It is included here for convenience in the common case.
+	*/
+	__u64 x[31];
+	__u64 rsvd;
+	__uint128_t q[32];
+};
+
+void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
+
+struct hv_register_assoc;
+
+/*
+ * Set the register. If the function returns `1`, that must be done via
+ * a hypercall. Returning `0` means success.
+ */
+static inline int hv_vtl_set_reg(struct hv_register_assoc *regs, bool shared)
+{
+	return 1;
+}
+
+/*
+ * Get the register. If the function returns `1`, that must be done via
+ * a hypercall. Returning `0` means success.
+ */
+static inline int hv_vtl_get_reg(struct hv_register_assoc *regs, bool shared)
+{
+	return 1;
+}
+
+#ifdef CONFIG_HYPERV_VTL_MODE
+void __init hv_vtl_init_platform(void);
+int __init hv_vtl_early_init(void);
+#else
+static inline void __init hv_vtl_init_platform(void) {}
+static inline int __init hv_vtl_early_init(void) { return 0; }
+#endif
 
 #include <asm-generic/mshyperv.h>
 
