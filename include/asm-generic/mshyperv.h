@@ -390,6 +390,9 @@ static inline int hv_deposit_memory(u64 partition_id, u64 status)
 }
 
 #if IS_ENABLED(CONFIG_HYPERV_VTL_MODE)
+#define HV_VTL_NORMAL 0x0
+#define HV_VTL_SECURE 0x1
+#define HV_VTL_MGMT   0x2
 u8 __init get_vtl(void);
 #else
 static inline u8 get_vtl(void) { return 0; }
