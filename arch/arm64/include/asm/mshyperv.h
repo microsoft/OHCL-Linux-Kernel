@@ -77,24 +77,11 @@ void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 
 struct hv_register_assoc;
 
-/*
- * Set the register. If the function returns `1`, that must be done via
- * a hypercall. Returning `0` means success.
- */
-static inline int hv_vtl_set_reg(struct hv_register_assoc *regs, bool shared)
+static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set)
 {
 	return 1;
 }
-
-/*
- * Get the register. If the function returns `1`, that must be done via
- * a hypercall. Returning `0` means success.
- */
-static inline int hv_vtl_get_reg(struct hv_register_assoc *regs, bool shared)
-{
-	return 1;
-}
-
+static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
 #ifdef CONFIG_HYPERV_VTL_MODE
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);

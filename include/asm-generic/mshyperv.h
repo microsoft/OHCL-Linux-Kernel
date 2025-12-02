@@ -26,6 +26,7 @@
 #include <linux/nmi.h>
 #include <asm/ptrace.h>
 #include <hyperv/hvhdk.h>
+#include <hyperv/hvgdk.h>
 
 #define VTPM_BASE_ADDRESS 0xfed40000
 
@@ -329,6 +330,8 @@ do { \
 #define hv_status_debug(status, fmt, ...) \
 	hv_status_printk(debug, status, fmt, ##__VA_ARGS__)
 
+extern struct hv_vp_assist_page **hv_vp_assist_page;
+
 const char *hv_result_to_string(u64 hv_status);
 int hv_result_to_errno(u64 status);
 void hyperv_report_panic(struct pt_regs *regs, long err, bool in_die);
@@ -390,6 +393,7 @@ static inline int hv_call_create_vp(int node, u64 partition_id, u32 vp_index, u3
 }
 #endif /* CONFIG_MSHV_ROOT */
 
+#define HV_VP_ASSIST_PAGE_ADDRESS_SHIFT	12
 #if IS_ENABLED(CONFIG_HYPERV_VTL_MODE)
 #define HV_VTL_NORMAL 0x0
 #define HV_VTL_SECURE 0x1

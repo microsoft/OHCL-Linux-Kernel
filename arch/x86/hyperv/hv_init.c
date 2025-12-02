@@ -81,9 +81,6 @@ union hv_ghcb * __percpu *hv_ghcb_pg;
 /* Storage to save the hypercall page temporarily for hibernation */
 static void *hv_hypercall_pg_saved;
 
-struct hv_vp_assist_page **hv_vp_assist_page;
-EXPORT_SYMBOL_GPL(hv_vp_assist_page);
-
 static int hyperv_init_ghcb(void)
 {
 	u64 ghcb_gpa;
@@ -117,58 +114,11 @@ static int hyperv_init_ghcb(void)
 
 static int hv_cpu_init(unsigned int cpu)
 {
-	union hv_vp_assist_msr_contents msr = { 0 };
-	struct hv_vp_assist_page **hvp;
 	int ret;
 
 	ret = hv_common_cpu_init(cpu);
 	if (ret)
 		return ret;
-
-	if (!hv_vp_assist_page)
-		return 0;
-
-	hvp = &hv_vp_assist_page[cpu];
-	if (hv_root_partition()) {
-		/*
-		 * For root partition we get the hypervisor provided VP assist
-		 * page, instead of allocating a new page.
-		 */
-		rdmsrq(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-		*hvp = memremap(msr.pfn << HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_SHIFT,
-				PAGE_SIZE, MEMREMAP_WB);
-	} else {
-		/*
-		 * The VP assist page is an "overlay" page (see Hyper-V TLFS's
-		 * Section 5.2.1 "GPA Overlay Pages"). Here it must be zeroed
-		 * out to make sure we always write the EOI MSR in
-		 * hv_apic_eoi_write() *after* the EOI optimization is disabled
-		 * in hv_cpu_die(), otherwise a CPU may not be stopped in the
-		 * case of CPU offlining and the VM will hang.
-		 */
-		if (!*hvp) {
-			*hvp = __vmalloc(PAGE_SIZE, GFP_KERNEL | __GFP_ZERO);
-
-			/*
-			 * Hyper-V should never specify a VM that is a Confidential
-			 * VM and also running in the root partition. Root partition
-			 * is blocked to run in Confidential VM. So only decrypt assist
-			 * page in non-root partition here.
-			 */
-			if (*hvp && !ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
-				WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1));
-				memset(*hvp, 0, PAGE_SIZE);
-			}
-		}
-
-		if (*hvp)
-			msr.pfn = vmalloc_to_pfn(*hvp);
-
-	}
-	if (!WARN_ON(!(*hvp))) {
-		msr.enable = 1;
-		wrmsrq(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-	}
 
 	return hyperv_init_ghcb();
 }
@@ -278,23 +228,6 @@ static int hv_cpu_die(unsigned int cpu)
 	}
 
 	hv_common_cpu_die(cpu);
-
-	if (hv_vp_assist_page && hv_vp_assist_page[cpu]) {
-		union hv_vp_assist_msr_contents msr = { 0 };
-		if (hv_root_partition()) {
-			/*
-			 * For root partition the VP assist page is mapped to
-			 * hypervisor provided page, and thus we unmap the
-			 * page here and nullify it, so that in future we have
-			 * correct page address mapped in hv_cpu_init.
-			 */
-			memunmap(hv_vp_assist_page[cpu]);
-			hv_vp_assist_page[cpu] = NULL;
-			rdmsrq(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-			msr.enable = 0;
-		}
-		wrmsrq(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-	}
 
 	if (hv_reenlightenment_cb == NULL)
 		return 0;
@@ -448,23 +381,6 @@ void __init hyperv_init(void)
 
 	if (hv_common_init())
 		return;
-
-	/*
-	 * The VP assist page is useless to a TDX guest: the only use we
-	 * would have for it is lazy EOI, which can not be used with TDX.
-	 */
-	if (hv_isolation_type_tdx())
-		hv_vp_assist_page = NULL;
-	else
-		hv_vp_assist_page = kcalloc(nr_cpu_ids,
-					    sizeof(*hv_vp_assist_page),
-					    GFP_KERNEL);
-	if (!hv_vp_assist_page) {
-		ms_hyperv.hints &= ~HV_X64_ENLIGHTENED_VMCS_RECOMMENDED;
-
-		if (!hv_isolation_type_tdx())
-			goto common_free;
-	}
 
 	if (ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
 		/* Negotiate GHCB Version. */
