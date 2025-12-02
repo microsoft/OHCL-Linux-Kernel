@@ -54,7 +54,7 @@ static int hv_vtl_cpu_boot(unsigned int cpu)
 
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
 {
-	u64 register x18 asm("x18");
+	register u64 x18 asm("x18");
 
 	x18 = (u64)vtl0->x;
 	/*
