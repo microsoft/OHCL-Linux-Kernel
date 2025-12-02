@@ -24,11 +24,14 @@
 #include <asm/pgalloc.h>
 #include <asm/mshyperv.h>
 #include <trace/events/ipi.h>
-#include <uapi/asm/mtrr.h>
 #include <uapi/linux/mshv.h>
 #include <hyperv/hvhdk.h>
 
+#ifdef CONFIG_X86_64
+#include <uapi/asm/mtrr.h>
+#include <asm/debugreg.h>
 #include "../../kernel/fpu/legacy.h"
+#endif
 #include "mshv.h"
 #include "mshv_vtl.h"
 #include "hyperv_vmbus.h"
