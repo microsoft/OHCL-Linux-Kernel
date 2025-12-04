@@ -210,6 +210,7 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
+#ifdef CONFIG_X86_64
 	struct hv_register_assoc reg_assoc = {};
 	union hv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
@@ -264,6 +265,9 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 		per_cpu->reg_page = reg_page;
 		mshv_has_reg_page = true;
 	}
+#else
+	pr_debug("not using the register page");
+#endif
 }
 
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
@@ -558,9 +562,7 @@ static int mshv_vtl_ioctl_set_poll_file(struct mshv_vtl_set_poll_file __user *us
 
 static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 {
-	struct hv_vp_assist_page *hvp;
-
-	hvp = hv_vp_assist_page[smp_processor_id()];
+	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 
 	/*
 	 * Process signal event direct set in the run page, if any.
@@ -675,7 +677,7 @@ mshv_vtl_ioctl_get_regs(void __user *user_args)
 			   sizeof(reg)))
 		return -EFAULT;
 
-	ret = mshv_vtl_get_set_reg(&reg, false);
+	ret = mshv_vtl_get_set_reg(&reg, false, mshv_vsm_capabilities.dr6_shared);
 	if (!ret)
 		goto copy_args; /* No need of hypercall */
 	ret = vtl_get_vp_register(&reg);
@@ -706,7 +708,7 @@ mshv_vtl_ioctl_set_regs(void __user *user_args)
 	if (copy_from_user(&reg, (void __user *)args.regs_ptr, sizeof(reg)))
 		return -EFAULT;
 
-	ret = mshv_vtl_get_set_reg(&reg, true);
+	ret = mshv_vtl_get_set_reg(&reg, true, mshv_vsm_capabilities.dr6_shared);
 	if (!ret)
 		return ret; /* No need of hypercall */
 	ret = vtl_set_vp_register(&reg);
@@ -1273,6 +1275,7 @@ static struct miscdevice mshv_vtl_low = {
 	.minor = MISC_DYNAMIC_MINOR,
 };
 
+#ifdef CONFIG_X86_64
 static void __init mshv_vtl_init_dev_memory(u64 addr)
 {
 	pgd_t	*pgd;
@@ -1295,9 +1298,11 @@ static void __init mshv_vtl_init_dev_memory(u64 addr)
 	}
 
 }
+#endif
 
 static int __init mshv_vtl_init_memory(void)
 {
+#ifdef CONFIG_X86_64
 	u64 addr;
 
 	pr_debug("CONFIG_PHYSICAL_START: %#016x\n", CONFIG_PHYSICAL_START);
@@ -1311,6 +1316,7 @@ static int __init mshv_vtl_init_memory(void)
 	for (addr = 0xffffea8000000000ULL; addr < 0xfffffc0000000000ULL; addr += 0x8000000000ULL)
 		mshv_vtl_init_dev_memory(addr);
 
+#endif
 	return 0;
 }
 
