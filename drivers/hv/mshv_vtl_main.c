@@ -20,7 +20,6 @@
 #include <linux/file.h>
 #include <linux/vmalloc.h>
 #include <asm/boot.h>
-#include <asm/debugreg.h>
 #include <asm/pgalloc.h>
 #include <asm/mshyperv.h>
 #include <trace/events/ipi.h>
@@ -210,7 +209,6 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
-#ifdef CONFIG_X86_64
 	struct hv_register_assoc reg_assoc = {};
 	union hv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
