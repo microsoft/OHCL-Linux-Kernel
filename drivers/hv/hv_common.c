@@ -29,7 +29,6 @@
 #include <linux/dma-map-ops.h>
 #include <linux/set_memory.h>
 #include <hyperv/hvhdk.h>
-#include <hyperv/hvgdk.h>
 #include <asm/mshyperv.h>
 
 u64 hv_current_partition_id = HV_PARTITION_ID_SELF;

@@ -519,8 +519,6 @@ free_ghcb_page:
 free_vp_assist_page:
 	kfree(hv_vp_assist_page);
 	hv_vp_assist_page = NULL;
-common_free:
-	hv_common_free();
 }
 
 /*

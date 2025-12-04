@@ -17,6 +17,8 @@
 #include <asm/realmode.h>
 #include <asm/reboot.h>
 #include <asm/smap.h>
+#include <uapi/asm/mtrr.h>
+#include <asm/debugreg.h>
 #include <linux/export.h>
 #include <../kernel/smpboot.h>
 #include "../../kernel/fpu/legacy.h"
@@ -340,7 +342,7 @@ static const struct {
 	{HV_X64_REGISTER_MSR_MTRR_FIX4KF8000, -1, MSR_MTRRfix4K_F8000},
 };
 
-int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set)
+int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
 {
 	u64 *reg64;
 	enum hv_register_name gpr_name;
@@ -355,8 +357,7 @@ int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set)
 			continue;
 		if (reg_table[i].debug_reg_num != -1) {
 			/* Handle debug registers */
-			if (gpr_name == HV_X64_REGISTER_DR6 &&
-			    !mshv_vsm_capabilities.dr6_shared)
+			if (gpr_name == HV_X64_REGISTER_DR6 && !shared)
 				goto hypercall;
 			if (set)
 				native_set_debugreg(reg_table[i].debug_reg_num, *reg64);
