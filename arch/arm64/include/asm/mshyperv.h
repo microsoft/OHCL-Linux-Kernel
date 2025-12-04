@@ -77,7 +77,7 @@ void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 
 struct hv_register_assoc;
 
-static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set)
+static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
 {
 	return 1;
 }
