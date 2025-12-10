@@ -1306,8 +1306,8 @@ static void mshv_vtl_idle(void)
  */
 #ifndef CONFIG_INTEL_TDX_GUEST
 static void mshv_tdx_free_apicid_to_cpuid_mapping(void) {}
-static int mshv_tdx_create_apicid_to_cpuid_mapping(struct device *) { return 0; }
-static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *) { return false; }
+static int mshv_tdx_create_apicid_to_cpuid_mapping(struct device *dev) { return 0; }
+static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *run) { return false; }
 #else
 static void mshv_tdx_free_apicid_to_cpuid_mapping(void)
 {
