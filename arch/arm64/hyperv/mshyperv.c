@@ -123,6 +123,13 @@ static int __init hyperv_init(void)
 
 	ms_hyperv_late_init();
 
+	/* Find the VTL */
+	ms_hyperv.vtl = get_vtl();
+	if (ms_hyperv.vtl > 0) /* non default VTL */
+		hv_vtl_early_init();
+
+	hv_vtl_init_platform();
+
 	hyperv_initialized = true;
 	return 0;
 }
@@ -134,3 +141,16 @@ bool hv_is_hyperv_initialized(void)
 	return hyperv_initialized;
 }
 EXPORT_SYMBOL_GPL(hv_is_hyperv_initialized);
+
+static void (*vmbus_percpu_handler)(void);
+void hv_setup_percpu_vmbus_handler(void (*handler)(void))
+{
+	vmbus_percpu_handler = handler;
+}
+
+irqreturn_t vmbus_percpu_isr(int irq, void *dev_id)
+{
+	if (vmbus_percpu_handler)
+		vmbus_percpu_handler();
+	return IRQ_HANDLED;
+}
