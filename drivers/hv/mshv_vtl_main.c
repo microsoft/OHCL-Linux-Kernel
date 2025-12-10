@@ -24,7 +24,11 @@
 #include <uapi/linux/mshv.h>
 #include <hyperv/hvhdk.h>
 
+#ifdef CONFIG_X86_64
+#include <uapi/asm/mtrr.h>
+#include <asm/debugreg.h>
 #include "../../kernel/fpu/legacy.h"
+#endif
 #include "mshv.h"
 #include "mshv_vtl.h"
 #include "hyperv_vmbus.h"
@@ -203,6 +207,7 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
+#ifdef CONFIG_X86_64
 	struct hv_register_assoc reg_assoc = {};
 	union hv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
@@ -227,6 +232,9 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 
 	per_cpu->reg_page = reg_page;
 	mshv_has_reg_page = true;
+#else
+	pr_debug("not using the register page");
+#endif
 }
 
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
@@ -249,23 +257,29 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 static int mshv_vtl_get_vsm_regs(void)
 {
 	struct hv_register_assoc registers[2];
-	int ret, count = 2;
+	int ret, count = 0;
 
-	registers[0].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
-	registers[1].name = HV_REGISTER_VSM_CAPABILITIES;
+	registers[count++].name = HV_REGISTER_VSM_CAPABILITIES;
+	/* Code page offset register is not supported on ARM */
+#ifdef CONFIG_X86_64
+	registers[count++].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
+#endif
+
 
 	ret = hv_call_get_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 				       count, input_vtl_zero, registers);
 	if (ret)
 		return ret;
 
-	mshv_vsm_page_offsets.as_uint64 = registers[0].value.reg64;
-	mshv_vsm_capabilities.as_uint64 = registers[1].value.reg64;
+	mshv_vsm_capabilities.as_uint64 = registers[0].value.reg64;
+#ifdef CONFIG_X86_64
+	mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
+#endif
 
 	return ret;
 }
 
-static int mshv_vtl_configure_vsm_partition(struct device *dev)
+static int __maybe_unused mshv_vtl_configure_vsm_partition(struct device *dev)
 {
 	union hv_register_vsm_partition_config config;
 	struct hv_register_assoc reg_assoc;
@@ -345,6 +359,7 @@ static int hv_vtl_setup_synic(void)
 
 	/* Use our isr to first filter out packets destined for userspace */
 	hv_setup_vmbus_handler(mshv_vtl_vmbus_isr);
+	hv_setup_percpu_vmbus_handler(mshv_vtl_vmbus_isr);
 
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "hyperv/vtl:online",
 				mshv_vtl_alloc_context, NULL);
@@ -1144,10 +1159,12 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 			ret = vmf_insert_pfn_pmd(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
 		return ret;
 
+#if defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 	case PUD_ORDER:
 		if (can_fault(vmf, PUD_SIZE, &pfn))
 			ret = vmf_insert_pfn_pud(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
 		return ret;
+#endif
 
 	default:
 		return VM_FAULT_SIGBUS;
@@ -1208,11 +1225,13 @@ static int __init mshv_vtl_init(void)
 		ret = -ENODEV;
 		goto free_dev;
 	}
+#ifdef CONFIG_X86_64
 	if (mshv_vtl_configure_vsm_partition(dev)) {
 		dev_emerg(dev, "VSM configuration failed !!\n");
 		ret = -ENODEV;
 		goto free_dev;
 	}
+#endif
 
 	mshv_vtl_return_call_init(mshv_vsm_page_offsets.vtl_return_offset);
 	ret = hv_vtl_setup_synic();
