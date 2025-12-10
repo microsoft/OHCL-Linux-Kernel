@@ -81,6 +81,7 @@ static inline int hv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u
 	return 1;
 }
 
+static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
 #endif
 
 #include <asm-generic/mshyperv.h>
