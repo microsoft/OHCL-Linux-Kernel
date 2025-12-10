@@ -26,6 +26,8 @@
  * requires a hypercall.
  */
 
+struct hv_get_vp_registers_output;
+
 void hv_set_vpreg(u32 reg, u64 value);
 u64 hv_get_vpreg(u32 reg);
 void hv_get_vpreg_128(u32 reg, struct hv_get_vp_registers_output *result);
@@ -60,6 +62,26 @@ static inline u64 hv_get_non_nested_msr(unsigned int reg)
 				ARM_SMCCC_SMC_64,		\
 				ARM_SMCCC_OWNER_VENDOR_HYP,	\
 				HV_SMCCC_FUNC_NUMBER)
+
+struct mshv_vtl_cpu_context {
+   /*
+	* NOTE: x18 is managed by the hypervisor. It won't be reloaded from this array.
+	* It is included here for convenience in the common case.
+	*/
+	__u64 x[31];
+	__u64 rsvd;
+	__uint128_t q[32];
+};
+
+void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
+
+struct hv_register_assoc;
+
+static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
+{
+	return 1;
+}
+static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
 
 #include <asm-generic/mshyperv.h>
 
