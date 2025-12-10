@@ -146,7 +146,6 @@ struct hv_u128 {
 #define HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_SHIFT	12
 #define HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_MASK	\
 		(~((1ull << HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_SHIFT) - 1))
-#define HV_SYN_REG_VP_ASSIST_PAGE              (HV_X64_MSR_VP_ASSIST_PAGE)
 
 /* Hyper-V Enlightened VMCS version mask in nested features CPUID */
 #define HV_X64_ENLIGHTENED_VMCS_VERSION		0xff
@@ -848,7 +847,7 @@ union hv_input_vtl {
 	};
 } __packed;
 
-struct hv_x64_init_vp_context {
+struct hv_init_vp_context {
 	u64 rip;
 	u64 rsp;
 	u64 rflags;
@@ -872,31 +871,13 @@ struct hv_x64_init_vp_context {
 	u64 msr_cr_pat;
 } __packed;
 
-struct hv_arm64_init_vp_context {
-	u64 pc;
-	u64 sp_elh;
-	u64 spctlr_el1;
-	u64 mair_el1;
-	u64 tcr_el1;
-	u64 vbar_el1;
-	u64 ttbr0_el1;
-	u64 ttbr1_el1;
-	u64 x18;
-} __packed;
-
 struct hv_enable_vp_vtl {
 	u64				partition_id;
 	u32				vp_index;
 	union hv_input_vtl		target_vtl;
 	u8				mbz0;
 	u16				mbz1;
-#if defined(__x86_64__)
-	struct hv_x64_init_vp_context	vp_context;
-#elif defined(__aarch64__)
-	struct hv_arm64_init_vp_context	vp_context;
-#else
-	#error "The architecture is not supported"
-#endif
+	struct hv_init_vp_context	vp_context;
 } __packed;
 
 struct hv_get_vp_from_apic_id_in {
@@ -1197,7 +1178,7 @@ enum hv_register_name {
 
 #define HV_MSR_STIMER0_CONFIG	(HV_REGISTER_STIMER0_CONFIG)
 #define HV_MSR_STIMER0_COUNT	(HV_REGISTER_STIMER0_COUNT)
-#define HV_SYN_REG_VP_ASSIST_PAGE              (HV_REGISTER_VP_ASSIST_PAGE)
+
 #endif /* CONFIG_ARM64 */
 
 union hv_explicit_suspend_register {
