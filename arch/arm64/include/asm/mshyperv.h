@@ -80,6 +80,8 @@ struct mshv_vtl_cpu_context {
 	__uint128_t q[32];
 };
 
+static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
+
 #ifdef CONFIG_HYPERV_VTL_MODE
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 #else
