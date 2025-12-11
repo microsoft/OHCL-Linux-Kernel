@@ -332,7 +332,7 @@ static long __mshv_vtl_ioctl_check_extension(u32 arg)
 	case MSHV_CAP_LOWER_VTL_TIMER_VIRT:
 		if (hv_isolation_type_tdx())
 			return mshv_tdx_vtl_ioctl_check_extension(arg);
-		break;
+		return 0;
 	}
 
 	return -EOPNOTSUPP;
