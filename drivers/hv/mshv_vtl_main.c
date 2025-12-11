@@ -152,6 +152,7 @@ union hv_register_vsm_page_offsets {
 	u64 as_uint64;
 } __packed;
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 #define MSHV_VTL_NUM_L2_VM	3
 #define TDVPS_TSC_DEADLINE_DISARMED	(~0ULL)
 
@@ -163,7 +164,6 @@ union hv_register_vsm_page_offsets {
 	(((entry_rcx) & TDG_VP_ENTRY_VM_MASK) >>	\
 	 TDG_VP_ENTRY_VM_SHIFT)
 
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 /* index: 0: L1 VM, 1-3: L2 VM */
 static bool is_tdx_vm_idx_valid(u64 vm_idx)
 {
@@ -230,13 +230,8 @@ static struct hrtimer *tdx_this_halt_timer(void)
 {
 	return this_cpu_ptr(&mshv_tdx_halt_timer);
 }
-#else
-static struct hrtimer *tdx_this_halt_timer(void)
-{
-	return NULL;
-}
-#endif
 static void mshv_tdx_init_halt_timer(void);
+#endif
 
 noinline void mshv_vtl_return_tdx(void);
 struct mshv_vtl_run *mshv_vtl_this_run(void);
@@ -747,8 +742,8 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 			mshv_vtl_set_tsc_deadline(vm_idx,
 						  TDVPS_TSC_DEADLINE_DISARMED);
 		per_cpu->l2_hlt_tsc_deadline = TDVPS_TSC_DEADLINE_DISARMED;
-#endif
 		mshv_tdx_init_halt_timer();
+#endif
 	} else if (hv_isolation_type_snp()) {
 #ifdef CONFIG_X86_64
 		int ret;
@@ -1085,6 +1080,12 @@ static bool mshv_vtl_process_intercept(void)
 	return false;
 }
 
+enum TDX_HALT_TIMER {
+	TIMER_ARMED,
+	TIMER_NOTARMED,
+};
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 /*
  * The purpose is to get interrupt on this vCPU to wake up from
  * L0 VMM HLT emulation.
@@ -1108,17 +1109,9 @@ static void mshv_tdx_init_halt_timer(void)
 {
 	struct hrtimer *timer = tdx_this_halt_timer();
 
-	if (!timer)
-		return;
-
 	hrtimer_init(timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
 	timer->function = mshv_tdx_timer_fn;
 }
-
-enum TDX_HALT_TIMER {
-	TIMER_ARMED,
-	TIMER_NOTARMED,
-};
 
 /*
  * The L1 VMM needs to tell wake up time from HLT emulation because the host
@@ -1128,17 +1121,11 @@ enum TDX_HALT_TIMER {
  */
 static enum TDX_HALT_TIMER mshv_tdx_setup_halt_timer(void)
 {
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	struct tdx_vp_context *context = &mshv_vtl_this_run()->tdx_context;
-#endif
 	u64 now, deadline = TDVPS_TSC_DEADLINE_DISARMED;
 	struct hrtimer *timer = tdx_this_halt_timer();
 	ktime_t time;
 
-	if (!timer)
-		return TIMER_NOTARMED;
-
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	/* Get the timeout value to wake up from HLT. */
 	if (context->l2_tsc_deadline.update & MSHV_VTL_TDX_L2_DEADLINE_UPDATE)
 		deadline = tsc_deadline_to_tdvps(context->l2_tsc_deadline.deadline);
@@ -1155,7 +1142,6 @@ static enum TDX_HALT_TIMER mshv_tdx_setup_halt_timer(void)
 		    !per_cpu->l2_tsc_deadline_expired[vm_idx - 1])
 			deadline = per_cpu->l2_tsc_deadline_prev[vm_idx - 1];
 	}
-#endif
 	if (deadline == TDVPS_TSC_DEADLINE_DISARMED)
 		return TIMER_NOTARMED;
 
@@ -1173,9 +1159,7 @@ static enum TDX_HALT_TIMER mshv_tdx_setup_halt_timer(void)
 	}
 
 	hrtimer_start(timer, time, HRTIMER_MODE_REL_PINNED);
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	this_cpu_ptr(&mshv_vtl_per_cpu)->l2_hlt_tsc_deadline = deadline;
-#endif
 	return TIMER_ARMED;
 }
 
@@ -1192,22 +1176,17 @@ static enum TDX_HALT_TIMER mshv_tdx_halt_timer_pre(bool try_arm)
 
 static void mshv_tdx_halt_timer_post(enum TDX_HALT_TIMER armed)
 {
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	struct mshv_vtl_per_cpu *per_cpu;
 	struct tdx_vp_context *context;
-#endif
 	struct hrtimer *timer;
 
 	if (armed != TIMER_ARMED)
 		return;
 
 	timer = tdx_this_halt_timer();
-	if (!timer)
-		return;
 
 	hrtimer_cancel(timer);
 
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
 	if (per_cpu->l2_hlt_tsc_deadline > rdtsc())
 		return;
@@ -1222,8 +1201,14 @@ static void mshv_tdx_halt_timer_post(enum TDX_HALT_TIMER armed)
 	mshv_tdx_tsc_deadline_expired(context);
 
 	context->l2_tsc_deadline.update &= ~MSHV_VTL_TDX_L2_DEADLINE_UPDATE;
-#endif
 }
+#else
+static enum TDX_HALT_TIMER mshv_tdx_halt_timer_pre(bool try_arm)
+{
+	return TIMER_NOTARMED;
+}
+static void mshv_tdx_halt_timer_post(enum TDX_HALT_TIMER armed) {}
+#endif
 
 static bool in_idle_is_enabled;
 DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
@@ -1239,6 +1224,9 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 
 	trace_mshv_vtl_enter_vtl0_rcuidle(cpu_ctx);
 
+#ifndef MSHV_VTL_RUN_FLAG_HALTED
+# define MSHV_VTL_RUN_FLAG_HALTED	0ULL
+#endif
 	armed = mshv_tdx_halt_timer_pre(flags & MSHV_VTL_RUN_FLAG_HALTED);
 
 	/* A VTL2 TDX kernel doesn't allocate hv_vp_assist_page at the moment */
@@ -1318,8 +1306,8 @@ static void mshv_vtl_idle(void)
  */
 #ifndef CONFIG_INTEL_TDX_GUEST
 static void mshv_tdx_free_apicid_to_cpuid_mapping(void) {}
-static int mshv_tdx_create_apicid_to_cpuid_mapping(struct device *) { return 0; }
-static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *) { return false; }
+static int mshv_tdx_create_apicid_to_cpuid_mapping(struct device *dev) { return 0; }
+static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *run) { return false; }
 #else
 static void mshv_tdx_free_apicid_to_cpuid_mapping(void)
 {
