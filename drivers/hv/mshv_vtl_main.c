@@ -152,6 +152,7 @@ union hv_register_vsm_page_offsets {
 	u64 as_uint64;
 } __packed;
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 #define MSHV_VTL_NUM_L2_VM	3
 #define TDVPS_TSC_DEADLINE_DISARMED	(~0ULL)
 
@@ -163,7 +164,6 @@ union hv_register_vsm_page_offsets {
 	(((entry_rcx) & TDG_VP_ENTRY_VM_MASK) >>	\
 	 TDG_VP_ENTRY_VM_SHIFT)
 
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 /* index: 0: L1 VM, 1-3: L2 VM */
 static bool is_tdx_vm_idx_valid(u64 vm_idx)
 {
