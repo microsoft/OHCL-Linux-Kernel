@@ -1365,12 +1365,6 @@ void vmbus_isr(void)
 }
 EXPORT_SYMBOL_FOR_MODULES(vmbus_isr, "mshv_vtl");
 
-static irqreturn_t vmbus_percpu_isr(int irq, void *dev_id)
-{
-	vmbus_isr();
-	return IRQ_HANDLED;
-}
-
 static void vmbus_percpu_work(struct work_struct *work)
 {
 	unsigned int cpu = smp_processor_id();
@@ -1466,6 +1460,7 @@ static int vmbus_bus_init(void)
 		hv_setup_vmbus_handler(vmbus_isr);
 	} else {
 		vmbus_evt = alloc_percpu(long);
+		hv_setup_percpu_vmbus_handler(vmbus_isr);
 		ret = request_percpu_irq(vmbus_irq, vmbus_percpu_isr,
 				"Hyper-V VMbus", vmbus_evt);
 		if (ret) {
