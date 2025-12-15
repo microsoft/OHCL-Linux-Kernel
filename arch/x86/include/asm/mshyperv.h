@@ -305,6 +305,7 @@ void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 void mshv_vtl_return_call_init(u64 vtl_return_offset);
 void mshv_vtl_return_hypercall(void);
 void __mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
+int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared);
 #else
 static inline void __init hv_vtl_init_platform(void) {}
 static inline int __init hv_vtl_early_init(void) { return 0; }
@@ -312,6 +313,7 @@ static inline void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
 static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
 static inline void mshv_vtl_return_hypercall(void) {}
 static inline void __mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
+static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared) { return -EINVAL; }
 #endif
 
 #include <asm-generic/mshyperv.h>
