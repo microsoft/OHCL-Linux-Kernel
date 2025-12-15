@@ -61,6 +61,15 @@ static inline u64 hv_get_non_nested_msr(unsigned int reg)
 				ARM_SMCCC_OWNER_VENDOR_HYP,	\
 				HV_SMCCC_FUNC_NUMBER)
 
+/*
+ * Get the register. If the function returns `1`, that must be done via
+ * a hypercall. Returning `0` means success.
+ */
+static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
+{
+	return 1;
+}
+
 #include <asm-generic/mshyperv.h>
 
 #endif
