@@ -3,11 +3,14 @@
  * Copyright (c) 2024, Microsoft Corporation.
  *
  */
+#include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/miscdevice.h>
 #include <linux/poll.h>
 #include <linux/mod_devicetable.h>
 #include <linux/mm.h>
+#include <linux/init.h>
+#include <linux/printk.h>
 #include <uapi/linux/mshv.h>
 #include <asm/apic.h>
 #include <asm/irq_vectors.h>
@@ -56,6 +59,15 @@ struct sidecar_dev {
 
 DEFINE_PER_CPU(struct sidecar_dev *, sidecar_interrupt_dev);
 
+static bool sidecar_servicing_mode;
+
+static int __init sidecar_servicing_setup(char *str)
+{
+	sidecar_servicing_mode = true;
+	return 1;
+}
+__setup("OPENHCL_KEXEC_SERVICING", sidecar_servicing_setup);
+
 #define VP_STATE_AVAIL 0
 #define VP_STATE_SYNC 1
 #define VP_STATE_ASYNC 2
@@ -72,9 +84,49 @@ static void mshv_vtl_sidecar_isr(void)
 		return;
 	if (!READ_ONCE(dev->control->needs_attention))
 		return;
+	pr_debug("sidecar: ISR base=%u idx=%u attn=%u status0=%u\n",
+		 dev->base_cpu, dev->index, READ_ONCE(dev->control->needs_attention),
+		 READ_ONCE(dev->control->cpu_status[0]));
 	WRITE_ONCE(dev->needs_vp_scan, 1);
 	xchg(&dev->control->needs_attention, 0);
 	wake_up_poll(&dev->wait, EPOLLIN);
+}
+
+static void sidecar_dump_control_snapshot(struct device *dev, struct sidecar_control *ctrl)
+{
+	u32 base = READ_ONCE(ctrl->base_cpu);
+	u32 index = READ_ONCE(ctrl->index);
+	u32 cpu_count = READ_ONCE(ctrl->cpu_count);
+	u32 dump_count = min_t(u32, cpu_count, 32);
+
+	dev_dbg(dev,
+		"sidecar ctrl snapshot: base=%u index=%u cpu_count=%u request_vector=%u response_cpu=%u response_vector=%u needs_attention=%u",
+		base, index, cpu_count, READ_ONCE(ctrl->request_vector),
+		READ_ONCE(ctrl->response_cpu), READ_ONCE(ctrl->response_vector),
+		READ_ONCE(ctrl->needs_attention));
+
+	if (!dump_count)
+		return;
+
+	print_hex_dump_debug("sidecar ctrl cpu_status ", DUMP_PREFIX_OFFSET,
+			   16, 1, ctrl->cpu_status, dump_count, false);
+}
+
+static void sidecar_scrub_control_page(struct device *dev, struct sidecar_control *ctrl)
+{
+	u32 cpu_count;
+	u32 i;
+
+	cpu_count = READ_ONCE(ctrl->cpu_count);
+	if (!cpu_count)
+		return;
+
+	dev_info(dev, "OPENHCL_KEXEC_SERVICING detected; scrubbing control page (%u cpus)\n",
+		 cpu_count);
+	for (i = 0; i < cpu_count; i++)
+		WRITE_ONCE(ctrl->cpu_status[i], CPU_STATUS_IDLE);
+	WRITE_ONCE(ctrl->needs_attention, 0);
+	wmb();
 }
 
 static void sidecar_signal(struct sidecar_dev *dev, u32 cpu)
@@ -232,9 +284,18 @@ static void sidecar_start(struct sidecar_dev *dev, u32 cpu)
 
 	slot = &dev->control->cpu_status[cpu - dev->base_cpu];
 	last = cmpxchg(slot, CPU_STATUS_IDLE, CPU_STATUS_RUN);
+	if (last != CPU_STATUS_IDLE)
+		pr_debug("sidecar: pre-start cpu=%u status=%u attn=%u vp_state=%u base=%u idx=%u\n",
+			 cpu, last, READ_ONCE(dev->control->needs_attention),
+			 READ_ONCE(dev->vp_state[cpu - dev->base_cpu]), dev->base_cpu, dev->index);
 	WARN(last != CPU_STATUS_IDLE, "unexpected cpu status %d", last);
 
 	sidecar_signal(dev, cpu);
+	pr_debug("sidecar: signaled cpu=%u req_vec=%u resp_cpu=%u resp_vec=%u\n",
+		 cpu, READ_ONCE(dev->control->request_vector), READ_ONCE(dev->control->response_cpu),
+		 READ_ONCE(dev->control->response_vector));
+	pr_debug("sidecar: post-signal cpu=%u status=%u attn=%u\n",
+		 cpu, READ_ONCE(*slot), READ_ONCE(dev->control->needs_attention));
 }
 
 static int sidecar_ioctl_run(struct sidecar_dev *dev, u32 cpu)
@@ -248,11 +309,15 @@ static int sidecar_ioctl_run(struct sidecar_dev *dev, u32 cpu)
 	if (ret)
 		return ret;
 
+	pr_debug("sidecar: RUN claim cpu=%u ok, vp_state=%u\n",
+		 cpu, READ_ONCE(dev->vp_state[cpu - dev->base_cpu]));
 	sidecar_start(dev, cpu);
 
 	/* Wait for the request to complete. */
 	cpu_index = cpu - dev->base_cpu;
 	slot = &dev->control->cpu_status[cpu_index];
+	pr_debug("sidecar: RUN wait cpu=%u status=%u attn=%u\n",
+		 cpu, READ_ONCE(*slot), READ_ONCE(dev->control->needs_attention));
 	if (!wait_event_interruptible(dev->wait, READ_ONCE(*slot) == CPU_STATUS_IDLE))
 		goto release;
 
@@ -260,12 +325,16 @@ static int sidecar_ioctl_run(struct sidecar_dev *dev, u32 cpu)
 	while ((status = READ_ONCE(*slot)) != CPU_STATUS_IDLE) {
 		switch (status) {
 		case CPU_STATUS_STOP:
+			pr_debug("sidecar: RUN cpu=%u observed STOP; waiting transition\n", cpu);
 			wait_event(dev->wait, READ_ONCE(*slot) != status);
 			break;
 		case CPU_STATUS_RUN:
+			pr_debug("sidecar: RUN cpu=%u observed RUN; requesting STOP\n", cpu);
 			cmpxchg(slot, status, CPU_STATUS_STOP);
 			break;
 		default:
+			pr_debug("sidecar: RUN cpu=%u unexpected status=%u attn=%u vp_state=%u\n",
+				 cpu, status, READ_ONCE(dev->control->needs_attention), READ_ONCE(dev->vp_state[cpu_index]));
 			WARN(1, "unexpected cpu status %d", status);
 			ret = -EIO;
 			goto release;
@@ -273,6 +342,8 @@ static int sidecar_ioctl_run(struct sidecar_dev *dev, u32 cpu)
 	}
 
 release:
+	pr_debug("sidecar: RUN release cpu=%u final status=%u vp_state->AVAIL\n",
+		 cpu, READ_ONCE(*slot));
 	WRITE_ONCE(dev->vp_state[cpu_index], VP_STATE_AVAIL);
 	return ret;
 }
@@ -285,7 +356,10 @@ static int sidecar_ioctl_start(struct sidecar_dev *dev, u32 cpu)
 	if (ret)
 		return ret;
 
+	pr_debug("sidecar: START claim cpu=%u ok, vp_state=%u\n",
+		 cpu, READ_ONCE(dev->vp_state[cpu - dev->base_cpu]));
 	sidecar_start(dev, cpu);
+	pr_debug("sidecar: START requested cpu=%u\n", cpu);
 	return 0;
 }
 
@@ -305,13 +379,17 @@ static int sidecar_ioctl_stop(struct sidecar_dev *dev, u32 cpu)
 	case VP_STATE_AVAIL:
 	case VP_STATE_SYNC:
 	case VP_STATE_REMOVED:
+		pr_debug("sidecar: STOP cpu=%u invalid vp_state=%u\n", cpu, state);
 		return -EINVAL;
 	case VP_STATE_ASYNC:
+		pr_debug("sidecar: STOP cpu=%u transitioning ASYNC->STOPPING\n", cpu);
 		break;
 	case VP_STATE_ASYNC_STOPPED:
 	case VP_STATE_ASYNC_STOPPING:
+		pr_debug("sidecar: STOP cpu=%u already stopped/stop-in-progress state=%u\n", cpu, state);
 		return 0;
 	default:
+		pr_debug("sidecar: STOP cpu=%u unexpected vp_state=%u\n", cpu, state);
 		WARN(1, "unexpected vp state %d", state);
 		return -EIO;
 	}
@@ -321,15 +399,19 @@ static int sidecar_ioctl_stop(struct sidecar_dev *dev, u32 cpu)
 	if (status == CPU_STATUS_RUN) {
 		status = cmpxchg(slot, CPU_STATUS_RUN, CPU_STATUS_STOP);
 		if (status == CPU_STATUS_RUN) {
+			pr_debug("sidecar: STOP cpu=%u requested STOP; signaling\n", cpu);
 			sidecar_signal(dev, cpu);
 			return 0;
 		}
 	}
 
 	if (status != CPU_STATUS_IDLE) {
+		pr_debug("sidecar: STOP cpu=%u unexpected status=%u attn=%u\n",
+			 cpu, status, READ_ONCE(dev->control->needs_attention));
 		WARN(1, "unexpected cpu status %d", status);
 		return -EIO;
 	}
+	pr_debug("sidecar: STOP cpu=%u status=IDLE\n", cpu);
 	return 0;
 }
 
@@ -473,6 +555,10 @@ static int sidecar_probe(struct platform_device *pdev)
 	dev->control = devm_platform_ioremap_resource_byname(pdev, "ctrl");
 	if (IS_ERR(dev->control))
 		return PTR_ERR(dev->control);
+
+	sidecar_dump_control_snapshot(&pdev->dev, dev->control);
+	if (sidecar_servicing_mode)
+		sidecar_scrub_control_page(&pdev->dev, dev->control);
 
 	init_waitqueue_head(&dev->wait);
 	mutex_init(&dev->scan_mutex);
