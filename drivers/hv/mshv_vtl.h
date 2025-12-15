@@ -77,6 +77,21 @@ struct tdx_l2_enter_guest_state {
 	u8 reserved[6];
 };
 
+#define MSHV_VTL_TDX_L2_DEADLINE_DISARMED	(0ULL)
+
+/*
+ * Userspace sets this bit for the kernel to issue TDG.VP.WR(TSC_DEADLINE)
+ * when it changed deadline.
+ * The kernel clears this bits on TDG.VP.WR(TSC_DEADLINE).
+ */
+#define MSHV_VTL_TDX_L2_DEADLINE_UPDATE	BIT(0)
+
+struct tdx_l2_tsc_deadline {
+	__u64 deadline;
+	__u8 update;
+	__u8 pad[7];
+};
+
 /*
  * This structure must be placed in a larger structure at offset 272 (0x110).
  * The GPR list for TDX and fx_state for xsave have alignment requirements on the
@@ -91,8 +106,9 @@ struct tdx_vp_context {
 	__u64 entry_rcx;
 	/* Must be on 256 byte boundary. */
 	struct tdx_l2_enter_guest_state l2_enter_guest_state;
+	struct tdx_l2_tsc_deadline l2_tsc_deadline;
 	/* Pad space until the next 256 byte boundary. */
-	__u8 pad3[96];
+	__u8 pad3[80];
 	/* Must be 16 byte aligned. */
 	struct fxregs_state fx_state;
 	__u8 pad4[16];
