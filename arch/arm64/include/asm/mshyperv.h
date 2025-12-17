@@ -70,6 +70,22 @@ static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set,
 	return 1;
 }
 
+struct mshv_vtl_cpu_context {
+   /*
+	* NOTE: x18 is managed by the hypervisor. It won't be reloaded from this array.
+	* It is included here for convenience in the common case.
+	*/
+	__u64 x[31];
+	__u64 rsvd;
+	__uint128_t q[32];
+};
+
+#ifdef CONFIG_HYPERV_VTL_MODE
+void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
+#else
+static inline void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
+#endif
+
 #include <asm-generic/mshyperv.h>
 
 #endif
