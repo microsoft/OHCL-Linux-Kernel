@@ -1,0 +1,1407 @@
+[33mcommit d063fc234d84903bc6322b61c281a35d378d87f4[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mrepro-build-nix[m[33m, [m[1;31morigin/repro-build-nix[m[33m)[m
+Author: Naman Jain <namjain@linux.microsoft.com>
+Date:   Tue Jan 6 05:56:21 2026 +0000
+
+    Enable direct script invocation: Auto-detect and enter Nix environment
+    
+    Modified nix-build.sh and nix-check-repro.sh to automatically:
+    - Detect if running outside Nix environment (check IN_NIX_SHELL)
+    - Source Nix profile if needed (~/.nix-profile/etc/profile.d/nix.sh)
+    - Re-execute themselves inside 'nix develop' environment
+    - Show helpful error if Nix is not installed
+    
+    Updated nix-setup.sh instructions to reflect simplified workflow.
+    
+    Usage after setup:
+      ./Microsoft/nix-setup.sh          # One-time setup
+      ./Microsoft/nix-build.sh x64       # Direct invocation (no nix develop needed)
+      ./Microsoft/nix-check-repro.sh x64 # Direct invocation
+    
+    The scripts handle Nix environment setup automatically.
+
+[33mcommit b3d4a6b50eef3d8430a11450a7d0975fb515937f[m[33m ([m[1;31morigin/user/namjain/repro-build-nix[m[33m)[m
+Author: Naman Jain <namjain@linux.microsoft.com>
+Date:   Mon Jan 5 12:01:06 2026 +0000
+
+    Add NixOS reproducible build system
+    
+    Implement complete reproducible build infrastructure for OHCL kernel using
+    NixOS with flakes. This ensures bit-for-bit identical kernel binaries when
+    built multiple times.
+    
+    Features:
+    - Deterministic build environment with pinned nixpkgs dependencies
+    - Normalized build parameters (timestamps, user, host, version)
+    - Debug prefix mapping for path normalization
+    - Reproducibility verification script
+    - Support for x64, arm64, and CVM configurations
+    
+    Build scripts:
+    - nix-build.sh: Main reproducible kernel build
+    - nix-check-repro.sh: Verify reproducibility by building twice and comparing
+    - nix-clean.sh: Clean build artifacts
+    - nix-setup.sh: One-time environment setup
+    - nix-menuconfig.sh: Interactive kernel configuration
+    - nix-build-info.sh: Display build environment details
+    - nix-verify-config.sh: Verify reproducibility-related config options
+    
+    Configuration changes:
+    - CONFIG_BUILD_SALT="" for reproducible build IDs
+    - Updated .gitignore for Nix artifacts
+    
+    The system uses:
+    - SOURCE_DATE_EPOCH for deterministic timestamps
+    - Normalized KBUILD_BUILD_USER, KBUILD_BUILD_HOST, KBUILD_BUILD_VERSION
+    - fdebug-prefix-map for consistent debug paths
+    - Same build directory name for both reproducibility test builds
+    
+    Results:
+    ✓ Produces identical binaries (SHA256-verified)
+    ✓ Kernel image, vmlinux, System.map, and config are bit-for-bit identical
+    ✓ Tested on x64 architecture
+    
+    Files:
+    - flake.nix: NixOS environment definition
+    - flake.lock: Pinned dependency versions
+    - REPRODUCIBLE-BUILDS.md: User documentation
+    - Microsoft/QUICKSTART.md: Quick reference guide
+
+[33mcommit 97a9e14aa1cb7e72fb056943c7f0350236873ef8[m[33m ([m[1;33mtag: [m[1;33mrolling-lts/hcl-main/6.12.52.4[m[33m, [m[1;31morigin/product/hcl-main/6.12[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Merge: 28e74f6275ca 1047cf13c95d
+Author: Hardik Garg <hargar@microsoft.com>
+Date:   Mon Dec 15 09:39:33 2025 -0800
+
+    drivers: hv: mshv_vtl: return 0 for MSHV_CAP_LOWER_VTL_TIMER_VIRT if feature unsupported
+    
+    Returning -EOPNOTSUPP is a fatal error. It means that the driver doesn't know the feature. Not that the feature is not supported due to the runtime platform reason. Return 0 for MSHV_CAP_LOWER_VTL_TIMER_VIRT on non-TDX platform, which is safer.
+    
+    Fixes: 3528fd7: https://github.com/microsoft/OHCL-Linux-Kernel/commit/3528fd7a17430d9e7847a3b62b77e614921a99cf ("drivers: hv: mshv_vtl: Advertise TDX timer service extension")
+
+[33mcommit 1047cf13c95df46bd4a2ca1547e596653b76e56f[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Thu Dec 11 10:17:43 2025 -0800
+
+    drivers: hv: mshv_vtl: 0 for MSHV_CAP_LOWER_VTL_TIMER_VIRT if unsupported
+    
+    Returning -EOPNOTSUPP is a fatal error. It means that The driver doesn't
+    know the feature.  Not that the feature is not supported due to the runtime
+    platform reason.  Return 0 for MSHV_CAP_LOWER_VTL_TIMER_VIRT on non-TDX
+    platform, which is safer.
+    
+    Fixes: 3528fd7a1743 ("drivers: hv: mshv_vtl: Advertise TDX timer service extension")
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit 28e74f6275caa51adceedaa1390f4fc3a41147f6[m[33m ([m[1;33mtag: [m[1;33mrolling-lts/hcl-main/6.12.52.3[m[33m)[m
+Merge: f52680851574 5da04eb28faa
+Author: Hardik Garg <hargar@microsoft.com>
+Date:   Wed Dec 10 17:19:34 2025 -0800
+
+    Add ifdef and define to fix arm64 build
+    
+    Fix arm64 build failure caused by this PR https://github.com/microsoft/OHCL-Linux-Kernel/pull/107
+    
+    build failure:
+    drivers/hv/mshv_vtl_main.c: In function ‘mshv_tdx_setup_halt_timer’: drivers/hv/mshv_vtl_main.c:1163:15: error: implicit declaration of function ‘rdtsc’ [-Werror=implicit-function-declaration]
+    1163 | now = rdtsc();
+    | ^~~~~
+    drivers/hv/mshv_vtl_main.c:1170:73: error: ‘tsc_khz’ undeclared (first use in this function)
+    1170 | time = mul_u64_u64_div_u64(deadline - now, 1000 * 1000, tsc_khz);
+    | ^~~~~~~
+    drivers/hv/mshv_vtl_main.c:1170:73: note: each undeclared identifier is reported only once for each function it appears in
+    drivers/hv/mshv_vtl_main.c: In function ‘mshv_vtl_switch_to_vtl0_irqoff’:
+    drivers/hv/mshv_vtl_main.c:1242:49: error: ‘MSHV_VTL_RUN_FLAG_HALTED’ undeclared (first use in this function)
+    1242 | armed = mshv_tdx_halt_timer_pre(flags & MSHV_VTL_RUN_FLAG_HALTED);
+    | ^~~~~~~~~~~~~~~~~~~~~~~~
+    cc1: some warnings being treated as errors
+
+[33mcommit 5da04eb28faad442031b89ee2fd4e7849221afaa[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Wed Dec 10 16:32:32 2025 -0800
+
+    mshv_vtl/tdx: Move up one ifdef COFIG_INTEL_TDX_GUEST
+    
+    Move up one of define(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+    for consistency.
+    
+    Fixes: 1bf07066d93b ("mshv_vtl/tdx: Set TSC deadline if userspace requests")
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit 9519a2a1e329a47256223ea12c39d40ea28b6d8c[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Wed Dec 10 14:28:49 2025 -0800
+
+    mshv_vtl/tdx: Fix compile error, parameter name omitted
+    
+    In case of !CONFIG_INTEL_TDX_GUEST, gcc complains as
+    "parameter name omitted".  Add missing parameter names.
+    
+    Fixes: 151bf9813836 ("mshv_vtl/tdx: Handle some APIC functionality in kernel")
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit e52cdcdb91bcf96f2f8f1ffe8a2dfb7ff7d21205[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Wed Oct 15 16:29:02 2025 -0700
+
+    mshv_vtl/tdx: Fix arm64 build
+    
+    Add ifdef and define to fix arm64 build.
+    
+    drivers/hv/mshv_vtl_main.c: In function ‘mshv_tdx_setup_halt_timer’:
+    drivers/hv/mshv_vtl_main.c:1163:15: error: implicit declaration of function ‘rdtsc’ [-Werror=implicit-function-declaration]
+     1163 |         now = rdtsc();
+          |               ^~~~~
+    drivers/hv/mshv_vtl_main.c:1170:73: error: ‘tsc_khz’ undeclared (first use in this function)
+     1170 |                 time = mul_u64_u64_div_u64(deadline - now, 1000 * 1000, tsc_khz);
+          |                                                                         ^~~~~~~
+    drivers/hv/mshv_vtl_main.c:1170:73: note: each undeclared identifier is reported only once for each function it appears in
+    drivers/hv/mshv_vtl_main.c: In function ‘mshv_vtl_switch_to_vtl0_irqoff’:
+    drivers/hv/mshv_vtl_main.c:1242:49: error: ‘MSHV_VTL_RUN_FLAG_HALTED’ undeclared (first use in this function)
+     1242 |         armed = mshv_tdx_halt_timer_pre(flags & MSHV_VTL_RUN_FLAG_HALTED);
+          |                                                 ^~~~~~~~~~~~~~~~~~~~~~~~
+    cc1: some warnings being treated as errors
+    
+    Fixes: fc1601f6e4db ("mshv_vtl/tdx: Arm per-cpu timer to wake up from L0 HLT emulation")
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit f52680851574c8d67392bbff4b9055be3c99aa82[m
+Merge: 4e114da12071 8bfc1c194846
+Author: Hardik Garg <hargar@microsoft.com>
+Date:   Wed Dec 10 11:46:22 2025 -0800
+
+    Ohcl tdx timer service support
+    
+    TDX module supports timer service for L1. When L1 writes tdcs value with TDG.VP.WR(TSC DEADLINE), tdg.vp.enter() exits with timer preemption when deadline expires. (Not injecting timer interrupt to L2 guest).
+    
+    Update tdx vp context shared between L1 kernel and L1 userspace so that openvmm can use TDX timer service.
+    Unless the userspace uses it, the L1 OHCL kernel behavior keeps the same behavior as before.
+
+[33mcommit 8bfc1c194846eb9e47519a2bc15013a59a6d43c6[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Thu Oct 30 11:41:09 2025 -0700
+
+    arch/x86: Unbreak df21bf37518b ("arch/x86: Provide the CPU number in the wakeup AP callback")
+    
+    The commit df21bf37518b ("arch/x86: Provide the CPU number in the wakeup AP
+    callback") changed the signature of struct apic::wakeup_secondary_cpu(),
+    but it did not update numachip_wakeup_secondary().  Update it to fix the
+    compile error.
+    
+    arch/x86/kernel/apic/apic_numachip.c:228:43: error: initialization of 'int (*)(u32,  long unsigned int,  unsigned int)' {aka 'int (*)(unsigned int,  long unsigned int,  unsigned int)'} from incompatible pointer type 'int (*)(u32,  long unsigned int)' {aka 'int (*)(unsigned int,  long unsigned int)'} [-Wincompatible-pointer-types]
+      228 |         .wakeup_secondary_cpu           = numachip_wakeup_secondary,
+          |                                           ^~~~~~~~~~~~~~~~~~~~~~~~~
+    
+    Fixes: df21bf37518b ("arch/x86: Provide the CPU number in the wakeup AP callback")
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit 3528fd7a17430d9e7847a3b62b77e614921a99cf[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Mon Oct 20 10:50:29 2025 -0700
+
+    drivers: hv: mshv_vtl: Advertise TDX timer service extension
+    
+    Add an extension for the TDX timer service, so that the userspace can query
+    the feature before use.
+    
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit 9b80430043b8b9736391db94a91b99418e11022a[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Thu Nov 20 13:58:27 2025 -0800
+
+    mshv_vtl/tdx: Eliminate duplicate tdg.vp.wr(TSC deadline = disarm)
+    
+    On timer expiry path, it unconditionally issues
+    tdg.vp.wr(TSC deadline = disarm).  The following tdg.vp.enter() execution
+    path may overwrite tdg.vp.wr(new TSC deadline).  Delete the duplicated
+    tdg.vp.wr() call as optimization.
+    
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit fc1601f6e4db4ef55392278a565de34448096edd[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Wed Oct 15 16:29:02 2025 -0700
+
+    mshv_vtl/tdx: Arm per-cpu timer to wake up from L0 HLT emulation
+    
+    The TDX timer service sets a preemption timer for the L2 (VTL0) vCPU.
+    tdg.vp.enter() exits with preemption timer exit reason on timer expiry.
+    The HLT emulation path needs extra change where the L1 (VTL2) kernel issues
+    TDG.VP.VMCALL(HLT) because the host (L0) VMM doesn't know the L2 deadline
+    timer value.
+    
+    When the L1 kernel issues TDG.VP.VMCALL(HLT), start per-CPU hrtimer to wake
+    up from the L0 HLT emulation by L1 getting timer interrupt.  Cancel the
+    hrtimer after it returns from the L0 VMM.
+    
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit 5992af2aa84c0188a21f5a004ad6c1196eae8d45[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Fri Nov 21 10:12:22 2025 -0800
+
+    mshv_vtl/tdx: Skip duplicated TDG.VP.WR(TSC deadline)
+    
+    As the tdcall is slow, cache the previously written TSC deadline value and
+    skip unnecessary tdg.vp.wr(TSC deadline) if the value doesn't change.  This
+    is also a preparation for hlt emulation case that requires the previously
+    written TSC deadline value.
+    
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit 1bf07066d93ba44dd12f088905b9c1c340a83c87[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Mon Oct 13 10:31:33 2025 -0700
+
+    mshv_vtl/tdx: Set TSC deadline if userspace requests
+    
+    Program the TD partitioning TSC deadline timer service for L2 (VTL0) vCPUs
+    when the L1 (VTL2) userspace requests.  Then, the TDX module sets
+    preemption timer for L2 vCPU.  If the timer expires, the L2 (VTL0) vCPU
+    exits with a VMX preemption timer exit reason.  The mshv_vtl driver then
+    exits to the userspace, and the userspace is notified of the exit.
+    
+    The TDX module does not clear TDVPS deadline on a preemption timer exit.
+    Disarm the TSC deadline explicitly on the preemption timer exit.  Otherwise
+    the following TDG.VP.ENTER() immediately exits without executing the L2
+    guest.
+    
+    Reported-by: Dexuan Cui <decui@microsoft.com>
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit c79ca81837b439867bbb5c0a7abecb25c530edb9[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Mon Oct 13 10:06:46 2025 -0700
+
+    mshv_vtl/tdx: Factor out tdg_vp_wr() wrapper
+    
+    Refactor __tdcall() for a dedicated wrapper for TDG.VP.WR() operation.
+    This prepares for additional calls of TDG.VP.WR() cleanly while avoiding
+    repeated open-coding.
+    
+    No functional change intended.
+    
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit 54697646efc0cbd98100c22338aabf24ae46b3c8[m
+Author: Isaku Yamahata <isaku.yamahata@intel.com>
+Date:   Mon Oct 13 09:49:29 2025 -0700
+
+    mshv_vtl/tdx: Add member to tdx vp context for TDX timer service
+    
+    TD partitioning provides a timer service for L1 (VTL2) guest to set
+    a preemption timer for L2 (VTL0) vCPUs.
+    
+    Add members for a new timer service to the tdx_vp_context struct for
+    the L1 (VTL2) userspace to pass a timeout value down to the L1 (VTL2)
+    kernel.
+    
+    Signed-off-by: Isaku Yamahata <isaku.yamahata@intel.com>
+
+[33mcommit 4e114da12071dbbe24de7dc6bb031516666e1d7d[m[33m ([m[1;33mtag: [m[1;33mrolling-lts/hcl-main/6.12.52.2[m[33m, [m[1;32mmainmain[m[33m, [m[1;32mmain[m[33m)[m
+Merge: 5b7c9bffd268 9f0c09eb5232
+Author: Hardik Garg <hargar@microsoft.com>
+Date:   Sun Nov 16 21:56:10 2025 -0800
+
+    Add support for redirected VTL0 interrupts
+    
+    This code enables the changes made here: https://github.com/microsoft/openvmm/pull/384
+    
+    Implements tdx: https://github.com/microsoft/openvmm/issues/362
+    
+    Currently on TDX CVMs, VTL0 owned device interrupts are delivered via proxy interrupt mechanism (CVM exits to hypervisor, hypervisor posts interrupt to VTL2 and then VTL2 forwards to VTL0). This creates a performance overhead due to the CVM exit to hypervisor.
+    
+    This change introduces a proxy interrupt redirection capability to improve performance:
+    a) VTL2 requests proxy interrupt redirection during Retarget Device Interrupt HC.
+    b) Hypervisor will remap the interrupts with posted interrupts enabled.
+    c) When interrupt arrives, it will be delivered directly to VTL2 by the hardware through posted interrupt mechanism, without requiring any exit to hypervisor.
+    d) And VTL2 can forward it to VTL0 as it currently does.
+    
+    Hyper-V support for proxy interrupt redirect capability is exposed via proxy_interrupt_redirect_available (bit 34) in HvRegisterVsmCapabilities
+
+[33mcommit 9f0c09eb5232c22f9334fe9a68765489b0fc7120[m
+Author: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date:   Thu Oct 30 12:39:25 2025 -0700
+
+    hv: mshv_vtl: Handle unmapping of redirected interrupts
+    
+    User space requests the tear down of a redirected interrupt using the
+    APIC ID and the CPU interrupt vector number associated with it.
+    
+    Traverse the list of redirected interrupt and release the resources of
+    the IRQ being teared down.
+    
+    Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+    ---
+    Changes since v2:
+     * Introduced this patch.
+    
+    Changes since v1:
+     * N/A
+
+[33mcommit de2841b15e577158374f2029943e6dca6f242349[m
+Author: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date:   Fri Oct 3 15:38:27 2025 -0700
+
+    hv: mshv_vtl: Redirect a proxy interrupt
+    
+    Implement the setup portion of the MAP_REDIRECTED_DEVICE_INTERRUPT
+    IOCTL. To redirect a proxy interrupt, allocate and request a Linux IRQ.
+    
+    Set the CPU affinity of the IRQ to that user space specified. Also, specify
+    to request_irq() that the interrupt should be excluded from interrupt
+    balancing as such action would change the CPU affinity of the interrupt.
+    The contract with user space restricts the kernel from changing it.
+    
+    Upon getting an interrupt, the handler will assert the proxy interrupt
+    vector that user space specified.
+    
+    Remember which hardware vector (i.e., the CPU vector number) that was
+    assigned to the IRQ. This information is needed to tear down the
+    redirection of the proxy interrupt (it will be implemented in a subsequent
+    changset).
+    
+    Keep a list of the redirected interrupts. Use it to avoid redirecting
+    the same proxy interrupt more than once.
+    
+    Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+    ---
+    Changes since v2:
+     * Introduced this patch.
+    
+    Changes since v1:
+     * N/A
+
+[33mcommit 4e0f32503ce65db975dd39281115e272d28fc713[m
+Author: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date:   Tue Apr 22 12:16:17 2025 -0700
+
+    hv: mshv_vtl: Create a thin irq_domain for redirected proxy interrupts
+    
+    Add a thin irq_domain for redirected interrupts. The kernel IRQ
+    infrastructure will use this domain to manage the resources and
+    configuration of Linux IRQs to meet the requirements of redirected
+    proxy interrupts.
+    
+    The redirected_intr_domain irq_domain defines the .alloc() operation to
+    request the allocation of IRQs in the IRQ hierarchy all the way up to
+    x86_vector_domain. Use dummy_irq_chip as the irq_chip for the domain since
+    no other hardware configuration is needed. Importantly, this irq_chip does
+    not define the .irq_set_affinity() operation. Redirected proxy interrupts
+    do not allow changes in affinity.
+    
+    Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+    ---
+    Changes since v2:
+     * Introduced this patch.
+    
+    Changes since v1:
+     * N/A
+
+[33mcommit 0a50e9f7913086e1cc397efcc87cdd34c1a0f41f[m
+Author: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date:   Tue Feb 18 17:48:19 2025 -0800
+
+    hv: mshv_vtl: Introduce the MAP_REDIRECTED_DEVICE_INTERRUPT IOCTL
+    
+    The proxy interrupts that the VTL2 kernel relays to the VTL0 guest are
+    handled via the single interrupt vector of the VMBus synthetic interrupt
+    controller.
+    
+    On TDX guests in particular, Hyper-V does not use IOMMU posted interrupts
+    for these interrupts. This results in a TDEXIT for every interrupt and
+    consequent performance degradation.
+    
+    To recoup performance, newer versions of Hyper-V feature support the
+    posting of VTL0 interrupts directly to the VTL2 guest. In such setup, the
+    VTL2 guest still relays interrupts to the VTL0 guest, but uses a dedicated
+    VTL2 interrupt vector for each VTL0 interrupt. The dedicated vector must be
+    reserved only in one CPU that the user space specifies. Hyper-V shall post
+    the interrupt only to the designated VTL2 vCPU. The VTL2 kernel must not
+    migrate the dedicated vector to another VTL2 vCPU.
+    
+    User space in the VTL2 guest is responsible of requesting such redirection.
+    Implement the new MAP_REDIRECTED_DEVICE_INTERRUPT IOCTL. User space
+    provides the vector number of the VTL0 guest that wants the VTL2 kernel to
+    redirect as well as the APIC ID of the VTL2 vCPU on which the interrupt
+    redirection will take place. On success, return in the payload of the IOCTL
+    the VTL2 CPU vector number reserved for this purpose. This is the vector
+    number that Hyper-V must use when setting up the posted interrupt.
+    
+    Reuse the same IOCTL to also request the removal of the redirection when
+    needed. When removing a redirection user space must provide the number of
+    the VTL2 interrupt vector number that the kernel provided when the
+    redirection was established.
+    
+    Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+    ---
+    Changes since v2:
+     * Modified the payload of the IOCTL to also include the APIC ID of the
+       VTL2 CPU on which the interrupt redirection will take place.
+     * Removed weak stubs that are no longer needed.
+    
+    Changes since v1:
+     * Assigned 0x39 to MAP_REDIRECTED_DEVICE_INTERRUPT as 0x38 was already
+       taken. (Roman)
+     * Fixed error handling for copy_to_user(). (Roman)
+     * Moved comment about unmapping above the conditional statement. (Roman)
+
+[33mcommit 835e225746c988692921fe8e30fea1eb4fd8a093[m
+Author: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date:   Wed Feb 19 08:41:22 2025 -0800
+
+    hv: mshv_vtl: Add a helper function to assert single proxy interrupts
+    
+    The statically assigned interrupt vector of the VMBus synthetic interrupt
+    is used to also assert proxy interrupts. These can be asserted in group or
+    individually. Proxy interrupts can also be asserted individually if a
+    redirection is in place to use a dedicated Linux IRQ.
+    
+    Add a helper function to assert individual proxy interrupts.
+    
+    No functional change intended.
+    
+    Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+    ---
+    Changes since v2:
+     * None
+    
+    Changes since v1:
+     * Rebased on the previous changeset that optimizes the calculation of
+       the proxy interrupt bit.
+
+[33mcommit af156343f31b81c2f0e0c4a1f086f340ea23a864[m
+Author: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date:   Thu Oct 2 20:05:37 2025 -0700
+
+    mshv_vtl/tdx: Add a helper function to get CPU number from APIC ID
+    
+    mshv_tdx_set_cpumask_from_apicid() does two things: it traverses the APICID
+    hashtable and sets a CPU mask. Traversing the hastable can be carved out
+    into a helper function. This makes the code more modular and other
+    functions can benefit from such helper. Subsequent patches will make use
+    of it.
+    
+    Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+    ---
+    Changes since v2:
+     * Introduced this patch.
+    
+    Changes since v1:
+     * N/A
+
+[33mcommit 6189602c88f973fb33b59bd239b27e453ed5e59d[m
+Author: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date:   Fri May 30 13:02:51 2025 -0700
+
+    hv: mshv_vtl: Optimize computation of the proxy interrupt bit
+    
+    The computation of the proxy interrupt number needs to be performed each
+    time is asserted. Optimize the computation using bit shifts and masks.
+    
+    While here, fix a minor issue on a comment.
+    
+    Suggested-by: Roman Kisel <romank@linux.microsoft.com>
+    Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+    ---
+    Changes since v2:
+     * None
+    
+    Changes since v1:
+     * Introduced this patch.
+
+[33mcommit 5b7c9bffd26885042c40030d3538e7750cd83b35[m[33m ([m[1;33mtag: [m[1;33mrolling-lts/hcl-main/6.12.52.1[m[33m, [m[1;31morigin/user/namjain/pipelinetest[m[33m, [m[1;32mrepro_build[m[33m, [m[1;32mproduct/hcl-main/6.12[m[33m)[m
+Merge: 8da221c8ff73 4234b0f7591e
+Author: Naman Jain <namjain@microsoft.com>
+Date:   Tue Oct 14 13:29:47 2025 +0530
+
+    Merge pull request #106 from microsoft/user/namjain/oct-release-6.12
+    
+    Merge stable tag 'v6.12.52' into product/hcl-main/6.12
+
+[33mcommit 4234b0f7591e3326e2cc8b93fd66d5badb13b7df[m[33m ([m[1;31morigin/user/namjain/oct-release-6.12[m[33m)[m
+Merge: 8da221c8ff73 2b2cbdcede38
+Author: Naman Jain <namjain@linux.microsoft.com>
+Date:   Mon Oct 13 06:28:26 2025 +0000
+
+    Merge tag 'v6.12.52' into product/hcl-main/6.12
+    
+    This is the 6.12.52 stable release
+
+[33mcommit 2b2cbdcede3878c424b7937c83660ec9e9a232a2[m
+Author: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Date:   Sun Oct 12 12:57:19 2025 +0200
+
+    Linux 6.12.52
+    
+    Link: https://lore.kernel.org/r/20251010131331.785281312@linuxfoundation.org
+    Tested-by: Jon Hunter <jonathanh@nvidia.com>
+    Tested-by: Brett Mastbergen <bmastbergen@ciq.com>
+    Tested-by: Shuah Khan <skhan@linuxfoundation.org>
+    Tested-by: Pavel Machek (CIP) <pavel@denx.de>
+    Tested-by: Linux Kernel Functional Testing <lkft@linaro.org>
+    Tested-by: Mark Brown <broonie@kernel.org>
+    Tested-by: Ron Economos <re@w6rz.net>
+    Tested-by: Salvatore Bonaccorso <carnil@debian.org>
+    Tested-by: Brett A C Sheffield <bacs@librecast.net>
+    Tested-by: Peter Schneider <pschneider1968@googlemail.com>
+    Tested-by: Miguel Ojeda <ojeda@kernel.org>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit e7177c7e32cb806f348387b7f4faafd4a5b32054[m
+Author: Sean Christopherson <seanjc@google.com>
+Date:   Tue Jul 15 12:06:38 2025 -0700
+
+    KVM: x86: Don't (re)check L1 intercepts when completing userspace I/O
+    
+    commit e750f85391286a4c8100275516973324b621a269 upstream.
+    
+    When completing emulation of instruction that generated a userspace exit
+    for I/O, don't recheck L1 intercepts as KVM has already finished that
+    phase of instruction execution, i.e. has already committed to allowing L2
+    to perform I/O.  If L1 (or host userspace) modifies the I/O permission
+    bitmaps during the exit to userspace,  KVM will treat the access as being
+    intercepted despite already having emulated the I/O access.
+    
+    Pivot on EMULTYPE_NO_DECODE to detect that KVM is completing emulation.
+    Of the three users of EMULTYPE_NO_DECODE, only complete_emulated_io() (the
+    intended "recipient") can reach the code in question.  gp_interception()'s
+    use is mutually exclusive with is_guest_mode(), and
+    complete_emulated_insn_gp() unconditionally pairs EMULTYPE_NO_DECODE with
+    EMULTYPE_SKIP.
+    
+    The bad behavior was detected by a syzkaller program that toggles port I/O
+    interception during the userspace I/O exit, ultimately resulting in a WARN
+    on vcpu->arch.pio.count being non-zero due to KVM no completing emulation
+    of the I/O instruction.
+    
+      WARNING: CPU: 23 PID: 1083 at arch/x86/kvm/x86.c:8039 emulator_pio_in_out+0x154/0x170 [kvm]
+      Modules linked in: kvm_intel kvm irqbypass
+      CPU: 23 UID: 1000 PID: 1083 Comm: repro Not tainted 6.16.0-rc5-c1610d2d66b1-next-vm #74 NONE
+      Hardware name: QEMU Standard PC (Q35 + ICH9, 2009), BIOS 0.0.0 02/06/2015
+      RIP: 0010:emulator_pio_in_out+0x154/0x170 [kvm]
+      PKRU: 55555554
+      Call Trace:
+       <TASK>
+       kvm_fast_pio+0xd6/0x1d0 [kvm]
+       vmx_handle_exit+0x149/0x610 [kvm_intel]
+       kvm_arch_vcpu_ioctl_run+0xda8/0x1ac0 [kvm]
+       kvm_vcpu_ioctl+0x244/0x8c0 [kvm]
+       __x64_sys_ioctl+0x8a/0xd0
+       do_syscall_64+0x5d/0xc60
+       entry_SYSCALL_64_after_hwframe+0x4b/0x53
+       </TASK>
+    
+    Reported-by: syzbot+cc2032ba16cc2018ca25@syzkaller.appspotmail.com
+    Closes: https://lore.kernel.org/all/68790db4.a00a0220.3af5df.0020.GAE@google.com
+    Fixes: 8a76d7f25f8f ("KVM: x86: Add x86 callback for intercept check")
+    Cc: stable@vger.kernel.org
+    Cc: Jim Mattson <jmattson@google.com>
+    Link: https://lore.kernel.org/r/20250715190638.1899116-1-seanjc@google.com
+    Signed-off-by: Sean Christopherson <seanjc@google.com>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 716dceb19a9f8ff6c9d3aee5a771a93d6a47a0b6[m
+Author: Nalivayko Sergey <Sergey.Nalivayko@kaspersky.com>
+Date:   Tue Jul 15 18:48:15 2025 +0300
+
+    net/9p: fix double req put in p9_fd_cancelled
+    
+    commit 674b56aa57f9379854cb6798c3bbcef7e7b51ab7 upstream.
+    
+    Syzkaller reports a KASAN issue as below:
+    
+    general protection fault, probably for non-canonical address 0xfbd59c0000000021: 0000 [#1] PREEMPT SMP KASAN NOPTI
+    KASAN: maybe wild-memory-access in range [0xdead000000000108-0xdead00000000010f]
+    CPU: 0 PID: 5083 Comm: syz-executor.2 Not tainted 6.1.134-syzkaller-00037-g855bd1d7d838 #0
+    Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.12.0-1 04/01/2014
+    RIP: 0010:__list_del include/linux/list.h:114 [inline]
+    RIP: 0010:__list_del_entry include/linux/list.h:137 [inline]
+    RIP: 0010:list_del include/linux/list.h:148 [inline]
+    RIP: 0010:p9_fd_cancelled+0xe9/0x200 net/9p/trans_fd.c:734
+    
+    Call Trace:
+     <TASK>
+     p9_client_flush+0x351/0x440 net/9p/client.c:614
+     p9_client_rpc+0xb6b/0xc70 net/9p/client.c:734
+     p9_client_version net/9p/client.c:920 [inline]
+     p9_client_create+0xb51/0x1240 net/9p/client.c:1027
+     v9fs_session_init+0x1f0/0x18f0 fs/9p/v9fs.c:408
+     v9fs_mount+0xba/0xcb0 fs/9p/vfs_super.c:126
+     legacy_get_tree+0x108/0x220 fs/fs_context.c:632
+     vfs_get_tree+0x8e/0x300 fs/super.c:1573
+     do_new_mount fs/namespace.c:3056 [inline]
+     path_mount+0x6a6/0x1e90 fs/namespace.c:3386
+     do_mount fs/namespace.c:3399 [inline]
+     __do_sys_mount fs/namespace.c:3607 [inline]
+     __se_sys_mount fs/namespace.c:3584 [inline]
+     __x64_sys_mount+0x283/0x300 fs/namespace.c:3584
+     do_syscall_x64 arch/x86/entry/common.c:51 [inline]
+     do_syscall_64+0x35/0x80 arch/x86/entry/common.c:81
+     entry_SYSCALL_64_after_hwframe+0x6e/0xd8
+    
+    This happens because of a race condition between:
+    
+    - The 9p client sending an invalid flush request and later cleaning it up;
+    - The 9p client in p9_read_work() canceled all pending requests.
+    
+          Thread 1                              Thread 2
+        ...
+        p9_client_create()
+        ...
+        p9_fd_create()
+        ...
+        p9_conn_create()
+        ...
+        // start Thread 2
+        INIT_WORK(&m->rq, p9_read_work);
+                                            p9_read_work()
+        ...
+        p9_client_rpc()
+        ...
+                                            ...
+                                            p9_conn_cancel()
+                                            ...
+                                            spin_lock(&m->req_lock);
+        ...
+        p9_fd_cancelled()
+        ...
+                                            ...
+                                            spin_unlock(&m->req_lock);
+                                            // status rewrite
+                                            p9_client_cb(m->client, req, REQ_STATUS_ERROR)
+                                            // first remove
+                                            list_del(&req->req_list);
+                                            ...
+    
+        spin_lock(&m->req_lock)
+        ...
+        // second remove
+        list_del(&req->req_list);
+        spin_unlock(&m->req_lock)
+      ...
+    
+    Commit 74d6a5d56629 ("9p/trans_fd: Fix concurrency del of req_list in
+    p9_fd_cancelled/p9_read_work") fixes a concurrency issue in the 9p filesystem
+    client where the req_list could be deleted simultaneously by both
+    p9_read_work and p9_fd_cancelled functions, but for the case where req->status
+    equals REQ_STATUS_RCVD.
+    
+    Update the check for req->status in p9_fd_cancelled to skip processing not
+    just received requests, but anything that is not SENT, as whatever
+    changed the state from SENT also removed the request from its list.
+    
+    Found by Linux Verification Center (linuxtesting.org) with Syzkaller.
+    
+    Fixes: afd8d6541155 ("9P: Add cancelled() to the transport functions.")
+    Cc: stable@vger.kernel.org
+    Signed-off-by: Nalivayko Sergey <Sergey.Nalivayko@kaspersky.com>
+    Message-ID: <20250715154815.3501030-1-Sergey.Nalivayko@kaspersky.com>
+    [updated the check from status == RECV || status == ERROR to status != SENT]
+    Signed-off-by: Dominique Martinet <asmadeus@codewreck.org>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit c5c703b50e91dd4748769f4c5ab50d9ad60be370[m
+Author: Herbert Xu <herbert@gondor.apana.org.au>
+Date:   Thu Oct 2 17:45:39 2025 +0800
+
+    crypto: rng - Ensure set_ent is always present
+    
+    commit c0d36727bf39bb16ef0a67ed608e279535ebf0da upstream.
+    
+    Ensure that set_ent is always set since only drbg provides it.
+    
+    Fixes: 77ebdabe8de7 ("crypto: af_alg - add extra parameters for DRBG interface")
+    Reported-by: Yiqi Sun <sunyiqixm@gmail.com>
+    Signed-off-by: Herbert Xu <herbert@gondor.apana.org.au>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 77dd0e6cb9f9771a6e0bbebbb6cec6f3da1cdbb1[m
+Author: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
+Date:   Thu Aug 28 12:59:24 2025 +0200
+
+    driver core/PM: Set power.no_callbacks along with power.no_pm
+    
+    commit c2ce2453413d429e302659abc5ace634e873f6f5 upstream.
+    
+    Devices with power.no_pm set are not expected to need any power
+    management at all, so modify device_set_pm_not_required() to set
+    power.no_callbacks for them too in case runtime PM will be enabled
+    for any of them (which in principle may be done for convenience if
+    such a device participates in a dependency chain).
+    
+    Since device_set_pm_not_required() must be called before device_add()
+    or it would not have any effect, it can update power.no_callbacks
+    without locking, unlike pm_runtime_no_callbacks() that can be called
+    after registering the target device.
+    
+    Signed-off-by: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
+    Cc: stable <stable@kernel.org>
+    Reviewed-by: Sudeep Holla <sudeep.holla@arm.com>
+    Link: https://lore.kernel.org/r/1950054.tdWV9SEqCh@rafael.j.wysocki
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 99d67efda945a02eb29891b4d01256b46caba7a8[m
+Author: Ovidiu Panait <ovidiu.panait.oss@gmail.com>
+Date:   Fri Sep 12 13:13:22 2025 +0300
+
+    staging: axis-fifo: flush RX FIFO on read errors
+    
+    commit 82a051e2553b9e297cba82a975d9c538b882c79e upstream.
+    
+    Flush stale data from the RX FIFO in case of errors, to avoid reading
+    old data when new packets arrive.
+    
+    Commit c6e8d85fafa7 ("staging: axis-fifo: Remove hardware resets for
+    user errors") removed full FIFO resets from the read error paths, which
+    fixed potential TX data losses, but introduced this RX issue.
+    
+    Fixes: c6e8d85fafa7 ("staging: axis-fifo: Remove hardware resets for user errors")
+    Cc: stable@vger.kernel.org
+    Signed-off-by: Ovidiu Panait <ovidiu.panait.oss@gmail.com>
+    Link: https://lore.kernel.org/r/20250912101322.1282507-2-ovidiu.panait.oss@gmail.com
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 7441d70d5cd6c1943caa107125c54c71070c3611[m
+Author: Ovidiu Panait <ovidiu.panait.oss@gmail.com>
+Date:   Fri Sep 12 13:13:21 2025 +0300
+
+    staging: axis-fifo: fix TX handling on copy_from_user() failure
+    
+    commit 6d07bee10e4bdd043ec7152cbbb9deb27033c9e2 upstream.
+    
+    If copy_from_user() fails, write() currently returns -EFAULT, but any
+    partially written data leaves the TX FIFO in an inconsistent state.
+    Subsequent write() calls then fail with "transmit length mismatch"
+    errors.
+    
+    Once partial data is written to the hardware FIFO, it cannot be removed
+    without a TX reset. Commit c6e8d85fafa7 ("staging: axis-fifo: Remove
+    hardware resets for user errors") removed a full FIFO reset for this case,
+    which fixed a potential RX data loss, but introduced this TX issue.
+    
+    Fix this by introducing a bounce buffer: copy the full packet from
+    userspace first, and write to the hardware FIFO only if the copy
+    was successful.
+    
+    Fixes: c6e8d85fafa7 ("staging: axis-fifo: Remove hardware resets for user errors")
+    Cc: stable@vger.kernel.org
+    Signed-off-by: Ovidiu Panait <ovidiu.panait.oss@gmail.com>
+    Link: https://lore.kernel.org/r/20250912101322.1282507-1-ovidiu.panait.oss@gmail.com
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit cc9cfbfb2916760fa34602d63d3c6070d3799dd5[m
+Author: Ovidiu Panait <ovidiu.panait.oss@gmail.com>
+Date:   Sun Aug 17 20:13:50 2025 +0300
+
+    staging: axis-fifo: fix maximum TX packet length check
+    
+    commit 52ff2b840bc723f3be1f096f8017c78e0515858c upstream.
+    
+    Since commit 2ca34b508774 ("staging: axis-fifo: Correct handling of
+    tx_fifo_depth for size validation"), write() operations with packets
+    larger than 'tx_fifo_depth - 4' words are no longer rejected with -EINVAL.
+    
+    Fortunately, the packets are not actually getting transmitted to hardware,
+    otherwise they would be raising a 'Transmit Packet Overrun Error'
+    interrupt, which requires a reset of the TX circuit to recover from.
+    
+    Instead, the request times out inside wait_event_interruptible_timeout()
+    and always returns -EAGAIN, since the wake up condition can never be true
+    for these packets. But still, they unnecessarily block other tasks from
+    writing to the FIFO and the EAGAIN return code signals userspace to retry
+    the write() call, even though it will always fail and time out.
+    
+    According to the AXI4-Stream FIFO reference manual (PG080), the maximum
+    valid packet length is 'tx_fifo_depth - 4' words, so attempting to send
+    larger packets is invalid and should not be happening in the first place:
+    
+    > The maximum packet that can be transmitted is limited by the size of
+    > the FIFO, which is (C_TX_FIFO_DEPTH–4)*(data interface width/8) bytes.
+    
+    Therefore, bring back the old behavior and outright reject packets larger
+    than 'tx_fifo_depth - 4' with -EINVAL. Add a comment to explain why the
+    check is necessary. The dev_err() message was removed to avoid cluttering
+    the dmesg log if an invalid packet is received from userspace.
+    
+    Fixes: 2ca34b508774 ("staging: axis-fifo: Correct handling of tx_fifo_depth for size validation")
+    Cc: stable@vger.kernel.org
+    Signed-off-by: Ovidiu Panait <ovidiu.panait.oss@gmail.com>
+    Link: https://lore.kernel.org/r/20250817171350.872105-1-ovidiu.panait.oss@gmail.com
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 65422a6a0d2d374b9609b7aa79569fc1224b0882[m
+Author: Raphael Gallais-Pou <raphael.gallais-pou@foss.st.com>
+Date:   Fri Aug 22 16:19:23 2025 +0200
+
+    serial: stm32: allow selecting console when the driver is module
+    
+    commit cc4d900d0d6d8dd5c41832a93ff3cfa629a78f9a upstream.
+    
+    Console can be enabled on the UART compile as module.
+    Change dependency to allow console mode when the driver is built as module.
+    
+    Fixes: 48a6092fb41fa ("serial: stm32-usart: Add STM32 USART Driver")
+    Cc: stable@vger.kernel.org
+    Signed-off-by: Raphael Gallais-Pou <raphael.gallais-pou@foss.st.com>
+    Link: https://lore.kernel.org/r/20250822141923.61133-1-raphael.gallais-pou@foss.st.com
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit c301ec61ce6f16e21a36b99225ca8a20c1591e10[m
+Author: Carlos Llamas <cmllamas@google.com>
+Date:   Mon Sep 15 22:12:47 2025 +0000
+
+    binder: fix double-free in dbitmap
+    
+    commit 3ebcd3460cad351f198c39c6edb4af519a0ed934 upstream.
+    
+    A process might fail to allocate a new bitmap when trying to expand its
+    proc->dmap. In that case, dbitmap_grow() fails and frees the old bitmap
+    via dbitmap_free(). However, the driver calls dbitmap_free() again when
+    the same process terminates, leading to a double-free error:
+    
+      ==================================================================
+      BUG: KASAN: double-free in binder_proc_dec_tmpref+0x2e0/0x55c
+      Free of addr ffff00000b7c1420 by task kworker/9:1/209
+    
+      CPU: 9 UID: 0 PID: 209 Comm: kworker/9:1 Not tainted 6.17.0-rc6-dirty #5 PREEMPT
+      Hardware name: linux,dummy-virt (DT)
+      Workqueue: events binder_deferred_func
+      Call trace:
+       kfree+0x164/0x31c
+       binder_proc_dec_tmpref+0x2e0/0x55c
+       binder_deferred_func+0xc24/0x1120
+       process_one_work+0x520/0xba4
+      [...]
+    
+      Allocated by task 448:
+       __kmalloc_noprof+0x178/0x3c0
+       bitmap_zalloc+0x24/0x30
+       binder_open+0x14c/0xc10
+      [...]
+    
+      Freed by task 449:
+       kfree+0x184/0x31c
+       binder_inc_ref_for_node+0xb44/0xe44
+       binder_transaction+0x29b4/0x7fbc
+       binder_thread_write+0x1708/0x442c
+       binder_ioctl+0x1b50/0x2900
+      [...]
+      ==================================================================
+    
+    Fix this issue by marking proc->map NULL in dbitmap_free().
+    
+    Cc: stable@vger.kernel.org
+    Fixes: 15d9da3f818c ("binder: use bitmap for faster descriptor lookup")
+    Signed-off-by: Carlos Llamas <cmllamas@google.com>
+    Reviewed-by: Alice Ryhl <aliceryhl@google.com>
+    Reviewed-by: Tiffany Yang <ynaffit@google.com>
+    Link: https://lore.kernel.org/r/20250915221248.3470154-1-cmllamas@google.com
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 1855e18bff8843322471d7603ca020b5c93ab648[m
+Author: Michael Walle <mwalle@kernel.org>
+Date:   Fri Sep 12 14:13:47 2025 +0100
+
+    nvmem: layouts: fix automatic module loading
+    
+    commit 810b790033ccc795d55cbef3927668fd01efdfdf upstream.
+    
+    To support loading of a layout module automatically the MODALIAS
+    variable in the uevent is needed. Add it.
+    
+    Fixes: fc29fd821d9a ("nvmem: core: Rework layouts to become regular devices")
+    Cc: stable@vger.kernel.org
+    Signed-off-by: Michael Walle <mwalle@kernel.org>
+    Reviewed-by: Miquel Raynal <miquel.raynal@bootlin.com>
+    Signed-off-by: Srinivas Kandagatla <srini@kernel.org>
+    Link: https://lore.kernel.org/r/20250912131347.303345-2-srini@kernel.org
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 4827bd6548e0f143868261f79077fd4b096bfcf8[m
+Author: Arnaud Lecomte <contact@arnaud-lcm.com>
+Date:   Sat Jul 26 23:09:31 2025 +0100
+
+    hid: fix I2C read buffer overflow in raw_event() for mcp2221
+    
+    commit b56cc41a3ae7323aa3c6165f93c32e020538b6d2 upstream.
+    
+    As reported by syzbot, mcp2221_raw_event lacked
+    validation of incoming I2C read data sizes, risking buffer
+    overflows in mcp->rxbuf during multi-part transfers.
+    As highlighted in the DS20005565B spec, p44, we have:
+    "The number of read-back data bytes to follow in this packet:
+    from 0 to a maximum of 60 bytes of read-back bytes."
+    This patch enforces we don't exceed this limit.
+    
+    Reported-by: syzbot+52c1a7d3e5b361ccd346@syzkaller.appspotmail.com
+    Closes: https://syzkaller.appspot.com/bug?extid=52c1a7d3e5b361ccd346
+    Tested-by: syzbot+52c1a7d3e5b361ccd346@syzkaller.appspotmail.com
+    Signed-off-by: Arnaud Lecomte <contact@arnaud-lcm.com>
+    Link: https://patch.msgid.link/20250726220931.7126-1-contact@arnaud-lcm.com
+    Signed-off-by: Benjamin Tissoires <bentiss@kernel.org>
+    Signed-off-by: Romain Sioen <romain.sioen@microchip.com>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 647d6b8d22be12842fde6ed0c56859ebc615f21e[m
+Author: Jeongjun Park <aha310510@gmail.com>
+Date:   Sun Sep 28 02:39:24 2025 +0900
+
+    ALSA: usb-audio: fix race condition to UAF in snd_usbmidi_free
+    
+    commit 9f2c0ac1423d5f267e7f1d1940780fc764b0fee3 upstream.
+    
+    The previous commit 0718a78f6a9f ("ALSA: usb-audio: Kill timer properly at
+    removal") patched a UAF issue caused by the error timer.
+    
+    However, because the error timer kill added in this patch occurs after the
+    endpoint delete, a race condition to UAF still occurs, albeit rarely.
+    
+    Additionally, since kill-cleanup for urb is also missing, freed memory can
+    be accessed in interrupt context related to urb, which can cause UAF.
+    
+    Therefore, to prevent this, error timer and urb must be killed before
+    freeing the heap memory.
+    
+    Cc: <stable@vger.kernel.org>
+    Reported-by: syzbot+f02665daa2abeef4a947@syzkaller.appspotmail.com
+    Closes: https://syzkaller.appspot.com/bug?extid=f02665daa2abeef4a947
+    Fixes: 0718a78f6a9f ("ALSA: usb-audio: Kill timer properly at removal")
+    Signed-off-by: Jeongjun Park <aha310510@gmail.com>
+    Signed-off-by: Takashi Iwai <tiwai@suse.de>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit c611b9e55174e439dcd85a72969b43a95f3827a4[m
+Author: Takashi Iwai <tiwai@suse.de>
+Date:   Mon May 19 23:20:30 2025 +0200
+
+    ALSA: usb-audio: Kill timer properly at removal
+    
+    commit 0718a78f6a9f04b88d0dc9616cc216b31c5f3cf1 upstream.
+    
+    The USB-audio MIDI code initializes the timer, but in a rare case, the
+    driver might be freed without the disconnect call.  This leaves the
+    timer in an active state while the assigned object is released via
+    snd_usbmidi_free(), which ends up with a kernel warning when the debug
+    configuration is enabled, as spotted by fuzzer.
+    
+    For avoiding the problem, put timer_shutdown_sync() at
+    snd_usbmidi_free(), so that the timer can be killed properly.
+    While we're at it, replace the existing timer_delete_sync() at the
+    disconnect callback with timer_shutdown_sync(), too.
+    
+    Reported-by: syzbot+d8f72178ab6783a7daea@syzkaller.appspotmail.com
+    Closes: https://lore.kernel.org/681c70d7.050a0220.a19a9.00c6.GAE@google.com
+    Cc: <stable@vger.kernel.org>
+    Link: https://patch.msgid.link/20250519212031.14436-1-tiwai@suse.de
+    Signed-off-by: Takashi Iwai <tiwai@suse.de>
+    [ del_timer vs timer_delete differences ]
+    Signed-off-by: Jeongjun Park <aha310510@gmail.com>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 5980a35c9d138804251e50788c1e8137028a47ac[m
+Author: Mario Limonciello <mario.limonciello@amd.com>
+Date:   Thu Sep 18 19:48:00 2025 -0500
+
+    drm/amdgpu: Enable MES lr_compute_wa by default
+    
+    commit 1fb710793ce2619223adffaf981b1ff13cd48f17 upstream.
+    
+    The MES set resources packet has an optional bit 'lr_compute_wa'
+    which can be used for preventing MES hangs on long compute jobs.
+    
+    Set this bit by default.
+    
+    Co-developed-by: Yifan Zhang <yifan1.zhang@amd.com>
+    Signed-off-by: Yifan Zhang <yifan1.zhang@amd.com>
+    Acked-by: Alex Deucher <alexander.deucher@amd.com>
+    Signed-off-by: Mario Limonciello <mario.limonciello@amd.com>
+    Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 2dedc6b77bf82dae6cf6a9d4d5ac44526be9a605[m
+Author: Shaoyun Liu <shaoyun.liu@amd.com>
+Date:   Wed Feb 5 12:33:11 2025 -0500
+
+    drm/amd/include : Update MES v12 API for fence update
+    
+    commit 15d8c92f107c17c2e585cb4888c67873538f9722 upstream.
+    
+    MES fence_value will be updated in fence_addr if API success,
+    otherwise upper 32 bit will be used to indicate error code.
+    In any case, MES will trigger an EOP interrupt with 0xb1 as
+    context id in the interrupt cookie
+    
+    Signed-off-by: Shaoyun Liu <shaoyun.liu@amd.com>
+    Acked-by: Alex Deucher <alexander.deucher@amd.com>
+    Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit ff2b82286fc8e6fc6caf9072009d78f7c05db32e[m
+Author: Shaoyun Liu <shaoyun.liu@amd.com>
+Date:   Wed Feb 5 13:16:45 2025 -0500
+
+    drm/amd/include : MES v11 and v12 API header update
+    
+    commit 1c687c0da9efb7c627793483a8927554764e7a55 upstream.
+    
+    MES requires driver set cleaner_shader_fence_mc_addr
+    for cleaner shader support.
+    
+    Signed-off-by: Shaoyun Liu <shaoyun.liu@amd.com>
+    Acked-by: Alex Deucher <alexander.deucher@amd.com>
+    Acked-by: Srinivasan Shanmugam <srinivasan.shanmugam@amd.com>
+    Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit bfd0bec4cb2c0b9e30decc84ffc269ba91ee6906[m
+Author: Shaoyun Liu <shaoyun.liu@amd.com>
+Date:   Fri Oct 18 15:56:25 2024 -0400
+
+    drm/amd : Update MES API header file for v11 & v12
+    
+    commit ce4971388c79d36b3f50f607c3278dbfae6c789b upstream.
+    
+    New features require the new fields defines
+    
+    Signed-off-by: Shaoyun Liu <shaoyun.liu@amd.com>
+    Reviewed-by: Alex Deucher <alexander.deucher@amd.com>
+    Signed-off-by: Alex Deucher <alexander.deucher@amd.com>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 44d41506d697fcb0914b577a9107abbc48bb0494[m
+Author: Christoffer Sandberg <cs@tuxedo.de>
+Date:   Tue Sep 16 18:46:49 2025 +0200
+
+    platform/x86/amd/pmc: Add Stellaris Slim Gen6 AMD to spurious 8042 quirks list
+    
+    [ Upstream commit 12a3dd4d2cd9232d4e4df3b9a5b3d745db559941 ]
+    
+    Prevents instant wakeup ~1s after suspend
+    
+    Signed-off-by: Christoffer Sandberg <cs@tuxedo.de>
+    Signed-off-by: Werner Sembach <wse@tuxedocomputers.com>
+    Link: https://patch.msgid.link/20250916164700.32896-1-wse@tuxedocomputers.com
+    Reviewed-by: Ilpo Järvinen <ilpo.jarvinen@linux.intel.com>
+    Signed-off-by: Ilpo Järvinen <ilpo.jarvinen@linux.intel.com>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 4a918985a35f616af634abb994be25cb528907d2[m
+Author: Duy Nguyen <duy.nguyen.rh@renesas.com>
+Date:   Thu Sep 18 07:03:45 2025 +0000
+
+    can: rcar_canfd: Fix controller mode setting
+    
+    [ Upstream commit 5cff263606a10102a0ea19ff579eaa18fd5577ad ]
+    
+    Driver configures register to choose controller mode before
+    setting all channels to reset mode leading to failure.
+    The patch corrects operation of mode setting.
+    
+    Signed-off-by: Duy Nguyen <duy.nguyen.rh@renesas.com>
+    Signed-off-by: Tranh Ha <tranh.ha.xb@renesas.com>
+    Link: https://patch.msgid.link/TYWPR01MB87434739F83E27EDCD23DF44B416A@TYWPR01MB8743.jpnprd01.prod.outlook.com
+    Signed-off-by: Marc Kleine-Budde <mkl@pengutronix.de>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 1d2ef21f02baff0c109ad78b9e835fb4acb14533[m
+Author: Chen Yufeng <chenyufeng@iie.ac.cn>
+Date:   Thu Sep 11 23:08:20 2025 +0800
+
+    can: hi311x: fix null pointer dereference when resuming from sleep before interface was enabled
+    
+    [ Upstream commit 6b696808472197b77b888f50bc789a3bae077743 ]
+    
+    This issue is similar to the vulnerability in the `mcp251x` driver,
+    which was fixed in commit 03c427147b2d ("can: mcp251x: fix resume from
+    sleep before interface was brought up").
+    
+    In the `hi311x` driver, when the device resumes from sleep, the driver
+    schedules `priv->restart_work`. However, if the network interface was
+    not previously enabled, the `priv->wq` (workqueue) is not allocated and
+    initialized, leading to a null pointer dereference.
+    
+    To fix this, we move the allocation and initialization of the workqueue
+    from the `hi3110_open` function to the `hi3110_can_probe` function.
+    This ensures that the workqueue is properly initialized before it is
+    used during device resume. And added logic to destroy the workqueue
+    in the error handling paths of `hi3110_can_probe` and in the
+    `hi3110_can_remove` function to prevent resource leaks.
+    
+    Signed-off-by: Chen Yufeng <chenyufeng@iie.ac.cn>
+    Link: https://patch.msgid.link/20250911150820.250-1-chenyufeng@iie.ac.cn
+    Signed-off-by: Marc Kleine-Budde <mkl@pengutronix.de>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 60bbfc295a331981671cf6313c63e882418de7db[m
+Author: Lizhi Xu <lizhi.xu@windriver.com>
+Date:   Fri Sep 5 09:59:25 2025 +0800
+
+    netfs: Prevent duplicate unlocking
+    
+    [ Upstream commit 66d938e89e940e512f4c3deac938ecef399c13f9 ]
+    
+    The filio lock has been released here, so there is no need to jump to
+    error_folio_unlock to release it again.
+    
+    Reported-by: syzbot+b73c7d94a151e2ee1e9b@syzkaller.appspotmail.com
+    Closes: https://syzkaller.appspot.com/bug?extid=b73c7d94a151e2ee1e9b
+    Signed-off-by: Lizhi Xu <lizhi.xu@windriver.com>
+    Acked-by: David Howells <dhowells@redhat.com>
+    Reviewed-by: Paulo Alcantara (Red Hat) <pc@manguebit.org>
+    Signed-off-by: Christian Brauner <brauner@kernel.org>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit ec045333522ed1feeb256a7e3762d546e8013061[m
+Author: David Sterba <dsterba@suse.com>
+Date:   Mon Sep 15 08:37:47 2025 +0200
+
+    btrfs: ref-verify: handle damaged extent root tree
+    
+    [ Upstream commit ed4e6b5d644c4dd2bc2872ffec036b7da0ec2e27 ]
+    
+    Syzbot hits a problem with enabled ref-verify, ignorebadroots and a
+    fuzzed/damaged extent tree. There's no fallback option like in other
+    places that can deal with it so disable the whole ref-verify as it is
+    just a debugging feature.
+    
+    Reported-by: syzbot+9c3e0cdfbfe351b0bc0e@syzkaller.appspotmail.com
+    Link: https://lore.kernel.org/all/0000000000001b6052062139be1c@google.com/
+    Reviewed-by: Qu Wenruo <wqu@suse.com>
+    Signed-off-by: David Sterba <dsterba@suse.com>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 31a834865209b71054af77b49071cc149c6d6195[m
+Author: Jack Yu <jack.yu@realtek.com>
+Date:   Wed Sep 17 08:11:43 2025 +0000
+
+    ASoC: rt5682s: Adjust SAR ADC button mode to fix noise issue
+    
+    [ Upstream commit 1dd28fd86c3fa4e395031dd6f2ba920242107010 ]
+    
+    Adjust register settings for SAR adc button detection mode
+    to fix noise issue in headset.
+    
+    Signed-off-by: Jack Yu <jack.yu@realtek.com>
+    Link: https://patch.msgid.link/766cd1d2dd7a403ba65bb4cc44845f71@realtek.com
+    Signed-off-by: Mark Brown <broonie@kernel.org>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 467dd7cab347a81d1f0ac4f159d5800b90fbba03[m
+Author: Shyam Sundar S K <Shyam-sundar.S-k@amd.com>
+Date:   Mon Sep 15 14:35:46 2025 +0530
+
+    platform/x86/amd/pmf: Support new ACPI ID AMDI0108
+    
+    [ Upstream commit 1b09d08866277677d11726116f5e786d5ba00173 ]
+    
+    Include the ACPI ID AMDI0108, which is used on upcoming AMD platforms, in
+    the PMF driver's list of supported devices.
+    
+    Signed-off-by: Shyam Sundar S K <Shyam-sundar.S-k@amd.com>
+    Reviewed-by: Mario Limonciello (AMD) <superm1@kernel.org>
+    Link: https://patch.msgid.link/20250915090546.2759130-1-Shyam-sundar.S-k@amd.com
+    Signed-off-by: Ilpo Järvinen <ilpo.jarvinen@linux.intel.com>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 1773f674c4f2fb293cf15ac728ac589b86acc488[m
+Author: hupu <hupu.gm@gmail.com>
+Date:   Wed Sep 10 16:16:55 2025 +0800
+
+    perf subcmd: avoid crash in exclude_cmds when excludes is empty
+    
+    [ Upstream commit a5edf3550f4260504b7e0ab3d40d13ffe924b773 ]
+    
+    When cross-compiling the perf tool for ARM64, `perf help` may crash
+    with the following assertion failure:
+    
+      help.c:122: exclude_cmds: Assertion `cmds->names[ci] == NULL' failed.
+    
+    This happens when the perf binary is not named exactly "perf" or when
+    multiple "perf-*" binaries exist in the same directory. In such cases,
+    the `excludes` command list can be empty, which leads to the final
+    assertion in exclude_cmds() being triggered.
+    
+    Add a simple guard at the beginning of exclude_cmds() to return early
+    if excludes->cnt is zero, preventing the crash.
+    
+    Signed-off-by: hupu <hupu.gm@gmail.com>
+    Reported-by: Guilherme Amadio <amadio@gentoo.org>
+    Reviewed-by: Namhyung Kim <namhyung@kernel.org>
+    Link: https://lore.kernel.org/r/20250909094953.106706-1-amadio@gentoo.org
+    Signed-off-by: Namhyung Kim <namhyung@kernel.org>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 6263c898761b905dc2d9f47028fb313a2528d6b7[m
+Author: aprilgrimoire <aprilgrimoire@proton.me>
+Date:   Sun Sep 7 09:06:11 2025 +0000
+
+    platform/x86/amd/pmc: Add MECHREVO Yilong15Pro to spurious_8042 list
+    
+    [ Upstream commit 8822e8be86d40410ddd2ac8ff44f3050c9ecf9c6 ]
+    
+    The firmware of Mechrevo Yilong15Pro emits a spurious keyboard interrupt on
+    events including closing the lid. When a user closes the lid on an already
+    suspended system this causes the system to wake up.
+    Add Mechrevo Yilong15Pro Series (GM5HG7A) to the list of quirk
+    spurious_8042 to work around this issue.
+    
+    Link: https://lore.kernel.org/linux-pm/6ww4uu6Gl4F5n6VY5dl1ufASfKzs4DhMxAN8BuqUpCoqU3PQukVSVSBCl_lKIzkQ-S8kt1acPd58eyolhkWN32lMLFj4ViI0Tdu2jwhnYZ8=@proton.me/
+    Signed-off-by: April Grimoire <aprilgrimoire@proton.me>
+    Reviewed-by: Mario Limonciello (AMD) <superm1@kernel.org>
+    Link: https://patch.msgid.link/IvSc_IN5Pa0wRXElTk_fEl-cTpMZxg6TCQk_7aRUkTd9vJUp_ZeC0NdXZ0z6Tn7B-XiqqqQvCH65lq6FqhuECBMEYWcHQmWm1Jo7Br8kpeg=@proton.me
+    Reviewed-by: Ilpo Järvinen <ilpo.jarvinen@linux.intel.com>
+    Signed-off-by: Ilpo Järvinen <ilpo.jarvinen@linux.intel.com>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 27a0a815dbba2cdcbf2a9d267666c43c2b0a1dbf[m
+Author: Mikulas Patocka <mpatocka@redhat.com>
+Date:   Mon Sep 8 15:52:02 2025 +0200
+
+    dm-integrity: limit MAX_TAG_SIZE to 255
+    
+    [ Upstream commit 77b8e6fbf9848d651f5cb7508f18ad0971f3ffdb ]
+    
+    MAX_TAG_SIZE was 0x1a8 and it may be truncated in the "bi->metadata_size
+    = ic->tag_size" assignment. We need to limit it to 255.
+    
+    Signed-off-by: Mikulas Patocka <mpatocka@redhat.com>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit 6a3a7b13ad74c255fc619ce254c366671150cfb3[m
+Author: Venkata Prasad Potturu <venkataprasad.potturu@amd.com>
+Date:   Thu Aug 21 11:15:47 2025 +0530
+
+    ASoC: amd: acp: Adjust pdm gain value
+    
+    [ Upstream commit f1d0260362d72f9f454dc1f9db2eeb80cb801f28 ]
+    
+    Set pdm gain value by setting PDM_MISC_CTRL_MASK value.
+    To avoid low pdm gain value.
+    
+    Signed-off-by: Venkata Prasad Potturu <venkataprasad.potturu@amd.com>
+    Reviewed-by: Mario Limonciello (AMD) <superm1@kernel.org>
+    Link: https://patch.msgid.link/20250821054606.1279178-1-venkataprasad.potturu@amd.com
+    Signed-off-by: Mark Brown <broonie@kernel.org>
+    Signed-off-by: Sasha Levin <sashal@kernel.org>
+
+[33mcommit e005b52b8398b98a68ce0cbf5b644c07f0d9e077[m
+Author: Miguel Ojeda <ojeda@kernel.org>
+Date:   Wed Jul 30 15:07:14 2025 +0200
+
+    rust: block: fix `srctree/` links
+    
+    commit 208d7f788e84e80992d7b1c82ff17b620eb1371e upstream.
+    
+    This `srctree/` link pointed to a file with an underscore, but the header
+    used a dash instead.
+    
+    Thus fix it.
+    
+    This cleans a future warning that will check our `srctree/` links.
+    
+    Cc: stable@vger.kernel.org
+    Fixes: 3253aba3408a ("rust: block: introduce `kernel::block::mq` module")
+    Reviewed-by: Daniel Almeida <daniel.almeida@collabora.com>
+    Signed-off-by: Miguel Ojeda <ojeda@kernel.org>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 1713796d6538dfd7d582e3722e25f5afe569b8a2[m
+Author: Bitterblue Smith <rtl8821cerfe2@gmail.com>
+Date:   Mon Aug 11 18:33:28 2025 +0300
+
+    wifi: rtl8xxxu: Don't claim USB ID 07b8:8188
+    
+    commit ec0b44736b1d22b763ee94f1aee856f9e793f3fe upstream.
+    
+    This ID appears to be RTL8188SU, not RTL8188CU. This is the wrong driver
+    for RTL8188SU. The r8712u driver from staging used to handle this ID.
+    
+    Closes: https://lore.kernel.org/linux-wireless/ee0acfef-a753-4f90-87df-15f8eaa9c3a8@gmx.de/
+    Cc: stable@vger.kernel.org
+    Signed-off-by: Bitterblue Smith <rtl8821cerfe2@gmail.com>
+    Reviewed-by: Ping-Ke Shih <pkshih@realtek.com>
+    Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+    Link: https://patch.msgid.link/f147b2ab-4505-435a-aa32-62964e4f1f1e@gmail.com
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 914d02595ba68d3edd56f4e5783a7132405fa496[m
+Author: Bitterblue Smith <rtl8821cerfe2@gmail.com>
+Date:   Mon Aug 11 18:32:55 2025 +0300
+
+    wifi: rtlwifi: rtl8192cu: Don't claim USB ID 07b8:8188
+    
+    commit e798f2ac6040f46a04795d7de977341fa9aeabae upstream.
+    
+    This ID appears to be RTL8188SU, not RTL8188CU. This is the wrong driver
+    for RTL8188SU. The r8712u driver from staging used to handle this ID.
+    
+    Closes: https://lore.kernel.org/linux-wireless/ee0acfef-a753-4f90-87df-15f8eaa9c3a8@gmx.de/
+    Cc: stable@vger.kernel.org
+    Signed-off-by: Bitterblue Smith <rtl8821cerfe2@gmail.com>
+    Acked-by: Ping-Ke Shih <pkshih@realtek.com>
+    Signed-off-by: Ping-Ke Shih <pkshih@realtek.com>
+    Link: https://patch.msgid.link/2e5e2348-bdb3-44b2-92b2-0231dbf464b0@gmail.com
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+
+[33mcommit 7c1e37878a2f53c8fb4c1ca0b9b93a5334e365f5[m
+Author: Zenm Chen <zenmchen@gmail.com>
+Date:   Sat Jul 26 00:14:32 2025 +0800
+
+    Bluetooth: btusb: Add USB ID 2001:332a for D-Link AX9U rev. A1
+    
+    commit 34ecb8760190606472f71ebf4ca2817928ce5d40 upstream.
+    
+    Add USB ID 2001:332a for D-Link AX9U rev. A1 which is based on a Realtek
+    RTL8851BU chip.
+    
+    The information in /sys/kernel/debug/usb/devices about the Bluetooth
+    device is listed as the below:
+    
+    T:  Bus=03 Lev=01 Prnt=01 Port=02 Cnt=01 Dev#=  2 Spd=480  MxCh= 0
+    D:  Ver= 2.00 Cls=ef(misc ) Sub=02 Prot=01 MxPS=64 #Cfgs=  1
+    P:  Vendor=2001 ProdID=332a Rev= 0.00
+    S:  Manufacturer=Realtek
+    S:  Product=802.11ax WLAN Adapter
+    S:  SerialNumber=00e04c000001
+    C:* #Ifs= 3 Cfg#= 1 Atr=e0 MxPwr=500mA
+    A:  FirstIf#= 0 IfCount= 2 Cls=e0(wlcon) Sub=01 Prot=01
+    I:* If#= 0 Alt= 0 #EPs= 3 Cls=e0(wlcon) Sub=01 Prot=01 Driver=btusb
+    E:  Ad=81(I) Atr=03(Int.) MxPS=  16 Ivl=1ms
+    E:  Ad=02(O) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    E:  Ad=82(I) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    I:* If#= 1 Alt= 0 #EPs= 2 Cls=e0(wlcon) Sub=01 Prot=01 Driver=btusb
+    E:  Ad=03(O) Atr=01(Isoc) MxPS=   0 Ivl=1ms
+    E:  Ad=83(I) Atr=01(Isoc) MxPS=   0 Ivl=1ms
+    I:  If#= 1 Alt= 1 #EPs= 2 Cls=e0(wlcon) Sub=01 Prot=01 Driver=btusb
+    E:  Ad=03(O) Atr=01(Isoc) MxPS=   9 Ivl=1ms
+    E:  Ad=83(I) Atr=01(Isoc) MxPS=   9 Ivl=1ms
+    I:  If#= 1 Alt= 2 #EPs= 2 Cls=e0(wlcon) Sub=01 Prot=01 Driver=btusb
+    E:  Ad=03(O) Atr=01(Isoc) MxPS=  17 Ivl=1ms
+    E:  Ad=83(I) Atr=01(Isoc) MxPS=  17 Ivl=1ms
+    I:  If#= 1 Alt= 3 #EPs= 2 Cls=e0(wlcon) Sub=01 Prot=01 Driver=btusb
+    E:  Ad=03(O) Atr=01(Isoc) MxPS=  25 Ivl=1ms
+    E:  Ad=83(I) Atr=01(Isoc) MxPS=  25 Ivl=1ms
+    I:  If#= 1 Alt= 4 #EPs= 2 Cls=e0(wlcon) Sub=01 Prot=01 Driver=btusb
+    E:  Ad=03(O) Atr=01(Isoc) MxPS=  33 Ivl=1ms
+    E:  Ad=83(I) Atr=01(Isoc) MxPS=  33 Ivl=1ms
+    I:  If#= 1 Alt= 5 #EPs= 2 Cls=e0(wlcon) Sub=01 Prot=01 Driver=btusb
+    E:  Ad=03(O) Atr=01(Isoc) MxPS=  49 Ivl=1ms
+    E:  Ad=83(I) Atr=01(Isoc) MxPS=  49 Ivl=1ms
+    I:  If#= 1 Alt= 6 #EPs= 2 Cls=e0(wlcon) Sub=01 Prot=01 Driver=btusb
+    E:  Ad=03(O) Atr=01(Isoc) MxPS=  63 Ivl=1ms
+    E:  Ad=83(I) Atr=01(Isoc) MxPS=  63 Ivl=1ms
+    I:* If#= 2 Alt= 0 #EPs= 8 Cls=ff(vend.) Sub=ff Prot=ff Driver=rtw89_8851bu_git
+    E:  Ad=84(I) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    E:  Ad=05(O) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    E:  Ad=06(O) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    E:  Ad=07(O) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    E:  Ad=09(O) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    E:  Ad=0a(O) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    E:  Ad=0b(O) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    E:  Ad=0c(O) Atr=02(Bulk) MxPS= 512 Ivl=0ms
+    
+    Cc: stable@vger.kernel.org # 6.12.x
+    Signed-off-by: Zenm Chen <zenmchen@gmail.com>
+    Reviewed-by: Paul Menzel <pmenzel@molgen.mpg.de>
+    Signed-off-by: Luiz Augusto von Dentz <luiz.von.dentz@intel.com>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>

@@ -12,6 +12,25 @@ echo ""
 
 # Check if nix is installed
 if ! command -v nix &> /dev/null; then
+    # Try to source nix profile first in case it's installed but not in PATH
+    if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+        . ~/.nix-profile/etc/profile.d/nix.sh
+    fi
+fi
+
+# Check again after sourcing
+if ! command -v nix &> /dev/null; then
+    # Check if /nix directory exists (Nix is installed but profile not sourced)
+    if [ -d /nix ]; then
+        echo "⚠️  Nix is installed but not in PATH"
+        echo ""
+        echo "Please restart your shell or run:"
+        echo "  . ~/.nix-profile/etc/profile.d/nix.sh"
+        echo ""
+        echo "Then run this script again: $0"
+        exit 0
+    fi
+    
     echo "⚠️  Nix is not installed!"
     echo ""
     echo "Installing Nix (single-user installation)..."
@@ -69,23 +88,32 @@ if [ ! -f flake.lock ]; then
     echo "✓ flake.lock created"
 fi
 
+# Source nix profile for current session
+if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+    echo ""
+    echo "Sourcing Nix profile for current session..."
+    . ~/.nix-profile/etc/profile.d/nix.sh
+    echo "✓ Nix environment loaded"
+fi
+
 echo ""
 echo "==============================================="
 echo "Setup Complete!"
 echo "==============================================="
 echo ""
-echo "Next steps:"
+echo "You can now build the kernel directly with:"
 echo ""
-echo "1. Enter the reproducible build environment:"
-echo "   nix develop"
+echo "  ./Microsoft/nix-build.sh x64"
 echo ""
-echo "2. Build the kernel:"
-echo "   ./Microsoft/nix-build.sh"
+echo "Or verify reproducibility with:"
 echo ""
-echo "3. Verify reproducibility:"
-echo "   ./Microsoft/nix-check-repro.sh"
+echo "  ./Microsoft/nix-check-repro.sh x64"
+echo ""
+echo "The scripts will automatically enter the Nix environment."
+echo ""
+echo "Available architectures: x64, arm64"
 echo ""
 echo "For more information, see:"
 echo "  - REPRODUCIBLE-BUILDS.md"
-echo "  - ./Microsoft/nix-build.sh help"
+echo "  - ./Microsoft/nix-build.sh --help"
 echo ""

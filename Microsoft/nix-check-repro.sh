@@ -6,6 +6,24 @@
 
 set -euo pipefail
 
+# Auto-detect and enter Nix environment if not already in one
+if [ -z "${IN_NIX_SHELL:-}" ]; then
+    # Check if nix is available
+    if ! command -v nix &> /dev/null; then
+        # Try to source nix profile
+        if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+            . ~/.nix-profile/etc/profile.d/nix.sh
+        else
+            echo "Error: Nix is not installed or not in PATH"
+            echo "Please run: ./Microsoft/nix-setup.sh"
+            exit 1
+        fi
+    fi
+
+    # Re-execute this script inside nix develop with experimental features enabled
+    exec nix --extra-experimental-features "nix-command flakes" develop --command "$0" "$@"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -36,7 +54,8 @@ done
 ARCH_TYPE="${ARCH_TYPE:-x64}"
 
 # Build directories - use same name for both builds to ensure reproducibility
-BUILD_DIR="${KERNEL_ROOT}/build"
+# Note: build-hcl-kernel.sh uses $LINUX_SRC/../build which is /home/namjain/openvmm/build
+ACTUAL_BUILD_DIR="$(realpath "${KERNEL_ROOT}/..")/build"
 BUILD_DIR1="${KERNEL_ROOT}/build-repro-1"
 BUILD_DIR2="${KERNEL_ROOT}/build-repro-2"
 DIFF_OUTPUT="${KERNEL_ROOT}/reproducibility-report"
@@ -72,16 +91,16 @@ cleanup_builds() {
 
 build_kernel_twice() {
     log_step "Building kernel - First build"
-    rm -rf "${BUILD_DIR}"
-    BUILD_OUTPUT="${BUILD_DIR}" "${SCRIPT_DIR}/nix-build.sh" "${ARCH_TYPE}" build
+    rm -rf "${ACTUAL_BUILD_DIR}"
+    "${SCRIPT_DIR}/nix-build.sh" "${ARCH_TYPE}" build
     # Copy to preserve first build
-    cp -r "${BUILD_DIR}" "${BUILD_DIR1}"
+    cp -r "${ACTUAL_BUILD_DIR}" "${BUILD_DIR1}"
 
     log_step "Building kernel - Second build"
-    rm -rf "${BUILD_DIR}"
-    BUILD_OUTPUT="${BUILD_DIR}" "${SCRIPT_DIR}/nix-build.sh" "${ARCH_TYPE}" build
+    rm -rf "${ACTUAL_BUILD_DIR}"
+    "${SCRIPT_DIR}/nix-build.sh" "${ARCH_TYPE}" build
     # Copy to preserve second build
-    cp -r "${BUILD_DIR}" "${BUILD_DIR2}"
+    cp -r "${ACTUAL_BUILD_DIR}" "${BUILD_DIR2}"
 
     log_info "Both builds completed"
 }

@@ -6,6 +6,24 @@
 
 set -euo pipefail
 
+# Auto-detect and enter Nix environment if not already in one
+if [ -z "${IN_NIX_SHELL:-}" ]; then
+    # Check if nix is available
+    if ! command -v nix &> /dev/null; then
+        # Try to source nix profile
+        if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+            . ~/.nix-profile/etc/profile.d/nix.sh
+        else
+            echo "Error: Nix is not installed or not in PATH"
+            echo "Please run: ./Microsoft/nix-setup.sh"
+            exit 1
+        fi
+    fi
+
+    # Re-execute this script inside nix develop with experimental features enabled
+    exec nix --extra-experimental-features "nix-command flakes" develop --command "$0" "$@"
+fi
+
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KERNEL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -224,22 +242,33 @@ main() {
     log_info "Starting reproducible kernel build..."
     log_info "Kernel source: ${KERNEL_ROOT}"
     log_info "Build output: ${BUILD_OUTPUT}"
+    log_info "Reproducible environment:"
+    log_info "  SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"
+    log_info "  KBUILD_BUILD_USER=${KBUILD_BUILD_USER}"
+    log_info "  KBUILD_BUILD_HOST=${KBUILD_BUILD_HOST}"
 
-    # Check if we're in nix-shell (optional, comment out if not using nix develop)
-    # check_nix_shell "$@"
+    # Set environment for reproducibility
+    export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP}"
+    export KBUILD_BUILD_USER="${KBUILD_BUILD_USER}"
+    export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST}"
+    export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION}"
+    export KCFLAGS="${KCFLAGS}"
+    export KAFLAGS="${KAFLAGS}"
 
-    prepare_build_dir
-    configure_kernel
-    build_kernel
-    save_build_info
-    compute_checksums
+    cd "${KERNEL_ROOT}"
+
+    # Handle CVM build if requested
+    if [ "${BUILD_TYPE}" = "cvm" ]; then
+        log_info "Building with CVM config..."
+        "${KERNEL_ROOT}/Microsoft/merge-cvm-config.sh"
+    fi
+
+    # Invoke the existing build-hcl-kernel.sh script
+    log_info "Invoking build-hcl-kernel.sh..."
+    "${KERNEL_ROOT}/Microsoft/build-hcl-kernel.sh" "${ARCH_TYPE}"
 
     log_info "Build completed successfully!"
     log_info "Build artifacts are in: ${BUILD_OUTPUT}"
-
-    # Show kernel version
-    KERNEL_VERSION=$(make --no-print-directory -C "${KERNEL_ROOT}" O="${BUILD_OUTPUT}" kernelrelease)
-    log_info "Kernel version: ${KERNEL_VERSION}"
 }
 
 # Handle command line arguments
