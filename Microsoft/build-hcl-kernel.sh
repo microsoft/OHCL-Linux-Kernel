@@ -112,8 +112,8 @@ build_kernel() {
 	fi
 }
 
-LINUX_SRC=$SRC_DIR
-BUILD_DIR=`realpath $LINUX_SRC/../build`
+LINUX_SRC=${LINUX_SRC:-$SRC_DIR}
+BUILD_DIR=${BUILD_DIR:-`realpath $LINUX_SRC/../build`}
 OUT_DIR=`realpath $LINUX_SRC/out`
 MOD_DIR=/build/native/bin/$arch/modules/kernel/
 

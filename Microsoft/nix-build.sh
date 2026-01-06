@@ -88,8 +88,8 @@ export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-nixos}"
 export KBUILD_BUILD_VERSION="1"
 
 # Additional flags for reproducibility - map source paths to normalized locations
-export KCFLAGS="-fdebug-prefix-map=${KERNEL_ROOT}=/build/source"
-export KAFLAGS="-fdebug-prefix-map=${KERNEL_ROOT}=/build/source"
+export KCFLAGS="-fdebug-prefix-map=/tmp/reproducible-kernel-build=/build/source"
+export KAFLAGS="-fdebug-prefix-map=/tmp/reproducible-kernel-build=/build/source"
 
 check_nix_shell() {
     if [ -z "${IN_NIX_SHELL:-}" ]; then
@@ -254,18 +254,37 @@ main() {
     export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION}"
     export KCFLAGS="${KCFLAGS}"
     export KAFLAGS="${KAFLAGS}"
-
-    cd "${KERNEL_ROOT}"
+    
+    # Create normalized symlink for reproducible paths
+    # This ensures the embedded vDSO library path is consistent across machines
+    NORMALIZED_ROOT="/tmp/reproducible-kernel-build"
+    NORMALIZED_BUILD="/tmp/reproducible-build-output"
+    
+    # Clean up any existing symlinks/directories
+    rm -rf "${NORMALIZED_ROOT}" "${NORMALIZED_BUILD}"
+    
+    ln -sf "${KERNEL_ROOT}" "${NORMALIZED_ROOT}"
+    ln -sf "$(realpath "${KERNEL_ROOT}/..")/build" "${NORMALIZED_BUILD}"
+    
+    # Override BUILD_DIR to use normalized path (build-hcl-kernel.sh uses this if set)
+    export BUILD_DIR="${NORMALIZED_BUILD}"
+    export LINUX_SRC="${NORMALIZED_ROOT}"
+    
+    cd "${NORMALIZED_ROOT}"
 
     # Handle CVM build if requested
     if [ "${BUILD_TYPE}" = "cvm" ]; then
         log_info "Building with CVM config..."
-        "${KERNEL_ROOT}/Microsoft/merge-cvm-config.sh"
+        "${NORMALIZED_ROOT}/Microsoft/merge-cvm-config.sh"
     fi
 
     # Invoke the existing build-hcl-kernel.sh script
     log_info "Invoking build-hcl-kernel.sh..."
-    "${KERNEL_ROOT}/Microsoft/build-hcl-kernel.sh" "${ARCH_TYPE}"
+    "${NORMALIZED_ROOT}/Microsoft/build-hcl-kernel.sh" "${ARCH_TYPE}"
+    
+    # Clean up symlinks
+    rm -f "${NORMALIZED_ROOT}"
+    rm -f "${NORMALIZED_BUILD}"
 
     log_info "Build completed successfully!"
     log_info "Build artifacts are in: ${BUILD_OUTPUT}"
