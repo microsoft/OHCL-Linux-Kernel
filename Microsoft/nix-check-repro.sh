@@ -6,6 +6,24 @@
 
 set -euo pipefail
 
+# Auto-detect and enter Nix environment if not already in one
+if [ -z "${IN_NIX_SHELL:-}" ]; then
+    # Check if nix is available
+    if ! command -v nix &> /dev/null; then
+        # Try to source nix profile
+        if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+            . ~/.nix-profile/etc/profile.d/nix.sh
+        else
+            echo "Error: Nix is not installed or not in PATH"
+            echo "Please run: ./Microsoft/nix-setup.sh"
+            exit 1
+        fi
+    fi
+
+    # Re-execute this script inside nix develop
+    exec nix develop --command "$0" "$@"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
