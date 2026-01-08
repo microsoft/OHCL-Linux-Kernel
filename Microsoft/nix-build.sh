@@ -87,10 +87,6 @@ export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-builder}"
 export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-nixos}"
 export KBUILD_BUILD_VERSION="1"
 
-# Additional flags for reproducibility - map source paths to normalized locations
-export KCFLAGS="-fdebug-prefix-map=${KERNEL_ROOT}=/build/source"
-export KAFLAGS="-fdebug-prefix-map=${KERNEL_ROOT}=/build/source"
-
 check_nix_shell() {
     if [ -z "${IN_NIX_SHELL:-}" ]; then
         log_warn "Not running in nix-shell. Entering nix development shell..."
@@ -170,9 +166,7 @@ build_kernel() {
         KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP}" \
         KBUILD_BUILD_USER="${KBUILD_BUILD_USER}" \
         KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST}" \
-        KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION}" \
-        KCFLAGS="${KCFLAGS}" \
-        KAFLAGS="${KAFLAGS}"
+        KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION}"
 
     # Build modules
     log_info "Building kernel modules..."
@@ -205,10 +199,6 @@ Environment:
   LANG=${LANG}
   LC_ALL=${LC_ALL}
   TZ=${TZ}
-
-Build Flags:
-  KCFLAGS=${KCFLAGS}
-  KAFLAGS=${KAFLAGS}
 
 Build completed at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 EOF
@@ -252,8 +242,12 @@ main() {
     export KBUILD_BUILD_USER="${KBUILD_BUILD_USER}"
     export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST}"
     export KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION}"
-    export KCFLAGS="${KCFLAGS}"
-    export KAFLAGS="${KAFLAGS}"
+
+    # Unset Nix-specific compiler flags that might interfere with kernel build
+    unset NIX_CFLAGS_COMPILE
+    unset NIX_CFLAGS_COMPILE_FOR_TARGET
+    unset NIX_LDFLAGS
+    unset NIX_LDFLAGS_FOR_TARGET
 
     cd "${KERNEL_ROOT}"
 
