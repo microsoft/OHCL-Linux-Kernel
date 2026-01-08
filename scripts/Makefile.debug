@@ -45,6 +45,8 @@ KBUILD_AFLAGS	+= -gz=zstd
 KBUILD_LDFLAGS	+= --compress-debug-sections=zstd
 endif
 
+KBUILD_CFLAGS += -fdebug-prefix-map=$(srctree)=.
+
 KBUILD_CFLAGS	+= $(DEBUG_CFLAGS)
 export DEBUG_CFLAGS
 
