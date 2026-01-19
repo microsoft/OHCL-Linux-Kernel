@@ -1041,8 +1041,11 @@ KBUILD_AFLAGS   += $(KAFLAGS)
 KBUILD_CFLAGS   += $(KCFLAGS)
 KBUILD_RUSTFLAGS += $(KRUSTFLAGS)
 
-KBUILD_LDFLAGS_MODULE += --build-id=sha1
-LDFLAGS_vmlinux += --build-id=sha1
+# For reproducible builds, use --build-id=none to avoid non-deterministic Build IDs.
+# The default --build-id=sha1 creates a hash of binary content which varies between
+# builds even with identical source, breaking reproducibility.
+KBUILD_LDFLAGS_MODULE += --build-id=none
+LDFLAGS_vmlinux += --build-id=none
 
 KBUILD_LDFLAGS	+= -z noexecstack
 ifeq ($(CONFIG_LD_IS_BFD),y)
