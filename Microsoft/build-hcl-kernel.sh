@@ -92,7 +92,14 @@ build_kernel() {
 	make $makeargs -j `nproc` olddefconfig $targets
 	cp $LINUX_SRC/Microsoft/hcl-$arch.config $OUT_DIR
 	$objcopy --only-keep-debug --compress-debug-sections $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux.dbg
-	$objcopy --strip-all --add-gnu-debuglink=$BUILD_DIR/vmlinux.dbg $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	# For reproducible builds, skip --add-gnu-debuglink as it embeds a CRC of the debug file
+	# which can vary between builds. The debuglink is only used for debugging and is not
+	# essential for the kernel to function.
+	if [ -n "$REPRODUCIBLE_BUILD" ]; then
+		$objcopy --strip-all $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	else
+		$objcopy --strip-all --add-gnu-debuglink=$BUILD_DIR/vmlinux.dbg $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	fi
 
 	find $BUILD_DIR -name '*.ko' | while read -r mod; do
 		relative_path="${mod#$BUILD_DIR/linux}"
@@ -100,7 +107,11 @@ build_kernel() {
 		mkdir -p "$dest_dir"
 		outmod="$dest_dir/$(basename $mod)"
 		$objcopy --only-keep-debug --compress-debug-sections "$mod" "$outmod.dbg"
-		$objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod" "$outmod"
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			$objcopy --strip-unneeded "$mod" "$outmod"
+		else
+			$objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod" "$outmod"
+		fi
 	done
 
 	cp $BUILD_DIR/vmlinux $OUT_DIR/build/native/bin/$arch

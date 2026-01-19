@@ -50,11 +50,22 @@ Both builds produce **identical binaries**:
    - `CONFIG_BUILD_SALT=""` (empty string for reproducible build IDs)
    - `CONFIG_GCC_PLUGIN_RANDSTRUCT_NONE=y` (no random struct layout)
 
+6. **Deterministic Build ID** (Cross-machine fix):
+   - Changed `--build-id=sha1` to `--build-id=none` in Makefile
+   - The sha1 build ID varies between machines even with identical source
+   - Disabling build ID ensures identical binaries across different build machines
+
+7. **No Debug Link Embedding** (Cross-machine fix):
+   - Skip `--add-gnu-debuglink` when `REPRODUCIBLE_BUILD=1` is set
+   - The debug link contains a CRC of the debug file which can vary
+   - Debug files (.dbg) are still generated separately for debugging
+
 ## Testing
 
 ### Verified Working
 - ✅ x64 architecture with default config
 - ✅ Multiple consecutive builds produce identical binaries
+- ✅ Cross-machine reproducibility (builds on different machines are identical)
 
 ### To Test
 - ⏳ arm64 architecture

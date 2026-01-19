@@ -81,6 +81,9 @@ export LANG="C.UTF-8"
 export LC_ALL="C.UTF-8"
 export TZ="UTC"
 
+# Flag to indicate reproducible build mode (used by build-hcl-kernel.sh)
+export REPRODUCIBLE_BUILD=1
+
 # Kernel-specific reproducible flags
 export KBUILD_BUILD_TIMESTAMP="@${SOURCE_DATE_EPOCH}"
 export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-builder}"
