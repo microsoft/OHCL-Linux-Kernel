@@ -74,8 +74,14 @@ objcopy=("objcopy")
 makeargs=("ARCH=x86_64")
 targets=("vmlinux modules")
 if [ "$arch" = "arm64" ]; then
-	objcopy=("aarch64-linux-gnu-objcopy")
-	makeargs=("ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-")
+	# Use Nix cross-compiler prefix for reproducible builds, system prefix otherwise
+	if [ -n "$REPRODUCIBLE_BUILD" ]; then
+		cross_prefix="aarch64-unknown-linux-gnu-"
+	else
+		cross_prefix="aarch64-linux-gnu-"
+	fi
+	objcopy=("${cross_prefix}objcopy")
+	makeargs=("ARCH=arm64" "CROSS_COMPILE=${cross_prefix}")
 	targets=("vmlinux Image modules")
 fi
 
@@ -84,15 +90,28 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SRC_DIR=`realpath ${SCRIPT_DIR}/..`
 
+# For reproducible builds, add flags to disable Build ID and normalize debug paths
+if [ -n "$REPRODUCIBLE_BUILD" ]; then
+	makeargs+=("KBUILD_BUILD_ID=none")
+	makeargs+=("KCFLAGS=-fdebug-prefix-map=$SRC_DIR=.")
+fi
+
 build_kernel() {
 	if [ -n "$clean" ]; then
 		make mrproper
 	fi
 	export KCONFIG_CONFIG=$LINUX_SRC/Microsoft/hcl-$arch.config
-	make $makeargs -j `nproc` olddefconfig $targets
+	make "${makeargs[@]}" -j `nproc` olddefconfig $targets
 	cp $LINUX_SRC/Microsoft/hcl-$arch.config $OUT_DIR
 	$objcopy --only-keep-debug --compress-debug-sections $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux.dbg
-	$objcopy --strip-all --add-gnu-debuglink=$BUILD_DIR/vmlinux.dbg $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	# For reproducible builds, skip --add-gnu-debuglink as it embeds a CRC of the debug file
+	# which can vary between builds. The debuglink is only used for debugging and is not
+	# essential for the kernel to function.
+	if [ -n "$REPRODUCIBLE_BUILD" ]; then
+		$objcopy --strip-all $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	else
+		$objcopy --strip-all --add-gnu-debuglink=$BUILD_DIR/vmlinux.dbg $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	fi
 
 	find $BUILD_DIR -name '*.ko' | while read -r mod; do
 		relative_path="${mod#$BUILD_DIR/linux}"
@@ -100,7 +119,11 @@ build_kernel() {
 		mkdir -p "$dest_dir"
 		outmod="$dest_dir/$(basename $mod)"
 		$objcopy --only-keep-debug --compress-debug-sections "$mod" "$outmod.dbg"
-		$objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod" "$outmod"
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			$objcopy --strip-unneeded "$mod" "$outmod"
+		else
+			$objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod" "$outmod"
+		fi
 	done
 
 	cp $BUILD_DIR/vmlinux $OUT_DIR/build/native/bin/$arch

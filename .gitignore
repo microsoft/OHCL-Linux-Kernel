@@ -184,3 +184,10 @@ sphinx_*/
 
 # Rust analyzer configuration
 /rust-project.json
+
+# Reproducible build artifacts
+/build-repro-1/
+/build-repro-2/
+/reproducibility-report/
+/result
+/result-*
