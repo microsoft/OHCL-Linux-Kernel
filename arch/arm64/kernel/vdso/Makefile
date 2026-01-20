@@ -21,8 +21,9 @@ btildflags-$(CONFIG_ARM64_BTI_KERNEL) += -z force-bti
 # potential future proofing if we end up with internal calls to the exported
 # routines, as x86 does (see 6f121e548f83 ("x86, vdso: Reimplement vdso.so
 # preparation in build-time C")).
+# For reproducible builds, use --build-id=none to avoid non-deterministic Build IDs.
 ldflags-y := -shared -soname=linux-vdso.so.1 \
-	     -Bsymbolic --build-id=sha1 -n $(btildflags-y)
+	     -Bsymbolic --build-id=none -n $(btildflags-y)
 
 ifdef CONFIG_LD_ORPHAN_WARN
   ldflags-y += --orphan-handling=$(CONFIG_LD_ORPHAN_WARN_LEVEL)

@@ -1041,8 +1041,10 @@ KBUILD_AFLAGS   += $(KAFLAGS)
 KBUILD_CFLAGS   += $(KCFLAGS)
 KBUILD_RUSTFLAGS += $(KRUSTFLAGS)
 
-KBUILD_LDFLAGS_MODULE += --build-id=sha1
-LDFLAGS_vmlinux += --build-id=sha1
+# Allow build-id to be overridden via KBUILD_BUILD_ID (e.g., for reproducible builds)
+KBUILD_BUILD_ID ?= sha1
+KBUILD_LDFLAGS_MODULE += --build-id=$(KBUILD_BUILD_ID)
+LDFLAGS_vmlinux += --build-id=$(KBUILD_BUILD_ID)
 
 KBUILD_LDFLAGS	+= -z noexecstack
 ifeq ($(CONFIG_LD_IS_BFD),y)
