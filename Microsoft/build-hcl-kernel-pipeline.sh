@@ -24,11 +24,13 @@ OPTIONS:
     -k, --kernel-type TYPE    Kernel type: none or cvm (default: none)
     --compiler CC             Compiler to use (default: gcc)
     --scripts-dir DIR         Path to msft-lkt scripts directory (required for cvm)
+    --reproducible            Enable reproducible build mode (uses Nix environment)
     -h, --help                Show this help message
 
 EXAMPLE:
     $0 -s /path/to/kernel-source -b /path/to/build -c Microsoft/hcl-x64.config -a amd64
     $0 -s /path/to/kernel-source -b /path/to/build -c Microsoft/hcl-arm64.config -a arm64 -k cvm
+    $0 -s /path/to/kernel-source -b /path/to/build -c Microsoft/hcl-x64.config -a amd64 --reproducible
 
 EOF
     exit 1
@@ -38,6 +40,7 @@ EOF
 KERNEL_TYPE="none"
 COMPILER="gcc"
 SCRIPTS_DIR=""
+REPRODUCIBLE_BUILD=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -70,6 +73,10 @@ while [[ $# -gt 0 ]]; do
             SCRIPTS_DIR="$2"
             shift 2
             ;;
+        --reproducible)
+            REPRODUCIBLE_BUILD="1"
+            shift
+            ;;
         -h|--help)
             usage
             ;;
@@ -98,6 +105,51 @@ if [[ "$ARCH" != "amd64" ]] && [[ "$ARCH" != "arm64" ]]; then
     exit 1
 fi
 
+#
+# Reproducible build setup - enter Nix environment if requested
+#
+setup_reproducible_build() {
+    if [[ -n "$REPRODUCIBLE_BUILD" ]] && [[ -z "${IN_NIX_SHELL:-}" ]]; then
+        echo ">>> Setting up reproducible build environment..."
+
+        # Run nix-setup.sh to ensure Nix is installed and configured
+        NIX_SETUP_SCRIPT="$SOURCE_DIR/Microsoft/nix-setup.sh"
+        if [[ -f "$NIX_SETUP_SCRIPT" ]]; then
+            echo "Running nix-setup.sh..."
+            chmod +x "$NIX_SETUP_SCRIPT"
+            "$NIX_SETUP_SCRIPT"
+        fi
+
+        # Source nix profile if not already available
+        if ! command -v nix &> /dev/null; then
+            if [[ -f ~/.nix-profile/etc/profile.d/nix.sh ]]; then
+                . ~/.nix-profile/etc/profile.d/nix.sh
+            else
+                echo "Error: Nix is not installed or not in PATH" >&2
+                echo "Please run: ./Microsoft/nix-setup.sh" >&2
+                exit 1
+            fi
+        fi
+
+        # Re-execute this script inside nix develop shell
+        echo "Entering Nix development shell..."
+        cd "$SOURCE_DIR"
+        exec nix --extra-experimental-features "nix-command flakes" develop --command \
+            "$0" \
+            --source-dir "$SOURCE_DIR" \
+            --build-dir "$BUILD_DIR" \
+            --config "$CONFIG" \
+            --arch "$ARCH" \
+            --kernel-type "$KERNEL_TYPE" \
+            --compiler "$COMPILER" \
+            ${SCRIPTS_DIR:+--scripts-dir "$SCRIPTS_DIR"} \
+            --reproducible
+    fi
+}
+
+# Call reproducible build setup before anything else
+setup_reproducible_build
+
 # Set architecture-specific variables
 if [[ "$ARCH" == "amd64" ]]; then
     MAKE_ARCH="x86"
@@ -115,6 +167,24 @@ DEBUG_SYMBOL_DIR="$BUILD_DIR/debug_symbols"
 LINUX_DIR="$BUILD_DIR/linux_dir"
 LINUX_BOOT_DIR="$LINUX_DIR/boot"
 
+# Setup reproducible build environment variables
+if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+    export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1609459200}"
+    export LANG="C.UTF-8"
+    export LC_ALL="C.UTF-8"
+    export TZ="UTC"
+    export KBUILD_BUILD_TIMESTAMP="@${SOURCE_DATE_EPOCH}"
+    export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-builder}"
+    export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-nixos}"
+    export KBUILD_BUILD_VERSION="1"
+
+    # Unset Nix-specific compiler flags that might interfere with kernel build
+    unset NIX_CFLAGS_COMPILE
+    unset NIX_CFLAGS_COMPILE_FOR_TARGET
+    unset NIX_LDFLAGS
+    unset NIX_LDFLAGS_FOR_TARGET
+fi
+
 echo "=============================================="
 echo "HCL Kernel Pipeline Build Script"
 echo "=============================================="
@@ -124,6 +194,12 @@ echo "Config file:       $CONFIG"
 echo "Architecture:      $ARCH (make arch: $MAKE_ARCH)"
 echo "Kernel type:       $KERNEL_TYPE"
 echo "Compiler:          $COMPILER"
+if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+    echo "Reproducible:      YES"
+    echo "  SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+    echo "  KBUILD_BUILD_USER: $KBUILD_BUILD_USER"
+    echo "  KBUILD_BUILD_HOST: $KBUILD_BUILD_HOST"
+fi
 echo "=============================================="
 
 # Create output directories
@@ -199,13 +275,25 @@ build_kernel() {
     # Copy config to build directory
     cp "$CONFIG" "$BUILD_DIR/.config"
 
+    # Build make arguments
+    local make_args=()
+    make_args+=("LOCALVERSION=")
+    make_args+=("CC=$COMPILER")
+    make_args+=("O=$BUILD_DIR")
+
+    # Add reproducible build flags
+    if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+        make_args+=("KBUILD_BUILD_ID=none")
+        make_args+=("KCFLAGS=-fdebug-prefix-map=$SOURCE_DIR=.")
+    fi
+
     # Run olddefconfig
     echo "Running olddefconfig..."
     make CC="$COMPILER" O="$BUILD_DIR" olddefconfig
 
     # Build kernel with all targets
     echo "Building kernel (make all)..."
-    make LOCALVERSION="" CC="$COMPILER" O="$BUILD_DIR" -j "$(nproc)" all
+    make "${make_args[@]}" -j "$(nproc)" all
 
     echo ">>> Kernel build complete"
 }
@@ -248,9 +336,9 @@ build_debug_symbols() {
     # Copy vmlinux to debug symbol directory
     cp -a "$BUILD_DIR/vmlinux" "$DEBUG_SYMBOL_DIR/"
 
-    # Generate kernel debug symbols
+    # Generate kernel debug symbols with compression
     echo "Extracting vmlinux debug symbols..."
-    objcopy --only-keep-debug "$DEBUG_SYMBOL_DIR/vmlinux" \
+    objcopy --only-keep-debug --compress-debug-sections "$DEBUG_SYMBOL_DIR/vmlinux" \
         "$DEBUG_SYMBOL_DIR/vmlinux.debug"
 
     # Generate module debug symbols and strip modules
@@ -261,12 +349,17 @@ build_debug_symbols() {
         # Copy module to debug symbol directory
         cp -a "$module_path" "$DEBUG_SYMBOL_DIR/"
 
-        # Extract debug symbols
-        objcopy --only-keep-debug "$DEBUG_SYMBOL_DIR/$module" \
+        # Extract debug symbols with compression
+        objcopy --only-keep-debug --compress-debug-sections "$DEBUG_SYMBOL_DIR/$module" \
             "$DEBUG_SYMBOL_DIR/$module.debug"
 
         # Strip debug symbols from original module
-        objcopy --strip-unneeded "$module_path"
+        # For reproducible builds, skip --add-gnu-debuglink as it embeds a CRC
+        if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+            objcopy --strip-unneeded "$module_path"
+        else
+            objcopy --strip-unneeded "$module_path"
+        fi
     done
 
     echo ">>> Debug symbols generated in $DEBUG_SYMBOL_DIR"
@@ -333,6 +426,13 @@ main() {
     echo "  Modules:         $LINUX_DIR/lib/modules/"
     echo "  Headers:         $LINUX_HEADERS_DIR"
     echo "  Debug symbols:   $DEBUG_SYMBOL_DIR"
+    if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+        echo ""
+        echo "Reproducible build completed with:"
+        echo "  SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+        echo "  KBUILD_BUILD_USER: $KBUILD_BUILD_USER"
+        echo "  KBUILD_BUILD_HOST: $KBUILD_BUILD_HOST"
+    fi
     echo "=============================================="
 }
 
