@@ -1,7 +1,7 @@
-# Servicing vs. Kexec (Underhill/OpenHCL) — Design Doc
+# Servicing vs. Kexec — Design Doc
 
-Primary goal
-- Replace the host-triggered VTL2 reload boundary with a guest-driven Linux kexec boundary, while preserving servicing semantics end-to-end: enter the same blackout window, stop and save the unit/device graph, stream the servicing-state blob to the host (with an explicit host ACK/COMMIT before crossing the boundary), then boot a new VTL2 instance that fetches the blob back, restores state, starts the graph, and resumes the VM.
+## Primary goal
+Replace the host-triggered VTL2 reload boundary with a guest-driven Linux kexec boundary, while preserving servicing semantics end-to-end: enter the same blackout window, stop and save the unit/device graph, stream the servicing-state blob to the host (with an explicit host ACK/COMMIT before crossing the boundary), then boot a new VTL2 instance that fetches the blob back, restores state, starts the graph, and resumes the VM.
 
 ---
 
@@ -109,7 +109,7 @@ Snapshot:
 <30>[   65.199232] state_unit:  INFO servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:  state change complete duration=314.640888ms
 ```
 
-For more details, please check the section "What “save” does (sequence)" at the end of this document.
+For more details, please check [save-state.md](https://github.com/microsoft/OHCL-Linux-Kernel/blob/user/hargar/kexec-2026/kexec-design/save-state.md)
 
 ### 3) Blob sent to host (GET/GED stream complete)
 
