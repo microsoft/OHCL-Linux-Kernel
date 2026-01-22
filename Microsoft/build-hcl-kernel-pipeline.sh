@@ -107,60 +107,131 @@ fi
 
 #
 # Reproducible build setup - enter Nix environment if requested
+# Automatically sets up Nix on first run using bundled nix-user-chroot
 #
+NIX_VERSION="2.24.10"
+
+setup_nix_if_needed() {
+    local NIX_LOCAL_DIR="$SOURCE_DIR/Microsoft/.nix-local"
+    local NIX_STORE_DIR="$NIX_LOCAL_DIR/nix"
+    local NIX_BIN_DIR="$SOURCE_DIR/Microsoft/nix-bin"
+
+    # Check if Nix store already exists
+    if [[ -d "$NIX_STORE_DIR/store" ]]; then
+        return 0
+    fi
+
+    echo ">>> Setting up Nix environment (first run)..."
+
+    # Detect architecture
+    local ARCH_LOCAL="$(uname -m)"
+    local NIX_ARCH=""
+    case "$ARCH_LOCAL" in
+        x86_64|amd64)
+            ARCH_LOCAL="x86_64"
+            NIX_ARCH="x86_64-linux"
+            ;;
+        aarch64|arm64)
+            ARCH_LOCAL="aarch64"
+            NIX_ARCH="aarch64-linux"
+            ;;
+        *)
+            echo "Error: Unsupported architecture: $ARCH_LOCAL" >&2
+            exit 1
+            ;;
+    esac
+
+    # Check for bundled nix-user-chroot
+    local NIX_USER_CHROOT_SRC="$NIX_BIN_DIR/nix-user-chroot-$ARCH_LOCAL"
+    if [[ ! -x "$NIX_USER_CHROOT_SRC" ]]; then
+        echo "Error: nix-user-chroot not found at $NIX_USER_CHROOT_SRC" >&2
+        echo "Please ensure Microsoft/nix-bin/ contains the required binaries." >&2
+        exit 1
+    fi
+
+    # Create local directories
+    mkdir -p "$NIX_LOCAL_DIR"
+    mkdir -p "$NIX_STORE_DIR"
+
+    # Copy nix-user-chroot to local dir
+    cp "$NIX_USER_CHROOT_SRC" "$NIX_LOCAL_DIR/nix-user-chroot"
+    chmod +x "$NIX_LOCAL_DIR/nix-user-chroot"
+
+    # Check for bundled Nix tarball or download it
+    local NIX_TARBALL="$NIX_BIN_DIR/nix-$NIX_VERSION-$NIX_ARCH.tar.xz"
+    local NIX_TARBALL_LOCAL="$NIX_LOCAL_DIR/nix.tar.xz"
+
+    if [[ -f "$NIX_TARBALL" ]]; then
+        echo "Using bundled Nix tarball..."
+        cp "$NIX_TARBALL" "$NIX_TARBALL_LOCAL"
+    else
+        echo "Downloading Nix $NIX_VERSION..."
+        local NIX_URL="https://releases.nixos.org/nix/nix-$NIX_VERSION/nix-$NIX_VERSION-$NIX_ARCH.tar.xz"
+        if ! curl -fsSL "$NIX_URL" -o "$NIX_TARBALL_LOCAL"; then
+            echo "Error: Failed to download Nix" >&2
+            exit 1
+        fi
+    fi
+
+    # Extract Nix
+    echo "Extracting Nix..."
+    tar -xf "$NIX_TARBALL_LOCAL" -C "$NIX_LOCAL_DIR"
+    local NIX_EXTRACTED=$(ls -d "$NIX_LOCAL_DIR"/nix-*-linux 2>/dev/null | head -1)
+
+    # Install Nix into local store using nix-user-chroot
+    echo "Installing Nix to local store..."
+    "$NIX_LOCAL_DIR/nix-user-chroot" "$NIX_STORE_DIR" "$NIX_EXTRACTED/install" --no-daemon
+
+    # Clean up
+    rm -f "$NIX_TARBALL_LOCAL"
+    rm -rf "$NIX_EXTRACTED"
+
+    # Enable flakes
+    mkdir -p ~/.config/nix
+    if ! grep -q "experimental-features.*flakes" ~/.config/nix/nix.conf 2>/dev/null; then
+        echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+    fi
+
+    echo ">>> Nix setup complete!"
+}
+
 setup_reproducible_build() {
     if [[ -n "$REPRODUCIBLE_BUILD" ]] && [[ -z "${IN_NIX_SHELL:-}" ]]; then
         echo ">>> Setting up reproducible build environment..."
+
+        # Set up Nix if needed (first run)
+        setup_nix_if_needed
 
         # Local nix paths (rootless installation in project folder)
         local NIX_LOCAL_DIR="$SOURCE_DIR/Microsoft/.nix-local"
         local NIX_STORE_DIR="$NIX_LOCAL_DIR/nix"
         local NIX_USER_CHROOT="$NIX_LOCAL_DIR/nix-user-chroot"
 
-        # Run nix-setup.sh to ensure Nix is installed and configured
-        NIX_SETUP_SCRIPT="$SOURCE_DIR/Microsoft/nix-setup.sh"
-        if [[ -f "$NIX_SETUP_SCRIPT" ]]; then
-            echo "Running nix-setup.sh..."
-            chmod +x "$NIX_SETUP_SCRIPT"
-            "$NIX_SETUP_SCRIPT"
+        # Verify nix-user-chroot is available
+        if [[ ! -x "$NIX_USER_CHROOT" ]]; then
+            echo "Error: nix-user-chroot not found at $NIX_USER_CHROOT" >&2
+            echo "Run the setup again or check Microsoft/nix-bin/ directory" >&2
+            exit 1
         fi
 
-        # Check for local nix-user-chroot installation first (preferred)
-        if [[ -x "$NIX_USER_CHROOT" ]] && [[ -d "$NIX_STORE_DIR/store" ]]; then
-            echo "Entering Nix development shell (local installation)..."
-            cd "$SOURCE_DIR"
-            exec "$NIX_USER_CHROOT" "$NIX_STORE_DIR" bash -c '
-                if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
-                    . ~/.nix-profile/etc/profile.d/nix.sh
-                fi
-                exec nix --extra-experimental-features "nix-command flakes" develop --command "$@"
-            ' -- "$0" \
-                --source-dir "$SOURCE_DIR" \
-                --build-dir "$BUILD_DIR" \
-                --config "$CONFIG" \
-                --arch "$ARCH" \
-                --kernel-type "$KERNEL_TYPE" \
-                --compiler "$COMPILER" \
-                ${SCRIPTS_DIR:+--scripts-dir "$SCRIPTS_DIR"} \
-                --reproducible
+        if [[ ! -d "$NIX_STORE_DIR/store" ]]; then
+            echo "Error: Nix store not found at $NIX_STORE_DIR" >&2
+            echo "Setup may have failed. Try removing $NIX_LOCAL_DIR and running again." >&2
+            exit 1
         fi
 
-        # Then check for system nix
-        if ! command -v nix &> /dev/null; then
-            if [[ -f ~/.nix-profile/etc/profile.d/nix.sh ]]; then
-                . ~/.nix-profile/etc/profile.d/nix.sh
-            else
-                echo "Error: Nix is not installed or not in PATH" >&2
-                echo "Please run: ./Microsoft/nix-setup.sh" >&2
-                exit 1
-            fi
-        fi
-
-        # Re-execute this script inside nix develop shell
-        echo "Entering Nix development shell..."
+        # Use nix-user-chroot to run nix develop (this maps NIX_STORE_DIR to /nix)
+        echo "Entering Nix development shell (local installation)..."
         cd "$SOURCE_DIR"
-        exec nix --extra-experimental-features "nix-command flakes" develop --command \
-            "$0" \
+        exec "$NIX_USER_CHROOT" "$NIX_STORE_DIR" bash -c '
+            # Source nix profile from the mapped /nix directory
+            if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+                . ~/.nix-profile/etc/profile.d/nix.sh
+            elif [ -f /nix/var/nix/profiles/default/etc/profile.d/nix.sh ]; then
+                . /nix/var/nix/profiles/default/etc/profile.d/nix.sh
+            fi
+            exec nix --extra-experimental-features "nix-command flakes" develop --command "$@"
+        ' -- "$0" \
             --source-dir "$SOURCE_DIR" \
             --build-dir "$BUILD_DIR" \
             --config "$CONFIG" \
