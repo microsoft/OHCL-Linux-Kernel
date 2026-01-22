@@ -1,1 +1,5 @@
 *.config.old
+
+# Local Nix installation (rootless, stored in project folder)
+.nix-local/
+nix-local

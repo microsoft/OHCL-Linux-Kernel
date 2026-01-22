@@ -112,6 +112,11 @@ setup_reproducible_build() {
     if [[ -n "$REPRODUCIBLE_BUILD" ]] && [[ -z "${IN_NIX_SHELL:-}" ]]; then
         echo ">>> Setting up reproducible build environment..."
 
+        # Local nix paths (rootless installation in project folder)
+        local NIX_LOCAL_DIR="$SOURCE_DIR/Microsoft/.nix-local"
+        local NIX_STORE_DIR="$NIX_LOCAL_DIR/nix"
+        local NIX_USER_CHROOT="$NIX_LOCAL_DIR/nix-user-chroot"
+
         # Run nix-setup.sh to ensure Nix is installed and configured
         NIX_SETUP_SCRIPT="$SOURCE_DIR/Microsoft/nix-setup.sh"
         if [[ -f "$NIX_SETUP_SCRIPT" ]]; then
@@ -120,7 +125,27 @@ setup_reproducible_build() {
             "$NIX_SETUP_SCRIPT"
         fi
 
-        # Source nix profile if not already available
+        # Check for local nix-user-chroot installation first (preferred)
+        if [[ -x "$NIX_USER_CHROOT" ]] && [[ -d "$NIX_STORE_DIR/store" ]]; then
+            echo "Entering Nix development shell (local installation)..."
+            cd "$SOURCE_DIR"
+            exec "$NIX_USER_CHROOT" "$NIX_STORE_DIR" bash -c '
+                if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+                    . ~/.nix-profile/etc/profile.d/nix.sh
+                fi
+                exec nix --extra-experimental-features "nix-command flakes" develop --command "$@"
+            ' -- "$0" \
+                --source-dir "$SOURCE_DIR" \
+                --build-dir "$BUILD_DIR" \
+                --config "$CONFIG" \
+                --arch "$ARCH" \
+                --kernel-type "$KERNEL_TYPE" \
+                --compiler "$COMPILER" \
+                ${SCRIPTS_DIR:+--scripts-dir "$SCRIPTS_DIR"} \
+                --reproducible
+        fi
+
+        # Then check for system nix
         if ! command -v nix &> /dev/null; then
             if [[ -f ~/.nix-profile/etc/profile.d/nix.sh ]]; then
                 . ~/.nix-profile/etc/profile.d/nix.sh
@@ -434,6 +459,13 @@ main() {
         echo "  KBUILD_BUILD_HOST: $KBUILD_BUILD_HOST"
     fi
     echo "=============================================="
+
+    # Print sha256sum of vmlinux for reproducibility verification
+    if [[ -f "$BUILD_DIR/vmlinux" ]]; then
+        echo ""
+        echo "vmlinux sha256sum:"
+        sha256sum "$BUILD_DIR/vmlinux"
+    fi
 }
 
 # Run main

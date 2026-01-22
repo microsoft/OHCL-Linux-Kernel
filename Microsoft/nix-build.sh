@@ -6,27 +6,51 @@
 
 set -euo pipefail
 
+# Script directory (need this early for local nix detection)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KERNEL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Local nix paths
+NIX_LOCAL_DIR="${SCRIPT_DIR}/.nix-local"
+NIX_STORE_DIR="${NIX_LOCAL_DIR}/nix"
+NIX_USER_CHROOT="${NIX_LOCAL_DIR}/nix-user-chroot"
+NIX_WRAPPER="${SCRIPT_DIR}/nix-local"
+
 # Auto-detect and enter Nix environment if not already in one
 if [ -z "${IN_NIX_SHELL:-}" ]; then
-    # Check if nix is available
-    if ! command -v nix &> /dev/null; then
-        # Try to source nix profile
-        if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
-            . ~/.nix-profile/etc/profile.d/nix.sh
-        else
-            echo "Error: Nix is not installed or not in PATH"
-            echo "Please run: ./Microsoft/nix-setup.sh"
-            exit 1
+    NIX_CMD=""
+
+    # Check for local nix-user-chroot installation first (preferred)
+    if [ -x "${NIX_USER_CHROOT}" ] && [ -d "${NIX_STORE_DIR}/store" ]; then
+        # Use nix-user-chroot to run nix develop
+        cd "${KERNEL_ROOT}"
+        exec "${NIX_USER_CHROOT}" "${NIX_STORE_DIR}" bash -c '
+            if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+                . ~/.nix-profile/etc/profile.d/nix.sh
+            fi
+            exec nix --extra-experimental-features "nix-command flakes" develop --command "$@"
+        ' -- "$0" "$@"
+    # Then check for system nix
+    elif command -v nix &> /dev/null; then
+        NIX_CMD="nix"
+    # Try to source nix profile
+    elif [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+        . ~/.nix-profile/etc/profile.d/nix.sh
+        if command -v nix &> /dev/null; then
+            NIX_CMD="nix"
         fi
     fi
 
-    # Re-execute this script inside nix develop with experimental features enabled
-    exec nix --extra-experimental-features "nix-command flakes" develop --command "$0" "$@"
-fi
+    if [ -z "${NIX_CMD}" ]; then
+        echo "Error: Nix is not installed"
+        echo "Please run: ./Microsoft/nix-setup.sh"
+        exit 1
+    fi
 
-# Script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KERNEL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    # Re-execute this script inside nix develop with experimental features enabled
+    cd "${KERNEL_ROOT}"
+    exec ${NIX_CMD} --extra-experimental-features "nix-command flakes" develop --command "$0" "$@"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -120,6 +144,12 @@ main() {
 
     log_info "Build completed successfully!"
     log_info "Build artifacts are in: ${BUILD_OUTPUT}"
+
+    # Print sha256sum of vmlinux for reproducibility verification
+    if [ -f "${BUILD_OUTPUT}/vmlinux" ]; then
+        log_info "vmlinux sha256sum:"
+        sha256sum "${BUILD_OUTPUT}/vmlinux"
+    fi
 }
 
 # Handle command line arguments
