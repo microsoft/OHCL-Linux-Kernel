@@ -220,13 +220,17 @@ main() {
     log_info "Invoking build-hcl-kernel.sh..."
     "${KERNEL_ROOT}/Microsoft/build-hcl-kernel.sh" "${ARCH_TYPE}"
 
+    # build-hcl-kernel.sh uses its own BUILD_DIR at ../build (parent of kernel source)
+    local ACTUAL_BUILD_DIR
+    ACTUAL_BUILD_DIR="$(cd "${KERNEL_ROOT}/.." && pwd)/build"
+
     log_info "Build completed successfully!"
-    log_info "Build artifacts are in: ${BUILD_OUTPUT}"
+    log_info "Build artifacts are in: ${ACTUAL_BUILD_DIR}"
 
     # Print sha256sum of vmlinux for reproducibility verification
-    if [ -f "${BUILD_OUTPUT}/vmlinux" ]; then
+    if [ -f "${ACTUAL_BUILD_DIR}/vmlinux" ]; then
         log_info "vmlinux sha256sum:"
-        sha256sum "${BUILD_OUTPUT}/vmlinux"
+        sha256sum "${ACTUAL_BUILD_DIR}/vmlinux"
     fi
 }
 
