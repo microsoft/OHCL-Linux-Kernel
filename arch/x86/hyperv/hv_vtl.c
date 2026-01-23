@@ -20,11 +20,14 @@
 #include <asm/realmode.h>
 #include <asm/reboot.h>
 #include <asm/smap.h>
+#include <asm/fpu/xcr.h>
+#include <asm/tdx.h>
 #include <uapi/asm/mtrr.h>
 #include <asm/debugreg.h>
 #include <linux/export.h>
 #include <../kernel/smpboot.h>
 #include "../../kernel/fpu/legacy.h"
+#include "../../drivers/hv/mshv_vtl.h"
 
 extern struct boot_params boot_params;
 static struct real_mode_header hv_vtl_real_mode_header;
@@ -53,15 +56,6 @@ static void  __noreturn hv_vtl_emergency_restart(void)
 		idt_invalidate();
 		__asm__ __volatile__("int3");
 	}
-}
-
-/*
- * The only way to restart in the VTL mode is to triple fault as the kernel runs
- * as firmware.
- */
-static void  __noreturn hv_vtl_restart(char __maybe_unused *cmd)
-{
-	hv_vtl_emergency_restart();
 }
 
 static inline bool within_page(u64 addr, u64 start)
@@ -249,8 +243,13 @@ static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip, unsi
 	int vp_index;
 
 	pr_debug("Bringing up CPU with APIC ID %d in VTL2...\n", apicid);
-	vp_index = hv_apicid_to_vp_index(apicid);
 
+	/*
+	 * TODO TDX: we cannot trust the hypervisor to perform this mapping...
+	 * Instead, we need hypervisor support for TDX 1.5 ENUM_TOPOLOGY to
+	 * query this directly from the TDX module.
+	 */
+	vp_index = hv_apicid_to_vp_index(apicid);
 	if (vp_index < 0) {
 		pr_err("Couldn't find CPU with APIC ID %d\n", apicid);
 		return -EINVAL;
@@ -261,6 +260,15 @@ static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip, unsi
 	}
 
 	return hv_vtl_bringup_vcpu(vp_index, cpu, start_eip);
+}
+
+/*
+ * The only way to restart in the VTL mode is to triple fault as the kernel runs
+ * as firmware.
+ */
+static void  __noreturn hv_vtl_restart(char __maybe_unused *cmd)
+{
+       hv_vtl_emergency_restart();
 }
 
 int __init hv_vtl_early_init(void)
@@ -298,9 +306,29 @@ void mshv_vtl_return_call_init(u64 vtl_return_offset)
 }
 EXPORT_SYMBOL(mshv_vtl_return_call_init);
 
+extern void __cpuidle tdx_safe_halt(void);
+
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
 {
 	struct hv_vp_assist_page *hvp;
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	if (hv_isolation_type_tdx()) {
+		/*
+		 * Clear RAX to an exit (PENDING_INTERRUPT) that the usermode
+		 * VMM will do nothing, if we are halting.
+		 */
+		mshv_vtl_this_run()->tdx_context.exit_info.rax = 0x112000000000;
+
+		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED)) {
+			tdx_safe_halt();
+		} else {
+			/* Only supports VTL0 */
+			mshv_vtl_return_tdx();
+		}
+		return;
+	}
+#endif
 
 	hvp = hv_vp_assist_page[smp_processor_id()];
 	hvp->vtl_ret_x64rax = vtl0->rax;
