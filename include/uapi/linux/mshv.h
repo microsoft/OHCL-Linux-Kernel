@@ -364,6 +364,17 @@ struct mshv_kick_cpus {
 #define MSHV_KICK_CPUS_FLAG_CANCEL_CPU_RUN	(1 << 1)
 
 /* /dev/mshv device IOCTL */
+struct mshv_tdcall {
+	__u64 rax;	/* Call code and returned status */
+	__u64 rcx;
+	__u64 rdx;
+	__u64 r8;
+	__u64 r9;
+	__u64 r10_out;	/* Only supported as output */
+	__u64 r11_out;	/* Only supported as output */
+} __packed;
+
+#define MSHV_IOCTL 0xB8
 
 #define MSHV_CHECK_EXTENSION    _IOW(MSHV_IOCTL, 0x00, __u32)
 
@@ -375,6 +386,10 @@ struct mshv_kick_cpus {
 #define MSHV_GET_VP_REGISTERS		_IOWR(MSHV_IOCTL, 0x05, struct mshv_vp_registers)
 #define MSHV_SET_VP_REGISTERS		_IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
 #define MSHV_VTL_KICK_CPU 		_IOW(MSHV_IOCTL, 0x38, struct mshv_kick_cpus)
+
+/* For x86-64 TDX only */
+#define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
+#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)

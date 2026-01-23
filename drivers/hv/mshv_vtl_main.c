@@ -34,6 +34,12 @@
 #include <asm/apic.h>
 #include <asm/debugreg.h>
 #include "../../kernel/fpu/legacy.h"
+
+#include <asm/tdx.h>
+#include <asm/fpu/xcr.h>
+
+#include "../../kernel/fpu/legacy.h"
+
 #endif
 #include "mshv.h"
 #include "mshv_vtl.h"
@@ -51,6 +57,7 @@ MODULE_DESCRIPTION("Microsoft Hyper-V VTL Driver");
 #define MSHV_PG_OFF_CPU_MASK	(BIT_ULL(MSHV_REAL_OFF_SHIFT) - 1)
 #define MSHV_RUN_PAGE_OFFSET	0
 #define MSHV_REG_PAGE_OFFSET	1
+#define MSHV_APIC_PAGE_OFFSET	3
 #define VTL2_VMBUS_SINT_INDEX	7
 
 static struct device *mem_dev;
@@ -91,6 +98,14 @@ struct mshv_vtl {
 struct mshv_vtl_per_cpu {
 	struct mshv_vtl_run *run;
 	struct page *reg_page;
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	struct page *tdx_apic_page;
+	u64 xss;
+	u64 l1_msr_kernel_gs_base;
+	u64 l1_msr_star;
+	u64 l1_msr_lstar;
+	u64 l1_msr_sfmask;
+#endif
 };
 
 /* SYNIC_OVERLAY_PAGE_MSR - internal, identical to hv_synic_simp */
@@ -211,6 +226,29 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+
+static struct page *tdx_apic_page(int cpu)
+{
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
+}
+
+#endif
+
+static long __mshv_vtl_ioctl_check_extension(u32 arg)
+{
+	switch (arg) {
+	case MSHV_CAP_REGISTER_PAGE:
+		return mshv_has_reg_page;
+	case MSHV_CAP_VTL_RETURN_ACTION:
+		return mshv_vsm_capabilities.return_action_available;
+	case MSHV_CAP_DR6_SHARED:
+		return mshv_vsm_capabilities.dr6_shared;
+	}
+
+	return -EOPNOTSUPP;
+}
+
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
 #ifdef CONFIG_X86_64
@@ -283,7 +321,7 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
 	/* Enable intercepts */
-	if (!mshv_vsm_capabilities.intercept_page_available)
+	if (!mshv_vsm_capabilities.intercept_page_available || hv_isolation_type_tdx())
 		hv_set_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
 			   sint.as_uint64);
 
@@ -295,10 +333,18 @@ static int mshv_vtl_get_vsm_regs(void)
 	struct hv_register_assoc registers[2];
 	int ret, count = 0;
 
+	/*
+	 * BUGBUG-ISOLATION: these registers all untrusted on hardware iso platforms.
+	 * Should we even query them? they seem meaningless on hardware iso.
+	 */
+	if (hv_isolation_type_tdx())
+		pr_info("TODO: TDX detected, should skip vsm register query");
+
 	registers[count++].name = HV_REGISTER_VSM_CAPABILITIES;
 	/* Code page offset register is not supported on ARM */
 #ifdef CONFIG_X86_64
-	registers[count++].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
+	if (!hv_isolation_type_tdx())
+		registers[count++].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
 #endif
 
 
@@ -309,7 +355,13 @@ static int mshv_vtl_get_vsm_regs(void)
 
 	mshv_vsm_capabilities.as_uint64 = registers[0].value.reg64;
 #ifdef CONFIG_X86_64
-	mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
+	if (hv_isolation_type_tdx()) {
+		mshv_vsm_capabilities.dr6_shared = 1;
+	} else {
+		mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
+		pr_debug("%s: VSM code page offsets: %#016llx\n", __func__,
+			 mshv_vsm_page_offsets.as_uint64);
+	}
 #endif
 
 	return ret;
@@ -339,6 +391,44 @@ static int __maybe_unused mshv_vtl_configure_vsm_partition(struct device *dev)
 				       1, input_vtl_zero, &reg_assoc);
 }
 
+static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
+{
+	struct hv_message *msg;
+	u32 message_type;
+	struct hv_x64_proxy_interrupt_message_payload *proxy;
+	struct mshv_vtl_run *run;
+	u32 vector;
+
+	msg = (struct hv_message *)per_cpu->synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
+	for (;;) {
+		message_type = READ_ONCE(msg->header.message_type);
+		if (message_type == HVMSG_NONE)
+			break;
+
+		if (message_type != HVMSG_X64_PROXY_INTERRUPT_INTERCEPT) {
+			WARN_ONCE(1, "Unexpected message type: %d\n", message_type);
+			vmbus_signal_eom(msg, message_type);
+			continue;
+		}
+
+		proxy = (struct hv_x64_proxy_interrupt_message_payload *)msg->u.payload;
+		run = mshv_vtl_this_run();
+
+		if (proxy->assert_multiple) {
+			for (int i = 0; i < 8; i++)
+				run->proxy_irr[i] |= READ_ONCE(proxy->u.asserted_irr[i]);
+		} else {
+			/* A malicious hypervisor might set a vector > 255. */
+			vector = READ_ONCE(proxy->u.asserted_vector) & 0xff;
+			__set_bit(vector, (unsigned long *)run->proxy_irr);
+		}
+
+		WRITE_ONCE(run->scan_proxy_irr, 1);
+		WRITE_ONCE(run->cancel, 1);
+		vmbus_signal_eom(msg, message_type);
+	}
+}
+
 static void mshv_vtl_vmbus_isr(void)
 {
 	struct hv_per_cpu_context *per_cpu;
@@ -356,6 +446,10 @@ static void mshv_vtl_vmbus_isr(void)
 			tasklet_schedule(&msg_dpc);
 	}
 
+	/* Handle proxied interrupts from the host. */
+	if (hv_isolation_type_tdx())
+		mshv_vtl_scan_proxy_interrupts(per_cpu);
+
 	event_flags = (union hv_synic_event_flags *)per_cpu->synic_event_page +
 			VTL2_VMBUS_SINT_INDEX;
 	for_each_set_bit(i, event_flags->flags, HV_EVENT_FLAGS_COUNT) {
@@ -371,6 +465,74 @@ static void mshv_vtl_vmbus_isr(void)
 	vmbus_isr();
 }
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+
+struct tdx_extended_field_code {
+	union {
+		u64 as_u64;
+		struct {
+			u64 field_code        : 24;
+			u64 reserved_z0       : 8;
+			u64 field_size        : 2;
+			u64 last_element      : 4;
+			u64 last_field        : 9;
+			u64 reserved_z1       : 3;
+			u64 increment_size    : 1;
+			u64 write_mask_valid  : 1;
+			u64 context_code      : 3;
+			u64 reserved_z2       : 1;
+			u64 class_code        : 6;
+			u64 reserved_z3       : 1;
+			u64 non_arch          : 1;
+		};
+	};
+};
+
+struct vmx_vmcs_field {
+	union {
+		u32 as_u32;
+
+		struct {
+			u32 access_high:1;
+			u32 index:9;
+			u32 type:2;		/* Use VMX_VMCS_FIELD_TYPE_* */
+			u32 reserved_zero:1;
+			u32 field_width:2;	/* Use VMX_VMCS_FIELD_WIDTH_* */
+			u32 reserved:17;
+		};
+	};
+};
+
+static void mshv_write_tdx_apic_page(u64 apic_page_gpa)
+{
+    struct tdx_extended_field_code extended_field_code;
+    struct vmx_vmcs_field vmcs_field;
+    struct tdx_module_args args = {};
+    u64 status = 0;
+
+    extended_field_code.as_u64 = 0;
+    extended_field_code.field_code = 0x00002012; /* VMX_VMCS_VIRTUAL_APIC_PAGE */
+    extended_field_code.context_code = 2;	     /* TDX_CONTEXT_CODE_VP_SCOPE  */
+    extended_field_code.class_code = 36;	     /* L2_VM1 aka VTL0		   */
+
+    vmcs_field.as_u32 = 0x00002012;
+    extended_field_code.field_size = 3;	     /* TDX_FIELD_SIZE_64_BIT	   */
+
+    args.rcx = 0;
+    args.rdx = extended_field_code.as_u64;
+    args.r8 = apic_page_gpa;
+    args.r9 = 0xFFFFFFFFFFFFFFFF;
+
+    /* Issue tdg_vp_wr to set the apic page. */
+    status = __tdcall(10, &args);
+    pr_debug("set_apic_page gpa: %llx status: %llx\n", apic_page_gpa, status);
+
+    if (status != 0)
+        panic("write tdx apic page failed: %llx\n", status);
+}
+
+#endif
+
 static int mshv_vtl_alloc_context(unsigned int cpu)
 {
 	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
@@ -379,8 +541,31 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 	if (!per_cpu->run)
 		return -ENOMEM;
 
-	if (mshv_vsm_capabilities.intercept_page_available)
+	if (mshv_vsm_capabilities.intercept_page_available) {
 		mshv_vtl_configure_reg_page(per_cpu);
+	} else if (hv_isolation_type_tdx()) {
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+		struct page *tdx_apic_page;
+
+		tdx_apic_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!tdx_apic_page)
+			return -ENOMEM;
+
+		per_cpu->tdx_apic_page = tdx_apic_page;
+
+		/*
+		 * Capture the initial syscall MSRs to be restored after VP.ENTER.
+		 * TODO TDX: Needs review from kernel experts.
+		 */
+		rdmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+		rdmsrl(MSR_STAR, per_cpu->l1_msr_star);
+		rdmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
+		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+
+		/* Enable the apic page. */
+		mshv_write_tdx_apic_page(page_to_phys(tdx_apic_page));
+#endif
+	}
 
 	mshv_vtl_synic_enable_regs(cpu);
 
@@ -588,6 +773,107 @@ static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 	mshv_vtl_return_call(vtl0);
 }
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+#define TDCALL_ASM	".byte 0x66,0x0f,0x01,0xcc"
+
+/* TODO TDX: Confirm noinline produces the right asm for saving register state */
+noinline void mshv_vtl_return_tdx(void)
+{
+	struct tdx_tdg_vp_enter_exit_info *tdx_exit_info;
+	struct tdx_vp_state *tdx_vp_state;
+	struct mshv_vtl_run *vtl_run;
+	struct mshv_vtl_per_cpu *per_cpu;
+
+	register void *__sp asm("rsp");
+	register u64 r8 asm("r8");
+	register u64 r9 asm("r9");
+	register u64 r10 asm("r10");
+	register u64 r11 asm("r11");
+	register u64 r12 asm("r12");
+	register u64 r13 asm("r13");
+	register u64 r14 asm("r14");
+	register u64 r15 asm("r15");
+
+	vtl_run = mshv_vtl_this_run();
+	tdx_exit_info = &vtl_run->tdx_context.exit_info;
+	tdx_vp_state = &vtl_run->tdx_context.vp_state;
+	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+
+	/*
+	 * TODO TDX: For now, hardcode VP.ENTER rax value and RCX.
+	 * RCX encodes vtl0 and invd translations
+	 */
+	u64 input_rax = 25;
+	u64 input_rcx = (u64) 1 << 52;
+	u64 input_rdx = virt_to_phys((void *) &vtl_run->tdx_context.l2_enter_guest_state);
+
+	kernel_fpu_begin_mask(0);
+	fxrstor(&vtl_run->tdx_context.fx_state); // restore FP reg and XMM regs
+	native_write_cr2(tdx_vp_state->cr2);
+
+	/* Restore VTL0's syscall registers & MSRs */
+	wrmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+	wrmsrl(MSR_STAR, tdx_vp_state->msr_star);
+	wrmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
+	wrmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+
+	if (tdx_vp_state->msr_xss != per_cpu->xss)
+		wrmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
+
+	r8 = 0;
+	r9 = 0;
+	r10 = 0;
+	r11 = 0;
+	r12 = 0;
+	r13 = 0;
+	r14 = 0;
+	r15 = 0;
+
+	/*
+	 * TODO TDX: pushq popq causes some build complaints unclear why when
+	 * mshv uses it also. Alignment checks even though tdcall has no alignment reqs?
+	 */
+	asm __volatile__ (\
+		/* Save RBP onto the stack since it'll be clobbered and inline asm won't save it. */
+		"pushq	%%rbp\n"
+		TDCALL_ASM "\n"
+		/* restore rbp from the stack */
+		"popq	%%rbp\n"
+		: "=a"(tdx_exit_info->rax), "=c"(tdx_exit_info->rcx),
+		  "=d"(tdx_exit_info->rdx), "=S"(tdx_exit_info->rsi), "=D"(tdx_exit_info->rdi),
+		  "=r" (r8), "=r" (r9), "=r" (r10), "=r" (r11), "=r"(r12), "=r"(r13), "=r"(r14),
+		  "=r"(r15), "+r" (__sp)
+		: "a"(input_rax), "c"(input_rcx), "d"(input_rdx)
+		: "rbx", "cc", "memory" /* TODO: is the "cc" necessary? */
+	);
+
+	tdx_exit_info->r8 = r8;
+	tdx_exit_info->r9 = r9;
+	tdx_exit_info->r10 = r10;
+	tdx_exit_info->r11 = r11;
+	tdx_exit_info->r12 = r12;
+	tdx_exit_info->r13 = r13;
+	tdx_vp_state->cr2 = native_read_cr2();
+	rdmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
+	per_cpu->xss = tdx_vp_state->msr_xss;
+
+	rdmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+	rdmsrl(MSR_STAR, tdx_vp_state->msr_star);
+	rdmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
+	rdmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+
+	/* Restore VTL2's syscall registers & MSRs */
+	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+	wrmsrl(MSR_STAR, per_cpu->l1_msr_star);
+	wrmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
+	wrmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+
+	fxsave(&vtl_run->tdx_context.fx_state);
+	kernel_fpu_end();
+}
+
+#endif
+
 static bool mshv_vtl_process_intercept(void)
 {
 	struct hv_per_cpu_context *mshv_cpu;
@@ -721,6 +1007,11 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 			current->flags &= ~PF_IDLE;
 		}
 
+		if (hv_isolation_type_tdx()) {
+			/* Go to usermode for every exit. */
+			goto done;
+		}
+
 		hvp = hv_vp_assist_page[smp_processor_id()];
 		this_cpu_inc(num_vtl0_transitions);
 		switch (hvp->vtl_entry_reason) {
@@ -771,11 +1062,11 @@ mshv_vtl_ioctl_get_regs(void __user *user_args)
 			   sizeof(reg)))
 		return -EFAULT;
 
-	ret = mshv_vtl_get_set_reg(&reg, false, mshv_vsm_capabilities.dr6_shared);
+		ret = mshv_vtl_get_set_reg(&reg, false, mshv_vsm_capabilities.dr6_shared);
 	if (!ret)
-		goto copy_args; /* No need of hypercall */
+			goto copy_args; /* No need of hypercall */
 	ret = vtl_get_vp_register(&reg);
-	if (ret)
+		if (ret)
 		return ret;
 
 copy_args:
@@ -889,6 +1180,54 @@ static inline long mshv_vtl_ioctl_kick_cpu(void __user *user_arg)
 	return 0;
 }
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+
+/*
+ * Issue a TD module call from usermode. Note that currently only tdmodule
+ * calls are supported, not TD.VMCALL.
+ */
+static long mshv_vtl_ioctl_tdcall(void __user *user_tdcall)
+{
+    struct mshv_tdcall tdcall = {};
+    //struct tdx_module_output output = {};
+    struct tdx_module_args args = {};
+    u64 status = 0;
+
+    if (!hv_isolation_type_tdx())
+        return -EINVAL;
+
+    if (copy_from_user(&tdcall, user_tdcall, sizeof(tdcall)))
+        return -EFAULT;
+
+    args.rcx = tdcall.rcx;
+    args.rdx = tdcall.rdx;
+    args.r8 = tdcall.r8;
+    args.r9 = tdcall.r9;
+
+    status = __tdcall_ret(tdcall.rax, &args);
+
+    tdcall.rax = status;
+    tdcall.rcx = args.rcx;
+    tdcall.rdx = args.rdx;
+    tdcall.r8 = args.r8;
+    tdcall.r9 = args.r9;
+    tdcall.r10_out = args.r10;
+    tdcall.r11_out = args.r11;
+
+    return copy_to_user(user_tdcall, &tdcall, sizeof(tdcall)) ? -EFAULT : 0;
+}
+
+static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
+{
+	u64 value;
+
+	value = native_read_msr(MSR_IA32_VMX_CR4_FIXED1);
+
+	return copy_to_user(user_arg, &value, sizeof(value)) ? -EFAULT : 0;
+}
+
+#endif
+
 static long
 mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
@@ -914,6 +1253,14 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_VTL_KICK_CPU:
 		ret = mshv_vtl_ioctl_kick_cpu((void __user *)arg);
 		break;
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	case MSHV_VTL_TDCALL:
+		ret = mshv_vtl_ioctl_tdcall((void __user *)arg);
+		break;
+	case MSHV_VTL_READ_VMX_CR4_FIXED1:
+		ret = mshv_vtl_ioctl_read_vmx_cr4_fixed1((void __user *)arg);
+		break;
+#endif
 	default:
 		dev_err(vtl->module_dev, "invalid vtl ioctl: %#x\n", ioctl);
 		ret = -ENOTTY;
@@ -941,6 +1288,13 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 		if (!mshv_has_reg_page)
 			return VM_FAULT_SIGBUS;
 		page = mshv_vtl_cpu_reg_page(cpu);
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	} else if (real_off == MSHV_APIC_PAGE_OFFSET) {
+		if (!hv_isolation_type_tdx())
+			return VM_FAULT_SIGBUS;
+
+		page = tdx_apic_page(cpu);
+#endif
 	} else {
 		return VM_FAULT_NOPAGE;
 	}
@@ -1517,10 +1871,12 @@ static int __init mshv_vtl_init(void)
 		goto free_dev;
 	}
 #ifdef CONFIG_X86_64
-	if (mshv_vtl_configure_vsm_partition(dev)) {
-		dev_emerg(dev, "VSM configuration failed !!\n");
-		ret = -ENODEV;
-		goto free_dev;
+	if (!hv_isolation_type_tdx()) {
+		if (mshv_vtl_configure_vsm_partition(dev)) {
+			dev_emerg(dev, "VSM configuration failed !!\n");
+			ret = -ENODEV;
+			goto free_dev;
+		}
 	}
 #endif
 
