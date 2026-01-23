@@ -621,6 +621,16 @@ enum hv_interrupt_type {
 	HV_X64_INTERRUPT_TYPE_MAXIMUM		= 0x000A,
 };
 
+struct hv_x64_proxy_interrupt_message_payload {
+       __u8 interrupt_vtl;
+       __u8 assert_multiple;
+       __u8 reserved[2];
+       union {
+               __u32 asserted_vector;
+               __u32 asserted_irr[8];
+       } u;
+} __packed;
+
 /* Define synthetic interrupt source. */
 union hv_synic_sint {
 	u64 as_uint64;
@@ -733,6 +743,7 @@ enum hv_message_type {
 	/* Root scheduler messages */
 	HVMSG_SCHEDULER_VP_SIGNAL_BITSET	= 0x80000100,
 	HVMSG_SCHEDULER_VP_SIGNAL_PAIR		= 0x80000101,
+	HVMSG_X64_PROXY_INTERRUPT_INTERCEPT     = 0x8001000f,
 
 	/* Platform-specific processor intercept messages. */
 	HVMSG_X64_IO_PORT_INTERCEPT		= 0x80010000,

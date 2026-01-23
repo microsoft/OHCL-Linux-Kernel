@@ -605,6 +605,11 @@ int hv_common_cpu_init(unsigned int cpu)
 
 	}
 	if (!WARN_ON(!(*hvp))) {
+		if (!ms_hyperv.paravisor_present &&
+		    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
+			WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1) != 0);
+			memset(*hvp, 0, PAGE_SIZE);
+		}
 		msr.enable = 1;
 		hv_set_msr(HV_SYN_REG_VP_ASSIST_PAGE, msr.as_uint64);
 	}
@@ -626,6 +631,9 @@ int hv_common_cpu_die(unsigned int cpu)
 	 * If a previously offlined CPU is brought back online again, the
 	 * originally allocated memory is reused in hv_common_cpu_init().
 	 */
+	unsigned long flags;
+	void **inputarg, **outputarg;
+	int ret;
 
 	if (hv_parent_partition()) {
 		synic_eventring_tail = this_cpu_ptr(hv_synic_eventring_tail);
@@ -636,6 +644,13 @@ int hv_common_cpu_die(unsigned int cpu)
 
 	if (hv_vp_assist_page && hv_vp_assist_page[cpu]) {
 		union hv_vp_assist_msr_contents msr = { 0 };
+
+		if (!ms_hyperv.paravisor_present &&
+		    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
+			ret = set_memory_encrypted((unsigned long)hv_vp_assist_page[cpu], 1);
+			WARN_ON_ONCE(ret);
+		}
+
 		if (hv_root_partition()) {
 			/*
 			 * For root partition the VP assist page is mapped to

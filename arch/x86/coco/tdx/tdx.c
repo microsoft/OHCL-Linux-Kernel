@@ -459,7 +459,7 @@ void __cpuidle tdx_halt(void)
 		WARN_ONCE(1, "HLT instruction emulation failed\n");
 }
 
-static void __cpuidle tdx_safe_halt(void)
+void __cpuidle tdx_safe_halt(void)
 {
 	tdx_halt();
 	/*

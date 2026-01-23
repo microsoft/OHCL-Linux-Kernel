@@ -12,6 +12,7 @@
 #include <asm/msr.h>
 #include <hyperv/hvhdk.h>
 #include <asm/fpu/types.h>
+#include <asm/tdx.h>
 
 /*
  * Hyper-V always provides a single IO-APIC at this MMIO address.
@@ -283,9 +284,16 @@ struct mshv_vtl_cpu_context {
 	struct fxregs_state fx_state;
 };
 
+extern void __cpuidle tdx_safe_halt(void);
+
+#define MSHV_VTL_RUN_FLAG_HALTED BIT(0)
+
 static inline void hv_vtl_idle(void)
 {
-       native_safe_halt();
+	if (hv_isolation_type_tdx())
+		tdx_halt();
+	else
+		native_safe_halt();
 }
 
 #ifdef CONFIG_HYPERV_VTL_MODE
