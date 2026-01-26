@@ -903,12 +903,38 @@ DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 static void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
 	struct hv_vp_assist_page *hvp;
+	struct mshv_vtl_run *this_run = mshv_vtl_this_run();
 	struct mshv_vtl_cpu_context *cpu_ctx = &mshv_vtl_this_run()->cpu_context;
+	u32 flags = READ_ONCE(this_run->flags);
 
 	trace_mshv_vtl_enter_vtl0(cpu_ctx);
 
 	mshv_vtl_return(cpu_ctx);
-	hvp = hv_vp_assist_page[smp_processor_id()];
+
+	/* A VTL2 TDX kernel doesn't allocate hv_vp_assist_page at the moment */
+	hvp = hv_vp_assist_page ? hv_vp_assist_page[smp_processor_id()] : NULL;
+
+	/*
+	 * Process signal event direct set in the run page, if any.
+	 */
+	if (hvp && mshv_vsm_capabilities.return_action_available) {
+		u32 offset = READ_ONCE(mshv_vtl_this_run()->vtl_ret_action_size);
+
+		WRITE_ONCE(mshv_vtl_this_run()->vtl_ret_action_size, 0);
+
+		/*
+		 * Hypervisor will take care of clearing out the actions
+		 * set in the assist page.
+		 */
+		memcpy(hvp->vtl_ret_actions,
+		       mshv_vtl_this_run()->vtl_ret_actions,
+		       min_t(u32, offset, sizeof(hvp->vtl_ret_actions)));
+	}
+
+	mshv_vtl_return(cpu_ctx);
+
+	if (!hvp)
+		return;
 
 	trace_mshv_vtl_exit_vtl0(hvp->vtl_entry_reason, cpu_ctx);
 }
