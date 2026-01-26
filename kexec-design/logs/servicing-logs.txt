@@ -1,0 +1,1033 @@
+<30>[   63.666050] underhill_core::dispatch:  INFO servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  stopping VM
+<31>[   63.737263] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="vmtime" dependency="ioapic" operation="stop"
+<31>[   63.749327] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="chipset" dependency="partition" operation="stop"
+<31>[   63.761873] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="lines/irq" dependency="rtc" operation="stop"
+<31>[   63.773745] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="ioapic" dependency="chipset" operation="stop"
+<31>[   63.786043] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="rtc" dependency="chipset" operation="stop"
+<31>[   63.796758] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="lines/gpe0" dependency="uefi" operation="stop"
+<31>[   63.808053] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="pm" dependency="chipset" operation="stop"
+<31>[   63.883555] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="uefi" dependency="chipset" operation="stop"
+<31>[   63.895565] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="serial-com1" dependency="chipset" operation="stop"
+<31>[   63.906518] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="serial-com2" dependency="chipset" operation="stop"
+<31>[   63.918199] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="serial-com3" dependency="chipset" operation="stop"
+<31>[   63.930677] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="serial-com4" dependency="chipset" operation="stop"
+<31>[   63.943312] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="io-delay-0xed" dependency="chipset" operation="stop"
+<31>[   63.955391] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="missing-vmware-backdoor" dependency="chipset" operation="stop"
+<31>[   64.031950] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="missing-gameport" dependency="chipset" operation="stop"
+<31>[   64.043822] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="missing-pic" dependency="chipset" operation="stop"
+<31>[   64.055681] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="missing-pit" dependency="chipset" operation="stop"
+<31>[   64.066386] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="missing-pci" dependency="chipset" operation="stop"
+<31>[   64.078908] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="missing-dma" dependency="chipset" operation="stop"
+<31>[   64.091443] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="vmbus" dependency="vmbus_relay" operation="stop"
+<31>[   64.168222] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="input"}:  device state change complete duration=418.895105ms
+<31>[   64.180291] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="lines/bsp_lint"}:  device state change complete duration=88.849444ms
+<31>[   64.192590] storvsp: DEBUG handle_state_request{ request=Stop(Rpc(()))}:  StorageDevice stopping... instance_id=ca56751f-e643-4bef-bf54-f73678e8b7b5
+<31>[   64.200704] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1}:  stopping VP
+<31>[   64.205952] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x2}:  stopping VP
+<31>[   64.211335] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x3}:  stopping VP
+<31>[   64.216221] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x4}:  stopping VP
+<31>[   64.221162] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x5}:  stopping VP
+<31>[   64.226078] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x6}:  stopping VP
+<31>[   64.231526] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x7}:  stopping VP
+<31>[   64.236885] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x8}:  stopping VP
+<31>[   64.242131] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x9}:  stopping VP
+<31>[   64.247486] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xa}:  stopping VP
+<31>[   64.252926] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xb}:  stopping VP
+<31>[   64.258339] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xc}:  stopping VP
+<31>[   64.263719] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xd}:  stopping VP
+<31>[   64.268815] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xe}:  stopping VP
+<31>[   64.273715] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xf}:  stopping VP
+<31>[   64.278677] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x10}:  stopping VP
+<31>[   64.283404] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x11}:  stopping VP
+<31>[   64.288195] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x12}:  stopping VP
+<31>[   64.292812] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x13}:  stopping VP
+<31>[   64.297455] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x14}:  stopping VP
+<31>[   64.302181] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x15}:  stopping VP
+<31>[   64.307002] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x16}:  stopping VP
+<31>[   64.311853] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x17}:  stopping VP
+<31>[   64.316712] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x18}:  stopping VP
+<31>[   64.321472] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x19}:  stopping VP
+<31>[   64.326376] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1a}:  stopping VP
+<31>[   64.331479] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1b}:  stopping VP
+<31>[   64.336631] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1c}:  stopping VP
+<31>[   64.341685] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1d}:  stopping VP
+<31>[   64.346650] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1e}:  stopping VP
+<31>[   64.351518] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1f}:  stopping VP
+<31>[   64.356321] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="shutdown_ic:b6650ff7-33bc-4840-8048-e0676786f393"}:  device state change complete duration=188.114838ms
+<31>[   64.369725] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="scsi:ca56751f-e643-4bef-bf54-f73678e8b7b5"}:  device state change complete duration=201.53303ms
+<30>[   64.382325] vmbus_client:  INFO  closing channel on host channel_id=0x9
+<31>[   64.386201] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1}:  VP stopped on request
+<31>[   64.390685] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x2}:  VP stopped on request
+<31>[   64.395835] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x3}:  VP stopped on request
+<31>[   64.401052] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x4}:  VP stopped on request
+<31>[   64.406315] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x5}:  VP stopped on request
+<31>[   64.411701] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x6}:  VP stopped on request
+<31>[   64.416928] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x7}:  VP stopped on request
+<31>[   64.422016] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x8}:  VP stopped on request
+<31>[   64.426961] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x9}:  VP stopped on request
+<31>[   64.431472] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xa}:  VP stopped on request
+<31>[   64.435884] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xb}:  VP stopped on request
+<31>[   64.440982] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xc}:  VP stopped on request
+<31>[   64.446012] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xd}:  VP stopped on request
+<31>[   64.450946] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xe}:  VP stopped on request
+<31>[   64.456226] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0xf}:  VP stopped on request
+<31>[   64.461503] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x10}:  VP stopped on request
+<31>[   64.466733] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x11}:  VP stopped on request
+<31>[   64.471955] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x12}:  VP stopped on request
+<31>[   64.477754] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x13}:  VP stopped on request
+<31>[   64.483300] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x14}:  VP stopped on request
+<31>[   64.488610] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x15}:  VP stopped on request
+<31>[   64.493999] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x16}:  VP stopped on request
+<31>[   64.499207] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x17}:  VP stopped on request
+<31>[   64.504174] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x18}:  VP stopped on request
+<31>[   64.509263] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x19}:  VP stopped on request
+<31>[   64.514417] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1a}:  VP stopped on request
+<31>[   64.519551] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1b}:  VP stopped on request
+<31>[   64.525187] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1c}:  VP stopped on request
+<31>[   64.531015] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1d}:  VP stopped on request
+<31>[   64.536863] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1e}:  VP stopped on request
+<31>[   64.541641] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x1f}:  VP stopped on request
+<31>[   64.546354] vmbus_client: DEBUG  Received GpadlTorndown gpadl_id=0x40949f channel_id=0x9
+<31>[   64.551034] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="vmbus_relay"}:  device state change complete duration=382.850418ms
+<31>[   64.562337] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x0}:  stopping VP
+<31>[   64.567376] vmm_core::partition_unit::vp_set: DEBUG run_vp{ vp_index=0x0}:  VP stopped on request
+<31>[   64.572846] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="partition"}:  device state change complete duration=404.633394ms
+<31>[   64.584688] vmbus_server: DEBUG  handle_request request=Stop(Rpc(()))
+<31>[   64.589133] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="chipset"}:  device state change complete duration=10.224µs
+<31>[   64.601533] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="ioapic" dependency="lines/irq" operation="stop"
+<31>[   64.613813] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="rtc"}:  device state change complete duration=15.655µs
+<31>[   64.626168] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="pm" dependency="lines/gpe0" operation="stop"
+<31>[   64.637338] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="uefi"}:  device state change complete duration=12.382µs
+<31>[   64.649139] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="serial-com1"}:  device state change complete duration=9.924µs
+<31>[   64.661552] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="serial-com2"}:  device state change complete duration=9.388µs
+<31>[   64.673908] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="serial-com3"}:  device state change complete duration=9.306µs
+<31>[   64.686851] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="serial-com4"}:  device state change complete duration=8.738µs
+<31>[   64.699640] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="io-delay-0xed"}:  device state change complete duration=8.992µs
+<31>[   64.712239] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="missing-vmware-backdoor"}:  device state change complete duration=9.818µs
+<31>[   64.724762] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="missing-gameport"}:  device state change complete duration=9.051µs
+<31>[   64.736776] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="missing-pic"}:  device state change complete duration=8.907µs
+<31>[   64.748463] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="missing-pit"}:  device state change complete duration=8.275µs
+<31>[   64.761429] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="missing-pci"}:  device state change complete duration=9.278µs
+<31>[   64.774064] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="missing-dma"}:  device state change complete duration=9.118µs
+<31>[   64.786709] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="vmbus"}:  device state change complete duration=213.906918ms
+<31>[   64.798376] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  waiting on dependency device="lines/irq" dependency="pm" operation="stop"
+<31>[   64.809654] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="lines/gpe0"}:  device state change complete duration=10.069µs
+<31>[   64.821431] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="pm"}:  device state change complete duration=10.309µs
+<31>[   64.832824] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="lines/irq"}:  device state change complete duration=9.951µs
+<31>[   64.845028] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="ioapic"}:  device state change complete duration=9.675µs
+<31>[   64.857613] vmcore::vmtime: DEBUG  vmtime stop now=Timestamp { vmtime: VmTime(24f65486), os_time: efa6044e6 }
+<31>[   64.863962] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:device_state_change{ device="vmtime"}:  device state change complete duration=6.38957ms
+<30>[   64.876328] state_unit:  INFO servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:state_change{ operation="stop"}:  state change complete duration=1.139045391s
+<31>[   64.884639] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="vmtime"}:  device state change complete duration=11.297µs
+<31>[   64.895123] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="chipset"}:  device state change complete duration=7.786µs
+<31>[   64.905556] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="lines/irq"}:  device state change complete duration=8.625µs
+<31>[   64.917052] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="ioapic"}:  device state change complete duration=13.791µs
+<31>[   64.928025] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="rtc"}:  device state change complete duration=12.986µs
+<31>[   64.938792] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="lines/gpe0"}:  device state change complete duration=9.174µs
+<31>[   64.950262] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="pm"}:  device state change complete duration=11.595µs
+<31>[   64.961559] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="uefi"}:  device state change complete duration=49.087µs
+<31>[   64.973134] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="serial-com1"}:  device state change complete duration=12.581µs
+<31>[   64.983751] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="serial-com2"}:  device state change complete duration=12.366µs
+<31>[   64.994413] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="serial-com3"}:  device state change complete duration=10.354µs
+<31>[   65.005588] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="serial-com4"}:  device state change complete duration=9.742µs
+<31>[   65.016289] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="io-delay-0xed"}:  device state change complete duration=8.675µs
+<31>[   65.028498] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="missing-vmware-backdoor"}:  device state change complete duration=8.251µs
+<31>[   65.041878] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="missing-gameport"}:  device state change complete duration=8.347µs
+<31>[   65.054299] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="missing-pic"}:  device state change complete duration=8.252µs
+<31>[   65.065858] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="missing-pit"}:  device state change complete duration=8.395µs
+<31>[   65.078026] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="missing-pci"}:  device state change complete duration=8.128µs
+<31>[   65.090334] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="missing-dma"}:  device state change complete duration=8.52µs
+<31>[   65.102046] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="lines/bsp_lint"}:  device state change complete duration=8.781µs
+<31>[   65.114412] vmbus_server: DEBUG  handle_request request=Save(Rpc(()))
+<31>[   65.118300] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="input"}:  device state change complete duration=223.261518ms
+<31>[   65.131583] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="vmbus"}:  device state change complete duration=16.915016ms
+<31>[   65.152673] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="vmbus_relay"}:  device state change complete duration=34.362473ms
+<31>[   65.163110] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="scsi:ca56751f-e643-4bef-bf54-f73678e8b7b5"}:  device state change complete duration=44.803025ms
+<31>[   65.174615] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="shutdown_ic:b6650ff7-33bc-4840-8048-e0676786f393"}:  device state change complete duration=56.302366ms
+<31>[   65.187149] state_unit: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:device_state_change{ device="partition"}:  device state change complete duration=68.824073ms
+<30>[   65.199232] state_unit:  INFO servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:save_units:state_change{ operation="save"}:  state change complete duration=314.640888ms
+<31>[   65.209510] vmbus_client: DEBUG  messages drained
+<30>[   65.212472] vmbus_client::saved_state:  INFO  channel saved key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0 v.state=Offered
+<30>[   65.220947] vmbus_client::saved_state:  INFO  channel saved key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0 v.state=Offered
+<30>[   65.228648] vmbus_client::saved_state:  INFO  channel saved key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0 v.state=Offered
+<30>[   65.236036] vmbus_client::saved_state:  INFO  channel saved key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0 v.state=Offered
+<30>[   65.243979] vmbus_client::saved_state:  INFO  channel saved key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0 v.state=Offered
+<30>[   65.252138] vmbus_client::saved_state:  INFO  channel saved key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0 v.state=Offered
+<30>[   65.260370] vmbus_client::saved_state:  INFO  channel saved key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0 v.state=Opened
+<30>[   65.268897] vmbus_client::saved_state:  INFO  channel saved key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0 v.state=Offered
+<30>[   65.277205] vmbus_client::saved_state:  INFO  channel saved key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0 v.state=Offered
+<30>[   65.285280] vmbus_client::saved_state:  INFO  channel saved key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0 v.state=Offered
+<30>[   65.293448] vmbus_client::saved_state:  INFO  channel saved key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0 v.state=Opened
+<30>[   65.301591] vmbus_client::saved_state:  INFO  channel saved key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0 v.state=Offered
+<30>[   65.309819] vmbus_client::saved_state:  INFO  channel saved key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{2c09090e-8a9a-48b5-90e3-dc99f7a8d44c}-0 v.state=Opened
+<31>[   65.318005] underhill_core::dispatch::pci_shutdown: DEBUG servicing_save_vtl2{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:shutdown_pci_devices:  skipping unbind for vfio device pci_id="1751:00:00.0"
+<30>[   65.334822] underhill_core:  INFO  flushing logs
+<31>[   65.337880] guest_emulation_transport::process_loop: DEBUG  More data? MORE_DATA saved_state_bytes_written 0 saved_state_size 67324, payload_len 8192
+<31>[   65.345092] guest_emulation_transport::process_loop: DEBUG  More data? MORE_DATA saved_state_bytes_written 8192 saved_state_size 67324, payload_len 8192
+<31>[   65.353249] guest_emulation_transport::process_loop: DEBUG  More data? MORE_DATA saved_state_bytes_written 16384 saved_state_size 67324, payload_len 8192
+<31>[   65.360646] guest_emulation_transport::process_loop: DEBUG  More data? MORE_DATA saved_state_bytes_written 24576 saved_state_size 67324, payload_len 8192
+<31>[   65.368630] guest_emulation_transport::process_loop: DEBUG  More data? MORE_DATA saved_state_bytes_written 32768 saved_state_size 67324, payload_len 8192
+<31>[   65.376460] guest_emulation_transport::process_loop: DEBUG  More data? MORE_DATA saved_state_bytes_written 40960 saved_state_size 67324, payload_len 8192
+<31>[   65.384638] guest_emulation_transport::process_loop: DEBUG  More data? MORE_DATA saved_state_bytes_written 49152 saved_state_size 67324, payload_len 8192
+<31>[   65.392480] guest_emulation_transport::process_loop: DEBUG  More data? MORE_DATA saved_state_bytes_written 57344 saved_state_size 67324, payload_len 8192
+<31>[   65.400587] guest_emulation_transport::process_loop: DEBUG  More data? SUCCESS saved_state_bytes_written 65536 saved_state_size 67324, payload_len 1788
+<31>[   65.407720] guest_emulation_transport::process_loop: DEBUG  Done writing saved state, awaiting host response
+openhcl_boot: entered shim_main
+sidecar starting, 1 nodes, 32 cpus, 0x1a1000 total bytes
+uninitializing hypercalls, about to jump to kernel
+<5>[    0.000000] Linux version 6.12.36-microsoft-hcl+ (hargar@UbuntuVM-22) (gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0, GNU ld (GNU Binutils for Ubuntu) 2.38) #1 SMP PREEMPT_DYNAMIC Thu Jul 17 23:05:38 UTC 2025
+<6>[    0.000000] Command line: loglevel=8 log_buf_len=128K printk.time=1 console_msg_format=syslog uio_hv_generic.no_mask=1 coredump_filter=0x33 cpufreq.off=1 cpuidle.off=1 cryptomgr.notests idle=halt initcall_blacklist=init_real_mode,sbf_init lpj=3000000 no_timer_check noxsave oops=panic panic_on_warn=0 panic_print=0 panic=-1 printk.devkmsg=on reboot=t rootfstype=tmpfs sysctl.vm.compaction_proactiveness=0 tsc=reliable unknown_nmi_panic=1 vfio_pci.ids=1414:00ba vfio.enable_unsafe_noiommu_mode=1 rdinit=/underhill-init OPENHCL_NVME_VFIO=1 hv_storvsc.storvsc_vcpus_per_sub_channel=2048 hv_storvsc.storvsc_max_hw_queues=2 hv_storvsc.storvsc_ringbuffer_size=0x8000 MIMALLOC_ARENA_EAGER_COMMIT=0 clearcpuid=pcid iommu=off pci=off swiotlb=1,1 console=ttyS2,115200 boot_cpus=0 hv_vmbus.message_connection_id=0x800074  UNDERHILL_DIAG=1 HVLITE_LOG=debug RUST_BACKTRACE=full
+<6>[    0.000000] KERNEL supported cpus:
+<6>[    0.000000]   Intel GenuineIntel
+<6>[    0.000000]   AMD AuthenticAMD
+<6>[    0.000000] Clearing CPUID bits: pcid
+<6>[    0.000000] BIOS-provided physical RAM map:
+<6>[    0.000000] BIOS-e820: [mem 0x0000000408000000-0x0000000408dfffff] usable
+<6>[    0.000000] BIOS-e820: [mem 0x0000000408e00000-0x0000000408e19fff] reserved
+<6>[    0.000000] BIOS-e820: [mem 0x0000000408e1a000-0x00000004096d5fff] usable
+<6>[    0.000000] BIOS-e820: [mem 0x00000004096d6000-0x0000000409701fff] reserved
+<6>[    0.000000] BIOS-e820: [mem 0x0000000409702000-0x0000000409741fff] usable
+<6>[    0.000000] BIOS-e820: [mem 0x0000000409742000-0x0000000409743fff] reserved
+<6>[    0.000000] BIOS-e820: [mem 0x0000000409744000-0x000000041325efff] usable
+<6>[    0.000000] BIOS-e820: [mem 0x000000041325f000-0x00000004133fffff] reserved
+<6>[    0.000000] software IO TLB: area num 1.
+<6>[    0.000000] NX (Execute Disable) protection: active
+<6>[    0.000000] APIC: Static calls initialized
+<7>[    0.000000] e820: update [mem 0x408e9a000-0x408ed9fff] usable ==> usable
+<6>[    0.000000] extended physical RAM map:
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408000000-0x0000000408dfffff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408e00000-0x0000000408e19fff] reserved
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408e1a000-0x0000000408e99fff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408e9a000-0x0000000408ed9fff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000408eda000-0x00000004096d5fff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x00000004096d6000-0x0000000409701fff] reserved
+<6>[    0.000000] reserve setup_data: [mem 0x0000000409702000-0x0000000409741fff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x0000000409742000-0x0000000409743fff] reserved
+<6>[    0.000000] reserve setup_data: [mem 0x0000000409744000-0x000000041325efff] usable
+<6>[    0.000000] reserve setup_data: [mem 0x000000041325f000-0x00000004133fffff] reserved
+<6>[    0.000000] Hypervisor detected: Microsoft Hyper-V
+<6>[    0.000000] Hyper-V: privilege flags low 0xae7f, high 0x3b8030, hints 0x9e0e24, misc 0xf0bed7b2
+<6>[    0.000000] Hyper-V: Nested features: 0x0
+<6>[    0.000000] Hyper-V: LAPIC Timer Frequency: 0x1e8480
+<6>[    0.000000] Hyper-V: Using hypercall for remote TLB flush
+<6>[    0.000000] clocksource: hyperv_clocksource_tsc_page: mask: 0xffffffffffffffff max_cycles: 0x24e6a1710, max_idle_ns: 440795202120 ns
+<6>[    0.000000] clocksource: hyperv_clocksource_msr: mask: 0xffffffffffffffff max_cycles: 0x24e6a1710, max_idle_ns: 440795202120 ns
+<6>[    0.000000] Linux runs in Hyper-V Virtual Trust Level
+<6>[    0.000000] tsc: Detected 2000.000 MHz processor
+<7>[    0.000003] e820: update [mem 0x00000000-0x00000fff] usable ==> reserved
+<7>[    0.000005] e820: remove [mem 0x000a0000-0x000fffff] usable
+<6>[    0.000009] last_pfn = 0x41325f max_arch_pfn = 0x1000000000
+<6>[    0.000010] x86/PAT: PAT support disabled because CONFIG_X86_PAT is disabled in the kernel.
+<6>[    0.000011] x86/PAT: Configuration [0-7]: WB  WT  UC- UC  WB  WT  UC- UC
+<6>[    0.000013] last_pfn = 0x0 max_arch_pfn = 0x1000000000
+<6>[    0.000017] Using GB pages for direct mapping
+<6>[    0.000419] printk: log_buf_len: 131072 bytes
+<6>[    0.000420] printk: early log buf free: 12432(75%)
+<6>[    0.000421] RAMDISK: [mem 0x408edf000-0x4096d2fff]
+<6>[    0.000447] OF: reserved mem: Reserved memory: No reserved-memory node in the DT
+<6>[    0.000565] NODE_DATA(0) allocated [mem 0x413213380-0x413217bff]
+<6>[    0.000590] Zone ranges:
+<6>[    0.000590]   DMA      empty
+<6>[    0.000591]   DMA32    empty
+<6>[    0.000592]   Normal   [mem 0x0000000408000000-0x000000041325efff]
+<6>[    0.000593]   Device   empty
+<6>[    0.000594] Movable zone start for each node
+<6>[    0.000594] Early memory node ranges
+<6>[    0.000595]   node   0: [mem 0x0000000408000000-0x0000000408dfffff]
+<6>[    0.000596]   node   0: [mem 0x0000000408e1a000-0x00000004096d5fff]
+<6>[    0.000596]   node   0: [mem 0x0000000409702000-0x0000000409741fff]
+<6>[    0.000597]   node   0: [mem 0x0000000409744000-0x000000041325efff]
+<6>[    0.000598] Initmem setup node 0 [mem 0x0000000408000000-0x000000041325efff]
+<6>[    0.000688] On node 0, zone Normal: 26 pages in unavailable ranges
+<6>[    0.000689] On node 0, zone Normal: 44 pages in unavailable ranges
+<6>[    0.000929] On node 0, zone Normal: 2 pages in unavailable ranges
+<6>[    0.001139] On node 0, zone Normal: 19873 pages in unavailable ranges
+<6>[    0.001164] IMCR and PIC compatibility mode.
+<6>[    0.001179] TSC deadline timer available
+<6>[    0.001182] CPU topo: Max. logical packages:   1
+<6>[    0.001183] CPU topo: Max. logical dies:       1
+<6>[    0.001183] CPU topo: Max. dies per package:   1
+<6>[    0.001186] CPU topo: Max. threads per core:   2
+<6>[    0.001187] CPU topo: Num. cores per package:    16
+<6>[    0.001188] CPU topo: Num. threads per package:  32
+<6>[    0.001188] CPU topo: Allowing 32 present CPUs plus 0 hotplug CPUs
+<6>[    0.001192] Cannot find an available gap in the 32-bit address range
+<6>[    0.001193] PCI devices with unassigned 32-bit BARs may not work!
+<6>[    0.001193] [mem 0x41335f000-0x41375efff] available for PCI devices
+<6>[    0.001194] Booting paravirtualized kernel on Hyper-V
+<6>[    0.001198] clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+<6>[    0.001203] setup_percpu: NR_CPUS:2048 nr_cpumask_bits:32 nr_cpu_ids:32 nr_node_ids:1
+<6>[    0.002385] percpu: Embedded 45 pages/cpu s144064 r8192 d32064 u262144
+<7>[    0.002389] pcpu-alloc: s144064 r8192 d32064 u262144 alloc=1*2097152
+<7>[    0.002391] pcpu-alloc: [0] 00 01 02 03 04 05 06 07 [0] 08 09 10 11 12 13 14 15
+<7>[    0.002397] pcpu-alloc: [0] 16 17 18 19 20 21 22 23 [0] 24 25 26 27 28 29 30 31
+<6>[    0.002412] Hyper-V: PV spinlocks enabled
+<6>[    0.002413] PV qspinlock hash table entries: 256 (order: 0, 4096 bytes, linear)
+<5>[    0.002416] Kernel command line: loglevel=8 log_buf_len=128K printk.time=1 console_msg_format=syslog uio_hv_generic.no_mask=1 coredump_filter=0x33 cpufreq.off=1 cpuidle.off=1 cryptomgr.notests idle=halt initcall_blacklist=init_real_mode,sbf_init lpj=3000000 no_timer_check noxsave oops=panic panic_on_warn=0 panic_print=0 panic=-1 printk.devkmsg=on reboot=t rootfstype=tmpfs sysctl.vm.compaction_proactiveness=0 tsc=reliable unknown_nmi_panic=1 vfio_pci.ids=1414:00ba vfio.enable_unsafe_noiommu_mode=1 rdinit=/underhill-init OPENHCL_NVME_VFIO=1 hv_storvsc.storvsc_vcpus_per_sub_channel=2048 hv_storvsc.storvsc_max_hw_queues=2 hv_storvsc.storvsc_ringbuffer_size=0x8000 MIMALLOC_ARENA_EAGER_COMMIT=0 clearcpuid=pcid iommu=off pci=off swiotlb=1,1 console=ttyS2,115200 boot_cpus=0 hv_vmbus.message_connection_id=0x800074  UNDERHILL_DIAG=1 HVLITE_LOG=debug RUST_BACKTRACE=full
+<7>[    0.002459] blacklisting initcall init_real_mode
+<7>[    0.002461] blacklisting initcall sbf_init
+<5>[    0.002556] Unknown kernel command line parameters "OPENHCL_NVME_VFIO=1 MIMALLOC_ARENA_EAGER_COMMIT=0 UNDERHILL_DIAG=1 HVLITE_LOG=debug RUST_BACKTRACE=full", will be passed to user space.
+<5>[    0.002566] random: crng init done
+<6>[    0.002594] Dentry cache hash table entries: 32768 (order: 6, 262144 bytes, linear)
+<6>[    0.002607] Inode-cache hash table entries: 16384 (order: 5, 131072 bytes, linear)
+<6>[    0.002835] Fallback order for Node 0: 0
+<6>[    0.002838] Built 1 zonelists, mobility grouping on.  Total pages: 45591
+<6>[    0.002839] Policy zone: Normal
+<6>[    0.002840] mem auto-init: stack:off, heap alloc:off, heap free:off
+<6>[    0.003274] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=32, Nodes=1
+<6>[    0.003546] Dynamic Preempt: none
+<6>[    0.003679] rcu: Preemptible hierarchical RCU implementation.
+<6>[    0.003680] rcu:  RCU restricting CPUs from NR_CPUS=2048 to nr_cpu_ids=32.
+<6>[    0.003681] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+<6>[    0.003682] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=32
+<6>[    0.003706] Using NULL legacy PIC
+<6>[    0.003707] NR_IRQS: 131328, nr_irqs: 528, preallocated irqs: 0
+<6>[    0.003753] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+<4>[    0.003754] Persistent clock returned invalid value
+<6>[    0.003991] printk: legacy console [ttyS2] enabled
+<6>[    0.485725] APIC: Switch to symmetric I/O mode setup
+<6>[    0.488866] x2apic enabled
+<6>[    0.490764] APIC: Switched APIC routing to: physical x2apic
+<6>[    0.494222] Hyper-V: Host Build 10.0.29450.1000-1-0
+<6>[    0.497306] Hyper-V: enabling crash_kexec_post_notifiers
+<6>[    0.500793] Hyper-V: Using IPI hypercalls
+<6>[    0.503614] APIC: send_IPI() replaced with hv_send_ipi()
+<6>[    0.507078] APIC: send_IPI_mask() replaced with hv_send_ipi_mask()
+<6>[    0.511327] APIC: send_IPI_mask_allbutself() replaced with hv_send_ipi_mask_allbutself()
+<6>[    0.516988] APIC: send_IPI_allbutself() replaced with hv_send_ipi_allbutself()
+<6>[    0.521943] APIC: send_IPI_all() replaced with hv_send_ipi_all()
+<6>[    0.525662] APIC: send_IPI_self() replaced with hv_send_ipi_self()
+<6>[    0.529112] APIC: wakeup_secondary_cpu_64() replaced with hv_vtl_wakeup_secondary_cpu()
+<6>[    0.533738] clocksource: tsc-early: mask: 0xffffffffffffffff max_cycles: 0x39a85c9bff6, max_idle_ns: 881590591483 ns
+<6>[    0.539963] Calibrating delay loop (skipped) preset value.. 600.00 BogoMIPS (lpj=3000000)
+<6>[    0.544961] x86/cpu: User Mode Instruction Prevention (UMIP) activated
+<6>[    0.548982] Last level iTLB entries: 4KB 0, 2MB 0, 4MB 0
+<6>[    0.549960] Last level dTLB entries: 4KB 0, 2MB 0, 4MB 0, 1GB 0
+<6>[    0.549960] Spectre V1 : Vulnerable: __user pointer sanitization and usercopy barriers only; no swapgs barriers
+<6>[    0.549960] Spectre V2 : User space: Vulnerable
+<6>[    0.549960] Speculative Store Bypass: Vulnerable
+<6>[    0.549960] x86/fpu: x87 FPU will use FXSAVE
+<6>[    0.549960] Freeing SMP alternatives memory: 20K
+<6>[    0.549960] pid_max: default: 32768 minimum: 301
+<6>[    0.549960] Mount-cache hash table entries: 512 (order: 0, 4096 bytes, linear)
+<6>[    0.549960] Mountpoint-cache hash table entries: 512 (order: 0, 4096 bytes, linear)
+<6>[    0.549960] smpboot: CPU0: Intel(R) Xeon(R) Platinum 8460Y+ (family: 0x6, model: 0x8f, stepping: 0x8)
+<6>[    0.549960] Performance Events: unsupported p6 CPU model 143 no PMU driver, software events only.
+<6>[    0.549960] signal: max sigframe size: 1040
+<6>[    0.549996] rcu: Hierarchical SRCU implementation.
+<6>[    0.552905] rcu:  Max phase no-delay instances is 1000.
+<6>[    0.556252] Timer migration: 2 hierarchy levels; 8 children per group; 2 crossnode level
+<6>[    0.560160] smp: Bringing up secondary CPUs ...
+<6>[    0.563219] smp: Brought up 1 node, 1 CPU
+<6>[    0.566018] smpboot: Total of 1 processors activated (600.00 BogoMIPS)
+<6>[    0.570028] Memory: 147980K/182364K available (4569K kernel code, 466K rwdata, 1560K rodata, 1316K init, 2252K bss, 31708K reserved, 0K cma-reserved)
+<6>[    0.579279] devtmpfs: initialized
+<6>[    0.580172] x86/mm: Memory block size: 128MB
+<6>[    0.583423] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+<6>[    0.589123] futex hash table entries: 8192 (order: 7, 524288 bytes, linear)
+<6>[    0.590071] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+<7>[    0.593955] initcall sbf_init blacklisted
+<6>[    0.596414] PCI: Fatal: No config space access function found
+<6>[    0.600174] iommu: Default domain type: Translated
+<6>[    0.603137] iommu: DMA domain TLB invalidation policy: lazy mode
+<5>[    0.606817] SCSI subsystem initialized
+<6>[    0.609153] hv_vmbus: VMBus is present in DeviceTree
+<6>[    0.610115] hv_vmbus: Vmbus version:5.3
+<6>[    0.612409] PCI: System does not support PCI
+<6>[    0.612842] clocksource: Switched to clocksource tsc-early
+<6>[    0.616376] NET: Registered PF_UNIX/PF_LOCAL protocol family
+<6>[    0.619616] clocksource: tsc: mask: 0xffffffffffffffff max_cycles: 0x39a85c9bff6, max_idle_ns: 881590591483 ns
+<6>[    0.623453] Unpacking initramfs...
+<6>[    0.630036] clocksource: Switched to clocksource tsc
+<6>[    0.640342] workingset: timestamp_bits=56 max_order=16 bucket_order=0
+<6>[    0.644340] io scheduler mq-deadline registered
+<6>[    0.647125] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+<6>[    0.669253] serial8250: ttyS2 at I/O 0x3e8 (irq = 4, base_baud = 115200) is a 16550A
+<6>[    0.688499] serial8250: ttyS3 at I/O 0x2e8 (irq = 3, base_baud = 115200) is a 16550A
+<6>[    0.710155] hv_vmbus: registering driver uio_hv_generic
+<6>[    0.713357] VFIO - User Level meta-driver version: 0.3
+<6>[    0.716286] vfio_pci: add [1414:00ba[ffffffff:ffffffff]] class 0x000000/00000000
+<6>[    0.730162] NET: Registered PF_VSOCK protocol family
+<6>[    0.733031] hv_vmbus: registering driver hv_sock
+<6>[    0.735929] IPI shorthand broadcast: enabled
+<6>[    0.738966] sched_clock: Marking stable (190006209, 539960068)->(798020540, -68054263)
+<6>[    0.760720] Demotion targets for Node 0: null
+<6>[    0.763239] clk: Disabling unused clocks
+<6>[    0.810867] Freeing initrd memory: 8144K
+<6>[    0.813335] Freeing unused kernel image (initmem) memory: 1316K
+<6>[    0.816665] Write protecting the kernel read-only data: 8192k
+<6>[    0.820331] Freeing unused kernel image (text/rodata gap) memory: 1572K
+<6>[    0.823985] Freeing unused kernel image (rodata/data gap) memory: 488K
+<6>[    0.827784] Freeing unused kernel image (bss_decrypted gap) memory: 1996K
+<6>[    0.849971] Run /underhill-init as init process
+<7>[    0.852957]   with arguments:
+<7>[    0.855137]     /underhill-init
+<7>[    0.857460]   with environment:
+<7>[    0.859734]     HOME=/
+<7>[    0.861574]     TERM=linux
+<7>[    0.863524]     OPENHCL_NVME_VFIO=1
+<7>[    0.866079]     MIMALLOC_ARENA_EAGER_COMMIT=0
+<7>[    0.869073]     UNDERHILL_DIAG=1
+<7>[    0.871407]     HVLITE_LOG=debug
+<7>[    0.873764]     RUST_BACKTRACE=full
+<21>[    0.877310] underhill_init: Initial process: crate_name=underhill_init, crate_revision=1fb1e2564fc0884c000c05cfaa0a933efc4b43d7, crate_branch=main
+<21>[    0.885313] underhill_init: Mounting filesystems
+<21>[    0.887916] underhill_init: Command line args: Options { setup_script: [], underhill_args: [] }
+<21>[    0.892641] underhill_init: Setting system resource limits and parameters
+<21>[    0.896604] underhill_init: Using 64 bytes of entropy from the host
+<21>[    0.900028] underhill_init: registered vfio-pci as driver for nvme
+<21>[    0.903488] underhill_init: loading kernel module /lib/modules/000/pci-hyperv-intf.ko:
+<21>[    0.908141] underhill_init: running KERNEL_BOOT_TIME="337311042" "/bin/openvmm_hcl" "--pid" "/run/underhill.pid"
+<21>[    0.913866] underhill_init: load complete for /lib/modules/000/pci-hyperv-intf.ko
+<21>[    0.918048] underhill_init: loading kernel module /lib/modules/001/pci-hyperv.ko:
+<30>[    0.924137] underhill_core:  INFO  VMM process crate_name="build_info" crate_revision="1fb1e2564fc0884c000c05cfaa0a933efc4b43d7"
+<6>[    0.930577] hv_vmbus: registering driver hv_pci
+<30>[    0.933160] underhill_core:  INFO  boot loader times start=0x270f251c end=0x271044e9 sidecar_start=0x270f66cf sidecar_end=0x270fe791 elapsed=7.3677ms sidecar_elapsed=3.2962ms
+<6>[    0.941416] hv_pci 9027941c-1751-419e-9ebe-de894ffe4bf1: PCI VMBus probing: Using version 0x10004
+<30>[    0.946152] diag_server:  INFO  control starting control_address=VmAddress(Address { cid: ffffffff, port: 1 })
+<6>[    0.952892] hv_pci 9027941c-1751-419e-9ebe-de894ffe4bf1: PCI host bridge to bus 1751:00
+<6>[    0.957911] pci_bus 1751:00: root bus resource [mem 0x413480000-0x41350ffff window]
+<6>[    0.962699] pci_bus 1751:00: No busn resource found for root bus, will use [bus 00-ff]
+<6>[    0.968642] pci 1751:00:00.0: [1414:00a9] type 00 class 0x010802 conventional PCI endpoint
+<6>[    0.975496] pci 1751:00:00.0: BAR 0 [mem 0x413480000-0x4134fffff 64bit]
+<6>[    0.980831] pci 1751:00:00.0: BAR 2 [mem 0x413500000-0x41350ffff 64bit]
+<6>[    0.990526] pci_bus 1751:00: busn_res: [bus 00-ff] end is updated to 00
+<6>[    0.994990] pci 1751:00:00.0: BAR 0 [mem 0x413480000-0x4134fffff 64bit]: assigned
+<6>[    1.000880] pci 1751:00:00.0: BAR 2 [mem 0x413500000-0x41350ffff 64bit]: assigned
+<6>[    1.006467] vfio-pci 1751:00:00.0: Adding to iommu group 0
+<4>[    1.009915] vfio-pci 1751:00:00.0: Adding kernel taint for vfio-noiommu group on device
+<30>[    1.014721] diag_server:  INFO  data starting data_address=VmAddress(Address { cid: ffffffff, port: 2 })
+<31>[    1.020785] mesh_remote::unix_node: DEBUG run_leader{ local_id=N-4354016ee30555cf567e98c342910eac}:  invitation request remote_id=N-4354016ee30555cf567e98c342910eac
+<31>[    1.029587] mesh_remote::unix_node: DEBUG run_leader{ local_id=N-4354016ee30555cf567e98c342910eac}:  connected remote_id=N-2182697eb0df4c354955b7f028aba002
+<31>[    1.037932] mesh_remote::unix_node: DEBUG run_leader{ local_id=N-4354016ee30555cf567e98c342910eac}:  inviting invite_id=N-2182697eb0df4c354955b7f028aba002 remote_id=N-4354016ee30555cf567e98c342910eac
+<21>[    1.048621] underhill_init: load complete for /lib/modules/001/pci-hyperv.ko
+<31>[    1.053213] mesh_remote::unix_node: DEBUG mesh_spawn_process{ mesh_name="underhill"}:invite{ local_id=N-4354016ee30555cf567e98c342910eac}:  received invitation invite_id=N-2182697eb0df4c354955b7f028aba002
+<21>[    1.065033] underhill_init: loading kernel module /lib/modules/999/hv_storvsc.ko: storvsc_vcpus_per_sub_channel=2048 storvsc_max_hw_queues=2 storvsc_ringbuffer_size=0x8000
+<6>[    1.075559] hv_vmbus: registering driver hv_storvsc
+<31>[    1.081182] vmbus_user_channel: DEBUG worker_new{ name="UnderhillWorker" action="new"}:  opening device dev_path=/dev/uio0 instance_id=d3e4454d-62af-44ec-b851-3170915e5f56
+<21>[    1.090785] underhill_init: load complete for /lib/modules/999/hv_storvsc.ko
+<30>[    1.095734] guest_emulation_transport::process_loop:  INFO  [GET] version negotiated protocol=NICKEL_REV2
+<31>[    1.102300] underhill_core::worker: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/dps:  device platform settings DevicePlatformSettings { smbios: Smbios { serial_number: [50, 48, 52, 50, 45, 48, 52, 49, 48, 45, 56, 55, 56, 54, 45, 52, 52, 56, 55, 45, 55, 54, 55, 51, 45, 49, 53, 49, 57, 45, 57, 50], base_board_serial_number: [50, 48, 52, 50, 45, 48, 52, 49, 48, 45, 56, 55, 56, 54, 45, 52, 52, 56, 55, 45, 55, 54, 55, 51, 45, 49, 53, 49, 57, 45, 57, 50], chassis_serial_number: [50, 48, 52, 50, 45, 48, 52, 49, 48, 45, 56, 55, 56, 54, 45, 52, 52, 56, 55, 45, 55, 54, 55, 51, 45, 49, 53, 49, 57, 45, 57, 50], chassis_asset_tag: [50, 48, 52, 50, 45, 48, 52, 49, 48, 45, 56, 55, 56, 54, 45, 52, 52, 56, 55, 45, 55, 54, 55, 51, 45, 49, 53, 49, 57, 45, 57, 50], system_manufacturer: [], system_product_name: [], system_version: [], system_sku_number: [], system_family: [], bios_lock_string: [], memory_device_serial_number: [], processor_manufacturer: [73, 110, 116, 1
+<31>[    1.102303] underhill_core::worker: 01, 108, 0], processor_version: [73, 110, 116, 101, 108, 40, 82, 41, 32, 88, 101, 111, 110, 40, 82, 41, 32, 80, 108, 97, 116, 105, 110, 117, 109, 32, 56, 52, 54, 48, 89, 43, 0], processor_id: 0, external_clock: 16000, max_speed: 4000, current_speed: 2000, processor_characteristics: 252, processor_family2: 179, processor_type: 3, voltage: 144, status: 65, processor_upgrade: 6 }, general: General { secure_boot_enabled: false, secure_boot_template: MicrosoftWindows, bios_guid: 2868d4ad-133f-491f-acb1-bb1603b51faf, console_mode: Default, battery_enabled: false, processor_idle_enabled: false, tpm_enabled: false, com1_enabled: true, com1_debugger_mode: true, com1_vmbus_redirector: true, com2_enabled: false, com2_debugger_mode: false, com2_vmbus_redirector: false, firmware_debugging_enabled: false, hibernation_enabled: false, suppress_attestation: Some(false), generation_id: Some([57, 82, 139, 119, 55, 149, 245, 52, 201, 253, 147, 215, 18, 1
+<31>[    1.151566] underhill_core::worker: 81, 151, 230]), legacy_memory_map: false, pause_after_boot_failure: false, pxe_ip_v6: false, measure_additional_pcrs: true, disable_frontpage: false, disable_sha384_pcr: false, media_present_enabled_by_default: false, vpci_boot_enabled: false, memory_protection_mode: Disabled, default_boot_always_attempt: false, num_lock_enabled: false, pcat_boot_device_order: [Optical, HardDrive, Network, Floppy], vpci_instance_filter: None, nvdimm_count: 0, psp_enabled: false, vmbus_redirection_enabled: true, always_relay_host_mmio: false, vtl2_settings: Some(Vtl2Settings { fixed: Vtl2SettingsFixed { scsi_sub_channels: 31, io_ring_size: 256, max_bounce_buffer_pages: None }, dynamic: Vtl2SettingsDynamic { ide_controller: None, scsi_controllers: [ScsiController { instance_id: ca56751f-e643-4bef-bf54-f73678e8b7b5, disks: [ScsiDisk { location: 0, disk_params: DiskParameters { device_id: "d32872fd-e6a6-474c-a1a6-dd0d5248857e", vendor_id: "SCSI", product_
+<31>[    1.200301] underhill_core::worker: id: "SCSI Disk ", product_revision_level: "1.0", serial_number: "some serial number", model_number: "some module number", medium_rotation_rate: 0, physical_sector_size: None, fua: Some(false), write_cache: Some(true), scsi_disk_size_in_bytes: None, odx: None, unmap: None, max_transfer_length: None }, physical_devices: Single { device: PhysicalDevice { device_type: NVMe, vmbus_instance_id: 9027941c-1751-419e-9ebe-de894ffe4bf1, sub_device_path: 1 } }, ntfs_guid: None, is_dvd: false }], io_queue_depth: None }], nic_devices: [], nvme_controllers: [] } }), is_servicing_scenario: true, watchdog_enabled: false, firmware_mode_is_pcat: false, imc_enabled: false, cxl_memory_enabled: false, guest_state_lifetime: Default }, acpi_tables: [] }
+<30>[    1.280999] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:  VTL2 restart, getting servicing state from the host
+<30>[    1.288084] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:  received servicing state from host saved_state_len=0x106fc
+<30>[    1.295259] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  kernel boot time kernel_boot_time_ns=0x141af542
+<30>[    1.305879] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  memory allocation mode memory_allocation_mode=Host
+<30>[    1.317589] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  vtl2 ram vtl2_ram="0x408000000-0x413400000"
+<30>[    1.328943] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  flush logs result duration_us=0xbd7
+<31>[    1.340068] underhill_threadpool: DEBUG  starting threadpool thread cpu=0x0
+<30>[    1.344287] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  vtl0 ram vtl0_ram="0x0-0xf8000000, 0x100000000-0x408000000"
+<31>[    1.355240] pal_uring::threadpool: DEBUG  AffinitizedWorker running io_ring_size=0x100
+<30>[    1.360093] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  vtl0 mmio vtl0_mmio="0xf8000000-0x100000000, 0xfe0000000-0x1000000000"
+<30>[    1.372749] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  enabling alias map alias_map=0x200000000000
+<31>[    1.384235] sidecar_client: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  sidecar node 0 started, cpus 0..=31
+<31>[    1.395092] hcl::ioctl: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  HCL capabilities supports_vtl_ret_action=true supports_register_page=true
+<6>[    1.406867] misc mshv_hvcall: Hypercall allow map has been set, pid 45
+<31>[    1.410859] underhill_mem::init: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  Applying VTL2 protections
+<6>[    1.421049] misc mshv_hvcall: Hypercall allow map has been set, pid 45
+<31>[    1.425093] underhill_mem::init: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:apply_vtl2_protections:  applying protections cpu=0x0 range=0x408000000-0x413400000
+<31>[    1.439797] underhill_mem::init: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  Creating VTL0 guest memory
+<31>[    1.449135] underhill_mem::init: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  Creating VTL 1 memory map
+<30>[    1.458852] underhill_mem::init:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  VTL 1 memory map created
+<6>[    1.468976] misc mshv_hvcall: Hypercall allow map has been set, pid 45
+<30>[    1.473936] underhill_core::dispatch::vtl2_settings_worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:new_initial_controllers:  Initial VTL2 settings vtl2_settings=Some(Vtl2Settings { fixed: Vtl2SettingsFixed { scsi_sub_channels: 1f, io_ring_size: 100, max_bounce_buffer_pages: None }, dynamic: Vtl2SettingsDynamic { ide_controller: None, scsi_controllers: [ScsiController { instance_id: ca56751f-e643-4bef-bf54-f73678e8b7b5, disks: [ScsiDisk { location: 0, disk_params: DiskParameters { device_id: "d32872fd-e6a6-474c-a1a6-dd0d5248857e", vendor_id: "SCSI", product_id: "SCSI Disk ", product_revision_level: "1.0", serial_number: "some serial number", model_number: "some module number", medium_rotation_rate: 0, physical_sector_size: None, fua: Some(false), write_cache: Some(true), scsi_disk_size_in_bytes: None, odx: None, unmap: None, max_transfer_length: None }, physical_devices: Sing
+<30>[    1.473940] underhill_core::dispatch::vtl2_settings_worker: le { device: PhysicalDevice { device_type: NVMe, vmbus_instance_id: 9027941c-1751-419e-9ebe-de894ffe4bf1, sub_device_path: 1 } }, ntfs_guid: None, is_dvd: false }], io_queue_depth: None }], nic_devices: [], nvme_controllers: [] } })
+<30>[    1.537327] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  Not Instantiating The MCR Device
+<31>[    1.547942] vmbus_user_channel: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  opening device dev_path=/dev/uio2 instance_id=700df40e-b947-4776-b839-d1b0a35af034
+<31>[    1.561280] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="ioapic"}:  map region_name="mmio" addr=fec00000 len=20
+<31>[    1.577151] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="ioapic"}:  unmap region_name="mmio" addr=None len=20
+<31>[    1.592667] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="rtc"}:  map region_name="io" addr=70 len=2
+<31>[    1.607804] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="rtc"}:  unmap region_name="io" addr=None len=2
+<31>[    1.622866] hcl::ioctl: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="pm"}:  set_pm_timer_assist port=None
+<31>[    1.633468] chipset::pm: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="pm"}:  ACPI mode enabled
+<31>[    1.643370] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="pm"}:  map region_name="dynamic" addr=400 len=37
+<31>[    1.656821] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="pm"}:  unmap region_name="dynamic" addr=None len=37
+<31>[    1.670561] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="uefi"}:  map region_name="uefi" addr=28 len=8
+<31>[    1.685675] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="uefi"}:  unmap region_name="uefi" addr=None len=8
+<31>[    1.701308] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="serial-com1"}:  map region_name="registers" addr=3f8 len=8
+<31>[    1.716878] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="serial-com1"}:  unmap region_name="registers" addr=None len=8
+<31>[    1.731038] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="serial-com2"}:  map region_name="registers" addr=2f8 len=8
+<31>[    1.745810] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="serial-com2"}:  unmap region_name="registers" addr=None len=8
+<31>[    1.761773] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="serial-com3"}:  map region_name="registers" addr=3e8 len=8
+<31>[    1.775596] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="serial-com3"}:  unmap region_name="registers" addr=None len=8
+<31>[    1.789179] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="serial-com4"}:  map region_name="registers" addr=2e8 len=8
+<31>[    1.803211] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="serial-com4"}:  unmap region_name="registers" addr=None len=8
+<31>[    1.817929] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="io-delay-0xed"}:  map region_name="delay" addr=ed len=1
+<31>[    1.833019] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="io-delay-0xed"}:  unmap region_name="delay" addr=None len=1
+<31>[    1.848093] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-vmware-backdoor"}:  map region_name="backdoor" addr=5658 len=2
+<31>[    1.862846] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-vmware-backdoor"}:  unmap region_name="backdoor" addr=None len=2
+<31>[    1.878394] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-gameport"}:  map region_name="gameport" addr=201 len=1
+<31>[    1.894209] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-gameport"}:  unmap region_name="gameport" addr=None len=1
+<31>[    1.907901] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pic"}:  map region_name="primary" addr=20 len=2
+<31>[    1.923010] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pic"}:  unmap region_name="primary" addr=None len=2
+<31>[    1.938878] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pic"}:  map region_name="secondary" addr=a0 len=2
+<31>[    1.954365] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pic"}:  unmap region_name="secondary" addr=None len=2
+<31>[    1.970372] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pit"}:  map region_name="main" addr=40 len=4
+<31>[    1.985642] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pit"}:  unmap region_name="main" addr=None len=4
+<31>[    2.000104] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pit"}:  map region_name="port61" addr=61 len=1
+<31>[    2.014632] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pit"}:  unmap region_name="port61" addr=None len=1
+<31>[    2.030305] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pci"}:  map region_name="address" addr=cf8 len=4
+<31>[    2.045860] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pci"}:  unmap region_name="address" addr=None len=4
+<31>[    2.061366] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pci"}:  map region_name="data" addr=cfc len=4
+<31>[    2.074644] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-pci"}:  unmap region_name="data" addr=None len=4
+<31>[    2.089844] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-dma"}:  map region_name="io" addr=87 len=1
+<31>[    2.105210] vmotherboard::chipset::backing::arc_mutex::services::device_range: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:base_chipset_build:add_device{ device="missing-dma"}:  unmap region_name="io" addr=None len=1
+<30>[    2.120413] underhill_core::worker:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  Underhill MNF enabled? enable_mnf=false
+<30>[    2.131104] vmbus_server::channels:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/new_underhill_vm{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:  Limiting VmBus connections to version version=MaxVersionInfo { version: 60000, feature_flags: FeatureFlags { guest_specified_signal_parameters: true, channel_interrupt_redirection: true, modify_connection: true, client_id: false, confidential_channels: false, pause_resume: false } }
+<30>[    2.153677] vmbus_client::saved_state:  INFO  channel restored key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0 state=Offered
+<30>[    2.161549] vmbus_client::saved_state:  INFO  channel restored key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0 state=Offered
+<30>[    2.168613] vmbus_client::saved_state:  INFO  channel restored key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0 state=Offered
+<30>[    2.177354] vmbus_client::saved_state:  INFO  channel restored key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0 state=Opened
+<30>[    2.185801] vmbus_client::saved_state:  INFO  channel restored key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0 state=Opened
+<30>[    2.194499] vmbus_client::saved_state:  INFO  channel restored key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0 state=Offered
+<30>[    2.203460] vmbus_client::saved_state:  INFO  channel restored key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0 state=Offered
+<30>[    2.212492] vmbus_client::saved_state:  INFO  channel restored key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0 state=Offered
+<30>[    2.221464] vmbus_client::saved_state:  INFO  channel restored key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0 state=Offered
+<30>[    2.230139] vmbus_client::saved_state:  INFO  channel restored key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0 state=Offered
+<30>[    2.238517] vmbus_client::saved_state:  INFO  channel restored key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0 state=Offered
+<30>[    2.247044] vmbus_client::saved_state:  INFO  channel restored key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0 state=Offered
+<30>[    2.255519] vmbus_client::saved_state:  INFO  channel restored key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{2c09090e-8a9a-48b5-90e3-dc99f7a8d44c}-0 state=Opened
+<30>[    2.264207] vmbus_server::channels:  INFO  new channel offer_id=OfferId(0) key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.276018] vmbus_server: DEBUG  offered channel offer_id=OfferId(0) key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0
+<30>[    2.284538] vmbus_server::channels:  INFO  new channel offer_id=OfferId(1) key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.296602] vmbus_server: DEBUG  offered channel offer_id=OfferId(1) key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0
+<30>[    2.304221] vmbus_server::channels:  INFO  new channel offer_id=OfferId(2) key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.316339] vmbus_server: DEBUG  offered channel offer_id=OfferId(2) key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0
+<30>[    2.325261] vmbus_server::channels:  INFO  new channel offer_id=OfferId(3) key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.337692] vmbus_server: DEBUG  offered channel offer_id=OfferId(3) key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0
+<30>[    2.346364] vmbus_server::channels:  INFO  new channel offer_id=OfferId(4) key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.357427] vmbus_server: DEBUG  offered channel offer_id=OfferId(4) key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0
+<30>[    2.364962] vmbus_server::channels:  INFO  new channel offer_id=OfferId(5) key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.375516] vmbus_server: DEBUG  offered channel offer_id=OfferId(5) key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0
+<30>[    2.382656] vmbus_server::channels:  INFO  new channel offer_id=OfferId(6) key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.393958] vmbus_server: DEBUG  offered channel offer_id=OfferId(6) key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0
+<30>[    2.401756] vmbus_server::channels:  INFO  new channel offer_id=OfferId(7) key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.413129] vmbus_server: DEBUG  offered channel offer_id=OfferId(7) key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0
+<30>[    2.420966] vmbus_server::channels:  INFO  new channel offer_id=OfferId(8) key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.432678] vmbus_server: DEBUG  offered channel offer_id=OfferId(8) key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0
+<30>[    2.439862] vmbus_server::channels:  INFO  new channel offer_id=OfferId(9) key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.449426] vmbus_server: DEBUG  offered channel offer_id=OfferId(9) key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0
+<30>[    2.456092] vmbus_server::channels:  INFO  new channel offer_id=OfferId(a) key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.467792] vmbus_server: DEBUG  offered channel offer_id=OfferId(a) key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0
+<30>[    2.475736] vmbus_server::channels:  INFO  new channel offer_id=OfferId(b) key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{2c09090e-8a9a-48b5-90e3-dc99f7a8d44c}-0 confidential_ring_buffer=false confidential_external_memory=false
+<31>[    2.487104] vmbus_server: DEBUG  offered channel offer_id=OfferId(b) key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{2c09090e-8a9a-48b5-90e3-dc99f7a8d44c}-0
+<6>[    2.496827] vfio-pci 1751:00:00.0: enabling device (0000 -> 0002)
+<4>[    2.505072] vfio-pci 1751:00:00.0: vfio-noiommu device opened by user (tp:48)
+<30>[    2.519935] vmbus_relay_intercept_device:  INFO  matching channel offered offer=OfferInfo { offer: OfferChannel { interface_id: 0e0b6031-5213-4934-818b-38d90ced39db, instance_id: b6650ff7-33bc-4840-8048-e0676786f393, rsvd: [0, 0, 0, 0], flags: OfferFlags { enumerate_device_interface: true, confidential_ring_buffer: false, confidential_external_memory: false, named_pipe_mode: true, tlnpi_provider: false }, mmio_megabytes: 0, user_defined: UserDefinedData([4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), subchannel_index: 0, mmio_megabytes_optional: 0, channel_id: ChannelId(9), monitor_id: ff, monitor_allocated: 0, is_dedicated: 1, connection_id: 2009 }, request_se
+<30>[    2.519939] vmbus_relay_intercept_device: nd: SenderCore(ManuallyDrop { value: Queue { remote: OnceLock(<uninit>), local: Mutex { data: LocalQueue { messages: ErasedVecDeque { cap: 0, head: 0, len: 0 }, ports: [], waker: Some(Waker { data: 0x32cba1303b0, vtable: 0x7f190a809948 }), remote: false, receiver_gone: false, remove_closed: false, new_handler: 0x7f1909a3d4c0 } }, receiver: UnsafeCell { .. } } }), revoke_recv: ManuallyDrop { value: OneshotReceiverCore(Slot { state: Mutex { data: Waiting(None) }, receiver: UnsafeCell { .. } }) } }
+<30>[    2.596159] vmbus_client:  INFO  opening channel on host channel_id=0x9
+<31>[    2.600530] nvme_driver::driver: DEBUG nvme_driver_init{ pci_id="1751:00:00.0"}:nvme_enable{ pci_id="1751:00:00.0"}:  creating io queue cpu=0x0 qid=0x1
+<31>[    2.609290] vmbus_client: DEBUG  received open result channel_id=0x9 result=0x0
+<30>[    2.614049] hyperv_ic_guest::shutdown:  INFO  version negotiated framework_version=3.0 message_version=3.2
+<31>[    2.620674] nvme_driver::namespace: DEBUG  rescan
+<30>[    2.623573] vmbus_server::channels:  INFO  new channel offer_id=OfferId(c) key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{ca56751f-e643-4bef-bf54-f73678e8b7b5}-0 confidential_ring_buffer=true confidential_external_memory=false
+<31>[    2.633751] vmbus_server: DEBUG  offered channel offer_id=OfferId(c) key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{ca56751f-e643-4bef-bf54-f73678e8b7b5}-0
+<30>[    2.640955] vmbus_server::channels:  INFO  new channel offer_id=OfferId(d) key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0 confidential_ring_buffer=true confidential_external_memory=false
+<31>[    2.651411] vmbus_server: DEBUG  offered channel offer_id=OfferId(d) key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0
+<31>[    2.659411] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="chipset" dependency="ioapic" operation="restore"
+<31>[    2.673597] pal_uring::threadpool: DEBUG  new idle task
+<31>[    2.677014] nvme_driver::namespace: DEBUG  rescanned, no change
+<31>[    2.681099] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="lines/irq" dependency="ioapic" operation="restore"
+<31>[    2.696166] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="ioapic" dependency="vmtime" operation="restore"
+<31>[    2.709008] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="rtc" dependency="vmtime" operation="restore"
+<31>[    2.721480] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="lines/gpe0" dependency="pm" operation="restore"
+<31>[    2.735716] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="pm" dependency="vmtime" operation="restore"
+<31>[    2.750155] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="uefi" dependency="vmtime" operation="restore"
+<31>[    2.764478] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="serial-com1" dependency="vmtime" operation="restore"
+<31>[    2.778828] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="serial-com2" dependency="vmtime" operation="restore"
+<31>[    2.793465] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="serial-com3" dependency="vmtime" operation="restore"
+<31>[    2.808174] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="serial-com4" dependency="vmtime" operation="restore"
+<31>[    2.823635] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="io-delay-0xed" dependency="vmtime" operation="restore"
+<31>[    2.838015] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="missing-vmware-backdoor" dependency="vmtime" operation="restore"
+<31>[    2.851278] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="missing-gameport" dependency="vmtime" operation="restore"
+<31>[    2.866036] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="missing-pic" dependency="vmtime" operation="restore"
+<31>[    2.880884] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="missing-pit" dependency="vmtime" operation="restore"
+<31>[    2.896344] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="missing-pci" dependency="vmtime" operation="restore"
+<31>[    2.911373] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="missing-dma" dependency="vmtime" operation="restore"
+<31>[    2.924996] vmbus_server: DEBUG  handle_request request=Restore(Rpc(SavedState { server: SavedState { state: Some(ConnectedState { connection: Connected { version: VersionInfo { version: 60000, feature_flags: 0 }, offers_sent: true, interrupt_page: None, monitor_page: None, target_message_vp: 0, modifying: false, client_id: Some(18dd3964-3e8a-4e42-86fa-c8e6b191ee0e), trusted: false, paused: false }, channels: [Channel { key: OfferKey { interface_id: 525074dc-8985-46e2-8057-a307dc18a502, instance_id: 1eccfd72-4b41-45ef-b73a-4a6e44c12924, subchannel_index: 0 }, channel_id: 5, offered_connection_id: 2005, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: f8e65716-3cb3-4a06-9a60-1889c5cccab5, instance_id: 99221fa0-24ad-11e2-be98-001aa01bbf6e, subchannel_index: 0 }, channel_id: d, offered_connection_id: 200d, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a, instance_id: 58f75a6d-d949-432
+<31>[    2.924999] vmbus_server: 0-99e1-a2a2576d581c, subchannel_index: 0 }, channel_id: b, offered_connection_id: 200b, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: f912ad6d-2b17-48ea-bd65-f927a61c7684, instance_id: d34b2567-b9b6-42b9-8778-0a4ec0b955bf, subchannel_index: 0 }, channel_id: e, offered_connection_id: 200e, state: Open { params: OpenRequest { open_id: 0, ring_buffer_gpadl_id: GpadlId(2), target_vp: 0, downstream_ring_buffer_page_offset: 2, user_data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], guest_specified_interrupt_info: None, flags: 0 }, modify_state: NotModifying, reserved_state: None }, monitor_id: None }, Channel {
+<31>[    2.970120] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="vmbus_relay" dependency="vmbus" operation="restore"
+<31>[    3.027283] vmbus_server:  key: OfferKey { interface_id: da0a7802-e377-4aac-8e77-0558eb1073f8, instance_id: 5620e0c7-8062-4dce-aeb7-520c7ef76171, subchannel_index: 0 }, channel_id: c, offered_connection_id: 200c, state: Open { params: OpenRequest { open_id: 0, ring_buffer_gpadl_id: GpadlId(1), target_vp: 0, downstream_ring_buffer_page_offset: b, user_data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], guest_specified_interrupt_info: None, flags: 0 }, modify_state: NotModifying, reserved_state: None }, monitor_id: None }, Channel { key: OfferKey { interface_id: 3375baf4-9e15-4b30-b765-67acb10d607b, instance_id: 4487b255-b88c-403f-bb51-d1f69cf17f87, subchannel_i
+<31>[    3.027286] vmbus_server: ndex: 0 }, channel_id: 3, offered_connection_id: 2003, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: 57164f39-9115-4e78-ab55-382f3bd5422d, instance_id: fd149e91-82e0-4a7d-afa6-2a4166cbd7c0, subchannel_index: 0 }, channel_id: 6, offered_connection_id: 2006, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: a9a0f4e7-5a45-4d96-b827-8a841e8c03e6, instance_id: 242ff919-07db-4180-9c2e-b86cb68c8c55, subchannel_index: 0 }, channel_id: 8, offered_connection_id: 2008, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: 9527e630-d0ae-497b-adce-e80ab0175caf, instance_id: 2dd1ce17-079e-403c-b352-a1921ee207ee, subchannel_index: 0 }, channel_id: 7, offered_connection_id: 2007, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: 35fa2e29-ea23-4236-96ae-3a6ebacba440, instance_id: 2450ee40-33bf-4fbd-892e-9fb06e9214cf, subchannel_index: 0 }, channel_id: 4, offered_
+<31>[    3.069797] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="scsi:ca56751f-e643-4bef-bf54-f73678e8b7b5" dependency="vmbus" operation="restore"
+<31>[    3.135233] vmbus_server: connection_id: 2004, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: 276aacf4-ac15-426c-98dd-7521ad3f01fe, instance_id: f5bee29c-1741-4aad-a4c2-8fdedb46dcc2, subchannel_index: 0 }, channel_id: 2, offered_connection_id: 2002, state: Closed, monitor_id: None }, Channel { key: OfferKey { interface_id: ba6163d9-04a1-4d29-b605-72e2ffb1dc7f, instance_id: 2c09090e-8a9a-48b5-90e3-dc99f7a8d44c, subchannel_index: 0 }, channel_id: 9, offered_connection_id: 2009, state: Open { params: OpenRequest { open_id: 0, ring_buffer_gpadl_id: GpadlId(3), target_vp: 0, downstream_ring_buffer_page_offset: b, user_data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+<31>[    3.135236] vmbus_server: , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], guest_specified_interrupt_info: None, flags: 0 }, modify_state: NotModifying, reserved_state: None }, monitor_id: None }, Channel { key: OfferKey { interface_id: ba6163d9-04a1-4d29-b605-72e2ffb1dc7f, instance_id: ca56751f-e643-4bef-bf54-f73678e8b7b5, subchannel_index: 0 }, channel_id: a, offered_connection_id: 200a, state: Open { params: OpenRequest { open_id: 0, ring_buffer_gpadl_id: GpadlId(4), target_vp: 0, downstream_ring_buffer_page_offset: b, user_data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], guest_specified_interrupt_info: None, flags: 0 }, modify_state: NotModifying, reserved_state: None
+<31>[    3.183195] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="shutdown_ic:b6650ff7-33bc-4840-8048-e0676786f393" dependency="vmbus" operation="restore"
+<31>[    3.248634] vmbus_server: }, monitor_id: None }, Channel { key: OfferKey { interface_id: 0e0b6031-5213-4934-818b-38d90ced39db, instance_id: b6650ff7-33bc-4840-8048-e0676786f393, subchannel_index: 0 }, channel_id: 1, offered_connection_id: 2001, state: Closed, monitor_id: None }], gpadls: [Gpadl { id: 3, channel_id: 9, count: 1, buf: [16000, f740e, f740f, f7410, f7411, f7412, f7413, f7414, f7415, f7416, f7417, f7418, f7419, f741a, f741b, f741c, f741d, f741e, f741f, f7420, f7421, f7422, f7423], state: Accepted }, Gpadl { id: 2, channel_id: e, count: 1, buf: [4000, f7448, f7449, f744a, f744b], state: Accepted }, Gpadl { id: 4, channel_id: a, count: 1, buf: [16000, f71ea, f71eb, f71ec, f71ed, f71ee, f71ef, f71f0, f71f1, f71f2, f71f3, f71f4, f71f5, f71f6, f71f7, f71f8, f71f9, f71fa, f71fb, f71fc, f71fd, f71fe, f71ff], state: Accepted }, Gpadl { id: 1, channel_id: c, count: 1, buf: [16000, f745c, f745d, f745e, f745f, f7460, f7461, f7462, f7463, f7464, f7465, f7466, f7467, f74
+<31>[    3.248637] vmbus_server: 68, f7469, f746a, f746b, f746c, f746d, f746e, f746f, f7470, f7471], state: Accepted }] }), disconnected_state: None, pending_messages: [] }, lost_synic_bug_fixed: true }))
+<30>[    3.301822] vmbus_server::channels::saved_state:  INFO  channel restored key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0 state=Closed
+<31>[    3.310654] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="partition" dependency="vmtime" operation="restore"
+<30>[    3.324797] vmbus_server::channels::saved_state:  INFO  channel restored key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0 state=Closed
+<30>[    3.333952] vmbus_server::channels::saved_state:  INFO  channel restored key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0 state=Closed
+<31>[    3.342457] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="vmtime"}:  device state change complete duration=683.111976ms
+<30>[    3.355319] vmbus_server::channels::saved_state:  INFO  channel restored key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0 state=Open
+<31>[    3.363605] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="rtc" dependency="lines/irq" operation="restore"
+<30>[    3.378072] vmbus_server::channels::saved_state:  INFO  channel restored key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0 state=Open
+<30>[    3.387082] vmbus_server::channels::saved_state:  INFO  channel restored key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0 state=Closed
+<31>[    3.395881] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="pm" dependency="lines/irq" operation="restore"
+<30>[    3.410074] vmbus_server::channels::saved_state:  INFO  channel restored key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0 state=Closed
+<30>[    3.418793] vmbus_server::channels::saved_state:  INFO  channel restored key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0 state=Closed
+<31>[    3.427807] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="uefi" dependency="lines/gpe0" operation="restore"
+<30>[    3.442344] vmbus_server::channels::saved_state:  INFO  channel restored key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0 state=Closed
+<31>[    3.450959] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="serial-com1" dependency="lines/irq" operation="restore"
+<30>[    3.465408] vmbus_server::channels::saved_state:  INFO  channel restored key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0 state=Closed
+<30>[    3.474407] vmbus_server::channels::saved_state:  INFO  channel restored key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0 state=Closed
+<31>[    3.482249] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="serial-com2" dependency="lines/irq" operation="restore"
+<30>[    3.495563] vmbus_server::channels::saved_state:  INFO  channel restored key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{2c09090e-8a9a-48b5-90e3-dc99f7a8d44c}-0 state=Open
+<31>[    3.504339] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="serial-com3" dependency="lines/irq" operation="restore"
+<30>[    3.518755] vmbus_server::channels::saved_state:  INFO  channel restored key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{ca56751f-e643-4bef-bf54-f73678e8b7b5}-0 state=Open
+<30>[    3.527537] vmbus_server::channels::saved_state:  INFO  channel restored key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0 state=Closed
+<31>[    3.536120] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="serial-com4" dependency="lines/irq" operation="restore"
+<31>[    3.550910] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="vmbus"}:  device state change complete duration=626.372276ms
+<31>[    3.565148] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="vmbus_relay"}:  device state change complete duration=85.687µs
+<31>[    3.579312] storvsp: DEBUG handle_state_request{ request=Restore(Rpc(SavedStateBlob(ProtobufAny { type_url: "type.googleapis.com/storage.storvsp.SavedState", value: ProtobufMessage([a, 5, 12, 3, 8, 80, c, 12, 65, a, 63, a, 61, 8, 95, 6, 12, 26, a, 22, 80, 80, 82, 80, 80, ec, 2, d9, cb, 3d, da, cb, 3d, db, cb, 3d, dc, cb, 3d, dd, cb, 3d, de, cb, 3d, df, cb, 3d, e0, cb, 3d, e1, cb, 3d, 10, 1, 1a, 34, 34, 0, 0, 0, 0, 0, 0, 0, a, 14, 1, 0, 0, 80, 0, 0, 28, 0, 0, 16, d3, 40, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80, 39, 7a, 12, 0, 0, 0, 0, 1a, b, 12, 9, a, 7, a, 5, 8, 80, 80, 80, 32]) })))}:  packet processing starting... target_vp=0x0 channel_index=0x0
+<31>[    3.612214] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="partition" dependency="chipset" operation="restore"
+<31>[    3.625923] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="ioapic"}:  device state change complete duration=262.318646ms
+<31>[    3.639712] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="scsi:ca56751f-e643-4bef-bf54-f73678e8b7b5"}:  device state change complete duration=60.468575ms
+<31>[    3.653356] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="shutdown_ic:b6650ff7-33bc-4840-8048-e0676786f393"}:  device state change complete duration=41.115989ms
+<31>[    3.667541] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="chipset" dependency="rtc" operation="restore"
+<31>[    3.679397] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="rtc"}:  device state change complete duration=13.304µs
+<31>[    3.691460] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="pm"}:  device state change complete duration=10µs
+<31>[    3.703268] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="serial-com1"}:  device state change complete duration=10.678µs
+<31>[    3.716823] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="serial-com2"}:  device state change complete duration=12.975µs
+<31>[    3.731117] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="serial-com3"}:  device state change complete duration=9.532µs
+<31>[    3.745228] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="serial-com4"}:  device state change complete duration=9.31µs
+<31>[    3.758821] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  waiting on dependency device="chipset" dependency="uefi" operation="restore"
+<31>[    3.772244] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="uefi"}:  device state change complete duration=56.126µs
+<31>[    3.797632] state_unit: DEBUG worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:device_state_change{ device="partition"}:  device state change complete duration=11.364572ms
+<30>[    3.811745] state_unit:  INFO worker_new{ name="UnderhillWorker" action="new"}:init:init/restore{ correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3}:restore_units:state_change{ operation="restore"}:  state change complete duration=1.15248739s
+<30>[    3.824145] underhill_core:  INFO  vm worker started
+<31>[    3.827306] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="chipset" dependency="ioapic" operation="start"
+<31>[    3.834220] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="lines/irq" dependency="ioapic" operation="start"
+<31>[    3.841775] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="ioapic" dependency="vmtime" operation="start"
+<31>[    3.849473] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="rtc" dependency="vmtime" operation="start"
+<31>[    3.857100] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="lines/gpe0" dependency="pm" operation="start"
+<31>[    3.865510] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="pm" dependency="vmtime" operation="start"
+<31>[    3.873100] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="uefi" dependency="vmtime" operation="start"
+<31>[    3.880099] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com1" dependency="vmtime" operation="start"
+<31>[    3.887768] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com2" dependency="vmtime" operation="start"
+<31>[    3.895099] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com3" dependency="vmtime" operation="start"
+<31>[    3.902752] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com4" dependency="vmtime" operation="start"
+<31>[    3.911166] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="io-delay-0xed" dependency="vmtime" operation="start"
+<31>[    3.919668] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="missing-vmware-backdoor" dependency="vmtime" operation="start"
+<31>[    3.928716] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="missing-gameport" dependency="vmtime" operation="start"
+<31>[    3.937029] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="missing-pic" dependency="vmtime" operation="start"
+<31>[    3.944880] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="missing-pit" dependency="vmtime" operation="start"
+<31>[    3.952413] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="missing-pci" dependency="vmtime" operation="start"
+<31>[    3.959390] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="missing-dma" dependency="vmtime" operation="start"
+<31>[    3.965831] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="lines/bsp_lint"}:  device state change complete duration=20.57µs
+<31>[    3.973068] vmbus_server: DEBUG  handle_request request=Start
+<31>[    3.976227] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="vmbus"}:  device state change complete duration=3.141634ms
+<31>[    3.983856] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="vmbus_relay"}:  device state change complete duration=30.043µs
+<31>[    4.058111] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="scsi:ca56751f-e643-4bef-bf54-f73678e8b7b5"}:  device state change complete duration=66.330577ms
+<31>[    4.067494] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="partition" dependency="vmtime" operation="start"
+<31>[    4.074518] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="vmtime"}:  device state change complete duration=247.281368ms
+<31>[    4.082605] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="input"}:  device state change complete duration=255.328752ms
+<31>[    4.091321] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="rtc" dependency="lines/irq" operation="start"
+<31>[    4.099597] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="pm" dependency="lines/irq" operation="start"
+<31>[    4.107695] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="uefi" dependency="lines/gpe0" operation="start"
+<31>[    4.115898] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com1" dependency="lines/irq" operation="start"
+<31>[    4.123946] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com2" dependency="lines/irq" operation="start"
+<31>[    4.132047] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com3" dependency="lines/irq" operation="start"
+<31>[    4.139660] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="serial-com4" dependency="lines/irq" operation="start"
+<31>[    4.147665] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="io-delay-0xed"}:  device state change complete duration=17.778µs
+<31>[    4.156444] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-vmware-backdoor"}:  device state change complete duration=8.495µs
+<31>[    4.165655] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-gameport"}:  device state change complete duration=8.157µs
+<31>[    4.174562] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-pic"}:  device state change complete duration=8.089µs
+<31>[    4.182855] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-pit"}:  device state change complete duration=9.552µs
+<31>[    4.190635] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-pci"}:  device state change complete duration=8.845µs
+<31>[    4.198244] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="missing-dma"}:  device state change complete duration=7.945µs
+<31>[    4.205893] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="shutdown_ic:b6650ff7-33bc-4840-8048-e0676786f393"}:  device state change complete duration=138.37347ms
+<31>[    4.215792] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="partition" dependency="chipset" operation="start"
+<31>[    4.224187] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="ioapic"}:  device state change complete duration=132.836684ms
+<31>[    4.233087] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="chipset" dependency="rtc" operation="start"
+<31>[    4.241279] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="lines/irq"}:  device state change complete duration=10.173µs
+<31>[    4.250104] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="rtc"}:  device state change complete duration=9.871µs
+<31>[    4.258754] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="pm"}:  device state change complete duration=8.368µs
+<31>[    4.267465] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="serial-com1"}:  device state change complete duration=18.618µs
+<31>[    4.277199] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="serial-com2"}:  device state change complete duration=9.133µs
+<31>[    4.286627] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="serial-com3"}:  device state change complete duration=8.801µs
+<31>[    4.295830] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="serial-com4"}:  device state change complete duration=8.591µs
+<31>[    4.304729] state_unit: DEBUG state_change{ operation="start"}:  waiting on dependency device="chipset" dependency="uefi" operation="start"
+<31>[    4.312897] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="lines/gpe0"}:  device state change complete duration=14.259µs
+<31>[    4.321055] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="uefi"}:  device state change complete duration=11.532µs
+<31>[    4.328825] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="chipset"}:  device state change complete duration=10.01µs
+<31>[    4.404439] state_unit: DEBUG state_change{ operation="start"}:device_state_change{ device="partition"}:  device state change complete duration=67.740687ms
+<30>[    4.414129] state_unit:  INFO state_change{ operation="start"}:  state change complete duration=586.932644ms
+<30>[    4.420856] underhill_core::dispatch:  INFO  resuming VM correlation_id=aa6fc41c-851d-4c4c-afb0-596ac365d2c3 blackout_time_ms=0x1873 blackout_time="6.2598526s"
+<31>[   59.066446] firmware_uefi::service::event_log: DEBUG run_vp{ vp_index=0x0}:  boot log entry boot_entry=BootEventDeviceEntry { status: BOOT_DEVICE_OS_LOADED, pad: 0, extended_status: SUCCESS, boot_variable_number: 1, pad1: 0, device_path_size: b6 }
+<30>[   59.080841] firmware_uefi::service::event_log:  INFO run_vp{ vp_index=0x0}:  uefi boot: success
+<30>[   59.086677] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2074557 phase=PEI_CORE log_message="PcdPeim.efi"
+<30>[   59.096149] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x20745cd phase=PEI_CORE log_message="ResetSystemPei.efi"
+<30>[   59.106252] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2074606 phase=PEI_CORE log_message="RngPei.efi"
+<30>[   59.115745] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2074640 phase=PEI_CORE log_message="PlatformPei.efi"
+<30>[   59.125218] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2088104 phase=PEI_CORE log_message="PeiCore.efi"
+<30>[   59.134165] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2088187 phase=PEI_CORE log_message="PcdPeim.efi"
+<30>[   59.143338] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x20881e3 phase=PEI_CORE log_message="DxeIpl.efi"
+<30>[   59.152910] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2088260 phase=PEI_CORE log_message="MsUiThemePpi.efi"
+<30>[   59.162126] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x20882f5 phase=PEI_CORE log_message="DebugConfigPei.efi"
+<30>[   59.171285] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2088364 phase=PEI_CORE log_message="CryptoPei.efi"
+<30>[   59.180282] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x20883ee phase=PEI_CORE log_message="Tcg2Pei.efi"
+<30>[   59.188639] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x20885d8 phase=PEI_CORE log_message="DxeCore.efi"
+<27>[   59.196857] firmware_uefi::service::diagnostics: ERROR run_vp{ vp_index=0x0}:  EFI log entry debug_level=ERROR ticks=0x2088d22 phase=PEI_CORE log_message="PeiDelayedDispatchOnEndOfPei Count of dispatch cycles is 0"
+<30>[   59.207782] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208b28a phase=DXE log_message="PcdDxe.efi"
+<30>[   59.215584] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208b42d phase=DXE log_message="CpuDxe.efi"
+<30>[   59.223911] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208b9fa phase=DXE log_message="EfiHvDxe.efi"
+<30>[   59.232615] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208bf42 phase=DXE log_message="Metronome.efi"
+<30>[   59.241218] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208c0b4 phase=DXE log_message="RuntimeDxe.efi"
+<30>[   59.250098] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208c24a phase=DXE log_message="ResetSystemRuntimeDxe.efi"
+<30>[   59.259172] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208c3db phase=DXE log_message="ReportStatusCodeRouterRuntimeDxe.efi"
+<30>[   59.268360] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208c57d phase=DXE log_message="EventLogDxe.efi"
+<30>[   59.275949] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208c711 phase=DXE log_message="SynicTimerDxe.efi"
+<30>[   59.283461] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208c8e0 phase=DXE log_message="VariableRuntimeDxe.efi"
+<30>[   59.291585] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208cb1d phase=DXE log_message="PlatformDeviceStateHelper.efi"
+<30>[   59.300669] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208d0f5 phase=DXE log_message="AcpiTableDxe.efi"
+<30>[   59.309351] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208d2a0 phase=DXE log_message="CapsuleRuntimeDxe.efi"
+<30>[   59.318390] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208d4a3 phase=DXE log_message="DevicePathDxe.efi"
+<30>[   59.327155] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208d6d6 phase=DXE log_message="HiiDatabase.efi"
+<30>[   59.334858] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208d889 phase=DXE log_message="NullMemoryTestDxe.efi"
+<30>[   59.342805] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x208da0d phase=DXE log_message="MonotonicCounterRuntimeDxe.efi"
+<30>[   59.351288] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x209bb7f phase=DXE log_message="SmbiosDxe.efi"
+<30>[   59.358656] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x209bd76 phase=DXE log_message="EmclDxe.efi"
+<30>[   59.366865] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x209bf23 phase=DXE log_message="MsvmPcRtc.efi"
+<30>[   59.375280] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x20d6f08 phase=DXE log_message="VmbusDxe.efi"
+<28>[   59.384322] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x22ece16 phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (0E0B6031-5213-4934-818B-38D90CED39DB)."
+<28>[   59.397526] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x2309ede phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (276AACF4-AC15-426C-98DD-7521AD3F01FE)."
+<28>[   59.409538] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x2320440 phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (3375BAF4-9E15-4B30-B765-67ACB10D607B)."
+<28>[   59.420749] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x2339a18 phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (35FA2E29-EA23-4236-96AE-3A6EBACBA440)."
+<28>[   59.432285] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x2353509 phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (525074DC-8985-46E2-8057-A307DC18A502)."
+<28>[   59.445207] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x236e579 phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (57164F39-9115-4E78-AB55-382F3BD5422D)."
+<28>[   59.457887] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x2386e53 phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (9527E630-D0AE-497B-ADCE-E80AB0175CAF)."
+<28>[   59.471449] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x23a142c phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (A9A0F4E7-5A45-4D96-B827-8A841E8C03E6)."
+<28>[   59.484779] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x23f5e5a phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (CFA8B69E-5B4A-4CC0-B98B-8BA1A1F3F95A)."
+<28>[   59.498301] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x24301b5 phase=DXE log_message="VmbusRootIsChannelAllowed: Channel not allowed during boot (F8E65716-3CB3-4A06-9A60-1889C5CCCAB5)."
+<30>[   59.510949] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x243f656 phase=DXE log_message="WatchdogTimer.efi"
+<30>[   59.520152] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244b815 phase=DXE log_message="DpcDxe.efi"
+<30>[   59.529004] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244ba11 phase=DXE log_message="RngDxe.efi"
+<30>[   59.537516] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244bbe4 phase=DXE log_message="MsUiThemeProtocol.efi"
+<30>[   59.547101] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244bd93 phase=DXE log_message="RenderingEngineDxe.efi"
+<30>[   59.556951] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244bf4a phase=DXE log_message="FirmwarePerformanceDxe.efi"
+<28>[   59.566817] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x244c09d phase=DXE log_message="FPDT: WARNING: SEC Performance Data Hob not found, ResetEnd will be set to 0!"
+<30>[   59.579529] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244c518 phase=DXE log_message="BdsDxe.efi"
+<27>[   59.588231] firmware_uefi::service::diagnostics: ERROR run_vp{ vp_index=0x0}:  EFI log entry debug_level=ERROR ticks=0x244c6a0 phase=DXE log_message="OnVariablePolicyNotification: - Unable to locate variable policy protocol - Status=Not Found"
+<30>[   59.600597] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244c7c2 phase=DXE log_message="SetupBrowser.efi"
+<30>[   59.609331] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244d334 phase=DXE log_message="CryptoDxe.efi"
+<30>[   59.618197] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244d591 phase=DXE log_message="AcpiPlatform.efi"
+<30>[   59.627627] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244ddac phase=DXE log_message="SmbiosPlatform.efi"
+<30>[   59.637221] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244e168 phase=DXE log_message="HttpUtilitiesDxe.efi"
+<30>[   59.646498] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244e452 phase=DXE log_message="RamDiskDxe.efi"
+<30>[   59.655293] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244e75b phase=DXE log_message="SecurityStubDxe.efi"
+<30>[   59.664059] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244e9ce phase=DXE log_message="Tcg2Dxe.efi"
+<27>[   59.671685] firmware_uefi::service::diagnostics: ERROR run_vp{ vp_index=0x0}:  EFI log entry debug_level=ERROR ticks=0x244eb26 phase=DXE log_message="Error: Image at 000F7C80000 start failed: Unsupported"
+<30>[   59.680848] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244ee6f phase=DXE log_message="Fat.efi"
+<30>[   59.688098] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244f05a phase=DXE log_message="ScsiDisk.efi"
+<30>[   59.696630] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244f219 phase=DXE log_message="ScsiBus.efi"
+<30>[   59.705241] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244f3d6 phase=DXE log_message="BootGraphicsResourceTableDxe.efi"
+<30>[   59.714687] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244f5cd phase=DXE log_message="ConPlatformDxe.efi"
+<27>[   59.723788] firmware_uefi::service::diagnostics: ERROR run_vp{ vp_index=0x0}:  EFI log entry debug_level=ERROR ticks=0x244f752 phase=DXE log_message="OnVariablePolicyNotification: - Unable to locate variable policy protocol - Status=Not Found"
+<30>[   59.735841] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244f850 phase=DXE log_message="ConSplitterDxe.efi"
+<30>[   59.744410] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244fc10 phase=DXE log_message="GraphicsConsoleDxe.efi"
+<30>[   59.753252] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x244fe61 phase=DXE log_message="TerminalDxe.efi"
+<30>[   59.761559] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2450041 phase=DXE log_message="DiskIoDxe.efi"
+<30>[   59.769877] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2450247 phase=DXE log_message="PartitionDxe.efi"
+<30>[   59.778633] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x245042d phase=DXE log_message="EnglishDxe.efi"
+<30>[   59.786514] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x245068b phase=DXE log_message="NetvscDxe.efi"
+<30>[   59.793962] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x24508c3 phase=DXE log_message="NvmExpressDxe.efi"
+<30>[   59.801605] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2450ac9 phase=DXE log_message="SerialDxe.efi"
+<30>[   59.808888] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2450d87 phase=DXE log_message="StorvscDxe.efi"
+<30>[   59.816370] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2450fa3 phase=DXE log_message="SynthKeyDxe.efi"
+<30>[   59.824730] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x24511b6 phase=DXE log_message="VideoDxe.efi"
+<30>[   59.833643] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x24513cb phase=DXE log_message="VmbfsDxe.efi"
+<30>[   59.841962] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x24515e8 phase=DXE log_message="VpcivscDxe.efi"
+<27>[   59.850531] firmware_uefi::service::diagnostics: ERROR run_vp{ vp_index=0x0}:  EFI log entry debug_level=ERROR ticks=0x2451775 phase=DXE log_message="Error: Image at 000F7BD9000 start failed: Unsupported"
+<30>[   59.861805] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2451a2c phase=DXE log_message="Hash2DxeCrypto.efi"
+<30>[   59.872262] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2451cab phase=DXE log_message="ArpDxe.efi"
+<30>[   59.881350] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2451ef5 phase=DXE log_message="Dhcp4Dxe.efi"
+<30>[   59.890184] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2452141 phase=DXE log_message="Dhcp6Dxe.efi"
+<30>[   59.899387] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x24523b0 phase=DXE log_message="DnsDxe.efi"
+<30>[   59.908436] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x24526c2 phase=DXE log_message="HttpDxe.efi"
+<30>[   59.917074] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x24529e7 phase=DXE log_message="Ip4Dxe.efi"
+<30>[   59.925706] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2452ca5 phase=DXE log_message="Ip6Dxe.efi"
+<30>[   59.935734] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2452f2f phase=DXE log_message="MnpDxe.efi"
+<30>[   59.946006] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x24531a6 phase=DXE log_message="Mtftp4Dxe.efi"
+<30>[   59.956342] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x245340e phase=DXE log_message="Mtftp6Dxe.efi"
+<30>[   59.966343] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x2453681 phase=DXE log_message="TlsDxe.efi"
+<30>[   59.975447] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x245cbcd phase=DXE log_message="Udp4Dxe.efi"
+<30>[   59.984812] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x245ce63 phase=DXE log_message="Udp6Dxe.efi"
+<30>[   59.994041] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x245d1f9 phase=DXE log_message="UefiPxeBcDxe.efi"
+<30>[   60.003799] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x245d57c phase=DXE log_message="SimpleWindowManagerDxe.efi"
+<30>[   60.014562] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x245d90b phase=DXE log_message="TcpDxe.efi"
+<27>[   60.024703] firmware_uefi::service::diagnostics: ERROR run_vp{ vp_index=0x0}:  EFI log entry debug_level=ERROR ticks=0x2549ff1 phase=DXE log_message="Connecting controller for handle 0 "
+<27>[   60.035752] firmware_uefi::service::diagnostics: ERROR run_vp{ vp_index=0x0}:  EFI log entry debug_level=ERROR ticks=0x28585e4 phase=DXE log_message="THIS BOOT MODE IS UNSUPPORTED.  0x0 "
+<30>[   60.045868] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x28587c2 phase=DXE log_message="DisplayEngine.efi"
+<28>[   60.055201] firmware_uefi::service::diagnostics:  WARN run_vp{ vp_index=0x0}:  EFI log entry debug_level=WARNING ticks=0x2859716 phase=DXE log_message="WARN [DE]: Failed to locate on-screen keyboard protocol (Not Found)."
+<27>[   60.067790] firmware_uefi::service::diagnostics: ERROR run_vp{ vp_index=0x0}:  EFI log entry debug_level=ERROR ticks=0x3d63840 phase=DXE log_message="ActivateCompatibilityMode - Activating Memory Protection Compatibility Mode!"
+<30>[   60.079423] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=LOAD+ERROR ticks=0x3d63c8b phase=DXE log_message=""
+<30>[   60.087862] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=PAGE+ERROR ticks=0x1ad0380f phase=DXE log_message="ConvertPages: range 1000000 - 4612FFF covers multiple entries"
+<30>[   60.099611] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  EFI log entry debug_level=PAGE+ERROR ticks=0x4a4f7d82 phase=DXE log_message="ConvertPages: range 1000000 - 4612FFF covers multiple entries"
+<30>[   60.110223] firmware_uefi::service::diagnostics:  INFO run_vp{ vp_index=0x0}:  processed EFI log entries entries_processed=0x6c bytes_read=0x2258
+<31>[   60.117523] watchdog_core: DEBUG run_vp{ vp_index=0x0}:  write 0 reg=Config
+<30>[   60.121953] firmware_uefi::service::nvram:  INFO run_vp{ vp_index=0x0}:  Revoking guest vsm
+<31>[   60.126917] vmbus_server::channels: DEBUG  VmBus received unload request from guest vtl=0x0 state=Connected(ConnectionInfo { version: VersionInfo { version: Copper, feature_flags: FeatureFlags { guest_specified_signal_parameters: false, channel_interrupt_redirection: false, modify_connection: false, client_id: false, confidential_channels: false, pause_resume: false } }, trusted: false, offers_sent: true, interrupt_page: None, monitor_page: None, target_message_vp: 0, modifying: false, client_id: 18dd3964-3e8a-4e42-86fa-c8e6b191ee0e, paused: false })
+<31>[   60.154589] storvsp: DEBUG handle_channel_request{ request=Close(Rpc(()))}:  scsi close channel channel_index=0x0
+<30>[   60.160535] vmbus_client:  INFO  closing channel on host channel_id=0x4
+<30>[   60.164497] vmbus_client:  INFO  closing channel on host channel_id=0x5
+<30>[   60.168460] vmbus_client:  INFO  closing channel on host channel_id=0xd
+<31>[   60.172655] storvsp: DEBUG handle_channel_request{ request=Close(Rpc(()))}:  wait for IOs completed... channel_index=0x0
+<30>[   60.179299] vmbus_server::channels:  INFO  closed channel offer_id=0x3
+<30>[   60.183408] vmbus_server::channels:  INFO  closed channel offer_id=0x4
+<30>[   60.187644] vmbus_server::channels:  INFO  closed channel offer_id=0xb
+<31>[   60.191894] vmbus_server::channels: DEBUG  Gpadl teardown complete offer_id=0xc gpadl_id=0x4
+<30>[   60.197093] vmbus_server::channels:  INFO  closed channel offer_id=0xc
+<31>[   60.201495] vmbus_client: DEBUG  Received GpadlTorndown gpadl_id=0x2 channel_id=0x4
+<31>[   60.206207] vmbus_client: DEBUG  Received GpadlTorndown gpadl_id=0x1 channel_id=0x5
+<31>[   60.210596] vmbus_client: DEBUG  Received GpadlTorndown gpadl_id=0x3 channel_id=0xd
+<31>[   60.215118] vmbus_server::channels: DEBUG  Gpadl teardown complete offer_id=0x3 gpadl_id=0x2
+<31>[   60.220013] vmbus_server::channels: DEBUG  Gpadl teardown complete offer_id=0x4 gpadl_id=0x1
+<31>[   60.224961] vmbus_server::channels: DEBUG  Gpadl teardown complete offer_id=0xb gpadl_id=0x3
+<31>[   60.230072] vmbus_server::channels: DEBUG  modifying connection parameters complete response=Supported(SUCCESSFUL, FeatureFlags { guest_specified_signal_parameters: true, channel_interrupt_redirection: true, modify_connection: true, client_id: true, confidential_channels: false, pause_resume: false })
+<30>[   60.245008] vmbus_server::channels:  INFO  Vmbus disconnected
+<31>[   60.248465] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   60.458128] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   61.538907] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x0 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.555356] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x0 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.570595] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x1 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.585875] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x1 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.601180] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x2 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.617037] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x2 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.634277] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x3 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.650370] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x3 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.665825] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x4 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.682514] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x4 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.698100] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x5 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.713536] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x5 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.729045] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x6 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.744420] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x6 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.761425] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x7 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.778630] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x7 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.794120] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x8 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.809181] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x8 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.824527] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x9 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.840999] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x9 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.858307] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xa entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.875484] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xa entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.891607] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xb entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.906796] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xb entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.922380] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xc entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.937144] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xc entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.953613] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xd entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.969462] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xd entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   61.984811] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xe entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.000411] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xe entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.016549] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xf entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.031305] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0xf entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.047368] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x10 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.063218] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x10 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.078887] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x11 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.095228] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x11 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.110896] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x12 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.124953] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x12 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.140055] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x13 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.155760] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x13 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.171775] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x14 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.187412] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x14 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.203540] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x15 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.218202] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x15 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.233877] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x16 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.249565] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x16 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.264279] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x17 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.280345] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x17 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<30>[   62.325946] hcl_compat_uefi_nvram_storage:  INFO run_vp{ vp_index=0x0}:  flushing uefi nvram to storage
+<31>[   62.635921] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x9 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.650395] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x9 entry=RedirectionEntry { vector: 21, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: true, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.667126] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x9 entry=RedirectionEntry { vector: 21, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: true, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.684024] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x9 entry=RedirectionEntry { vector: 21, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: true, masked: true, extended_destination: 0, destination: 0 }
+<31>[   62.700978] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x9 entry=RedirectionEntry { vector: 21, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: true, masked: false, extended_destination: 0, destination: 0 }
+<30>[   63.109321] vmbus_server::channels:  INFO  Guest negotiated version vtl=0x0 version=VersionInfo { version: Iron, feature_flags: FeatureFlags { guest_specified_signal_parameters: false, channel_interrupt_redirection: false, modify_connection: false, client_id: false, confidential_channels: false, pause_resume: false } } client_id=00000000-0000-0000-0000-000000000000 trusted=false
+<31>[   63.125376] vmbus_server::channels: DEBUG  modifying connection parameters complete response=Supported(SUCCESSFUL, FeatureFlags { guest_specified_signal_parameters: true, channel_interrupt_redirection: true, modify_connection: true, client_id: true, confidential_channels: false, pause_resume: false })
+<31>[   63.139469] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   63.155491] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x1 connection_id=0x2001 key={0e0b6031-5213-4934-818b-38d90ced39db}-{b6650ff7-33bc-4840-8048-e0676786f393}-0
+<30>[   63.163458] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x2 connection_id=0x2002 key={276aacf4-ac15-426c-98dd-7521ad3f01fe}-{f5bee29c-1741-4aad-a4c2-8fdedb46dcc2}-0
+<30>[   63.171320] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x3 connection_id=0x2003 key={3375baf4-9e15-4b30-b765-67acb10d607b}-{4487b255-b88c-403f-bb51-d1f69cf17f87}-0
+<30>[   63.179389] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x4 connection_id=0x2004 key={35fa2e29-ea23-4236-96ae-3a6ebacba440}-{2450ee40-33bf-4fbd-892e-9fb06e9214cf}-0
+<30>[   63.187262] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x5 connection_id=0x2005 key={525074dc-8985-46e2-8057-a307dc18a502}-{1eccfd72-4b41-45ef-b73a-4a6e44c12924}-0
+<30>[   63.196218] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x6 connection_id=0x2006 key={57164f39-9115-4e78-ab55-382f3bd5422d}-{fd149e91-82e0-4a7d-afa6-2a4166cbd7c0}-0
+<30>[   63.205992] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x7 connection_id=0x2007 key={9527e630-d0ae-497b-adce-e80ab0175caf}-{2dd1ce17-079e-403c-b352-a1921ee207ee}-0
+<30>[   63.215806] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x8 connection_id=0x2008 key={a9a0f4e7-5a45-4d96-b827-8a841e8c03e6}-{242ff919-07db-4180-9c2e-b86cb68c8c55}-0
+<30>[   63.225781] vmbus_server::channels:  INFO  sending offer to guest channel_id=0x9 connection_id=0x2009 key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{2c09090e-8a9a-48b5-90e3-dc99f7a8d44c}-0
+<30>[   63.235577] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xa connection_id=0x200a key={ba6163d9-04a1-4d29-b605-72e2ffb1dc7f}-{ca56751f-e643-4bef-bf54-f73678e8b7b5}-0
+<30>[   63.245971] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xb connection_id=0x200b key={cfa8b69e-5b4a-4cc0-b98b-8ba1a1f3f95a}-{58f75a6d-d949-4320-99e1-a2a2576d581c}-0
+<30>[   63.255643] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xc connection_id=0x200c key={da0a7802-e377-4aac-8e77-0558eb1073f8}-{5620e0c7-8062-4dce-aeb7-520c7ef76171}-0
+<30>[   63.263416] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xd connection_id=0x200d key={f8e65716-3cb3-4a06-9a60-1889c5cccab5}-{99221fa0-24ad-11e2-be98-001aa01bbf6e}-0
+<30>[   63.271366] vmbus_server::channels:  INFO  sending offer to guest channel_id=0xe connection_id=0x200e key={f912ad6d-2b17-48ea-bd65-f927a61c7684}-{d34b2567-b9b6-42b9-8778-0a4ec0b955bf}-0
+<31>[   63.280207] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.285780] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.291339] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.296808] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.302402] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.308195] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.314131] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.318775] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.324341] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.329586] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.334351] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.339008] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.351805] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.357241] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.370269] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.376185] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.382246] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.388268] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.394182] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.399287] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.404908] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.410267] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.415845] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.421431] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.432574] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.437962] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.443191] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.447808] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   63.452419] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   63.734812] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: false, out1: false, out2: false, loopback: true, reserved: 0 }
+<31>[   63.744499] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   63.754153] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing rx fifo
+<31>[   63.758267] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing tx fifo
+<31>[   63.762583] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: true, reserved: 0 }
+<31>[   63.792259] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   63.801003] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   63.808319] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing rx fifo
+<31>[   63.811623] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing tx fifo
+<28>[   63.815066] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[aa]
+<28>[   63.822220] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[77]
+<28>[   63.829847] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[77]
+<28>[   63.836929] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[23]
+<28>[   63.844171] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<28>[   63.850821] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[aa]
+<28>[   63.858101] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[aa]
+<28>[   63.865354] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[a0]
+<28>[   63.872794] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[a0]
+<28>[   63.880038] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[23]
+<28>[   63.887307] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<28>[   63.896727] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io write error dropped_ratelimited=0x0 device="uefi" address=0x2e len=0x1 kind=Pio error="invalid access size" bytes=[aa]
+<28>[   63.907819] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<28>[   63.915773] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<31>[   63.929983] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   63.940955] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: true, reserved: 0 }
+<31>[   63.950780] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   63.960394] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing rx fifo
+<31>[   63.964432] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing tx fifo
+<31>[   63.968741] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: true, reserved: 0 }
+<31>[   63.998391] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   64.006647] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   64.016066] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing rx fifo
+<31>[   64.020631] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing tx fifo
+<28>[   64.025166] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<28>[   64.034251] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<28>[   64.042850] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<28>[   64.050543] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<31>[   64.065732] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   64.074790] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: true, reserved: 0 }
+<31>[   64.083738] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   64.092922] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing rx fifo
+<31>[   64.096885] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing tx fifo
+<31>[   64.100828] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: true, reserved: 0 }
+<31>[   64.130663] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   64.141074] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   64.149325] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing rx fifo
+<31>[   64.152952] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing tx fifo
+<28>[   64.157048] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<28>[   64.165232] vmotherboard::chipset:  WARN run_vp{ vp_index=0x0}:  device io read error dropped_ratelimited=0x0 device="uefi" address=0x2f len=0x1 kind=Pio error="invalid access size"
+<31>[   64.184754] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   64.192314] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: true, out1: false, out2: true, loopback: true, reserved: 0 }
+<31>[   64.200028] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: false, rts: false, out1: false, out2: false, loopback: false, reserved: 0 }
+<31>[   64.221622] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   64.231352] vmbus_client:  INFO  opening channel on host channel_id=0xd
+<31>[   64.235742] vmbus_client: DEBUG  received open result channel_id=0xd result=0x0
+<31>[   64.240122] vmbus_server::channels: DEBUG  open complete offer_id=0xb result=0
+<30>[   64.244436] vmbus_server::channels:  INFO  opened channel offer_id=0xb channel_id=0x9 result=0
+<31>[   64.249677] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.254908] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   64.260821] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.286818] chipset::cmos_rtc: DEBUG run_vp{ vp_index=0x0}:  clearing rtc interrupts
+<31>[   64.292446] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x8 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   64.309724] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x8 entry=RedirectionEntry { vector: 22, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: false, extended_destination: 0, destination: 0 }
+<31>[   64.326011] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x8 entry=RedirectionEntry { vector: 22, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: false, extended_destination: 0, destination: 0 }
+<31>[   64.341984] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x8 entry=RedirectionEntry { vector: 22, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: false, extended_destination: 0, destination: 0 }
+<31>[   64.357239] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x8 entry=RedirectionEntry { vector: 22, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: false, extended_destination: 0, destination: 0 }
+<31>[   64.374714] storvsp: DEBUG handle_channel_request{ request=Open(Rpc(OpenRequest { open_data: OpenData { target_vp: 0, ring_offset: 20, ring_gpadl_id: GpadlId(e1e11), event_flag: a, connection_id: 200a, user_data: UserDefinedData([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) }, interrupt: Interrupt { inner: Fn }, use_confidential_ring: false, use_confidential_external_memory: false }))}:  scsi open channel channel_index=0x0
+<31>[   64.412046] storvsp: DEBUG handle_channel_request{ request=Open(Rpc(OpenRequest { open_data: OpenData { target_vp: 0, ring_offset: 20, ring_gpadl_id: GpadlId(e1e11), event_flag: a, connection_id: 200a, user_data: UserDefinedData([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) }, interrupt: Interrupt { inner: Fn }, use_confidential_ring: false, use_confidential_external_memory: false }))}:  packet processing starting... target_vp=0x0 channel_index=0x0
+<31>[   64.445947] vmbus_server::channels: DEBUG  open complete offer_id=0xc result=0
+<30>[   64.450537] vmbus_server::channels:  INFO  opened channel offer_id=0xc channel_id=0xa result=0
+<31>[   64.456445] storvsp: DEBUG  process_primary state=Begin
+<31>[   64.459457] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.475543] storvsp: DEBUG  parse_packet transaction_id=0xfffffffffffffffd data=BeginInitialization
+<31>[   64.481545] storvsp: DEBUG  process_primary state=QueryVersion
+<31>[   64.499344] storvsp: DEBUG  parse_packet transaction_id=0xfffffffffffffffd data=QueryProtocolVersion(602)
+<31>[   64.505599] storvsp: DEBUG  process_primary state=QueryVersion
+<31>[   64.519888] storvsp: DEBUG  parse_packet transaction_id=0xfffffffffffffffd data=QueryProtocolVersion(600)
+<30>[   64.525427] storvsp:  INFO  scsi version negotiated version=Blue
+<31>[   64.529019] storvsp: DEBUG  process_primary state=QueryProperties { version: Blue }
+<31>[   64.544501] storvsp: DEBUG  parse_packet transaction_id=0xfffffffffffffffd data=QueryProperties
+<31>[   64.549543] storvsp: DEBUG  process_primary state=EndInitialization { version: Blue, subchannel_count: None }
+<31>[   64.567198] storvsp: DEBUG  parse_packet transaction_id=0xfffffffffffffffd data=EndInitialization
+<31>[   64.572146] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.576771] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   64.585036] vmbus_client:  INFO  opening channel on host channel_id=0xb
+<31>[   64.588433] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.592873] vmbus_client: DEBUG  received open result channel_id=0xb result=0x0
+<31>[   64.596458] vmbus_server::channels: DEBUG  open complete offer_id=0x9 result=0
+<30>[   64.599998] vmbus_server::channels:  INFO  opened channel offer_id=0x9 channel_id=0x4 result=0
+<31>[   64.607422] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   64.612052] vmbus_client:  INFO  opening channel on host channel_id=0x7
+<31>[   64.616254] vmbus_client: DEBUG  received open result channel_id=0x7 result=0x0
+<31>[   64.621415] vmbus_server::channels: DEBUG  open complete offer_id=0x6 result=0
+<30>[   64.626512] vmbus_server::channels:  INFO  opened channel offer_id=0x6 channel_id=0x6 result=0
+<31>[   64.632492] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.638904] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  message slot in use sint=0x2
+<31>[   64.648611] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.667660] vmbus_server::channels: DEBUG  open complete offer_id=0xd result=0
+<30>[   64.672438] vmbus_server::channels:  INFO  opened channel offer_id=0xd channel_id=0x1 result=0
+<31>[   64.678128] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.688060] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   64.693426] vmbus_client:  INFO  opening channel on host channel_id=0x8
+<31>[   64.697498] vmbus_client: DEBUG  received open result channel_id=0x8 result=0x0
+<31>[   64.702033] vmbus_server::channels: DEBUG  open complete offer_id=0x7 result=0
+<30>[   64.706361] vmbus_server::channels:  INFO  opened channel offer_id=0x7 channel_id=0x8 result=0
+<31>[   64.711258] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   64.722494] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   64.732453] vmbus_client:  INFO  opening channel on host channel_id=0x1
+<31>[   64.736753] vmbus_client: DEBUG  received open result channel_id=0x1 result=0x0
+<31>[   64.740407] vmbus_server::channels: DEBUG  open complete offer_id=0x0 result=0
+<30>[   64.743972] vmbus_server::channels:  INFO  opened channel offer_id=0x0 channel_id=0x5 result=0
+<31>[   64.748280] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   64.769802] vmbus_client:  INFO  opening channel on host channel_id=0xa
+<31>[   64.773222] vmbus_client: DEBUG  received open result channel_id=0xa result=0x0
+<31>[   64.776978] vmbus_server::channels: DEBUG  open complete offer_id=0x8 result=0
+<30>[   64.781800] vmbus_server::channels:  INFO  opened channel offer_id=0x8 channel_id=0x7 result=0
+<31>[   64.787388] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   65.114405] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing rx fifo
+<31>[   65.118856] serial_16550: DEBUG run_vp{ vp_index=0x0}:  clearing tx fifo
+<31>[   65.123389] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x4 entry=RedirectionEntry { vector: 0, delivery_mode: 0, destination_mode_logical: true, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: true, extended_destination: 0, destination: 0 }
+<31>[   65.138770] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x4 entry=RedirectionEntry { vector: 23, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: false, extended_destination: 0, destination: 0 }
+<31>[   65.157316] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x4 entry=RedirectionEntry { vector: 23, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: false, extended_destination: 0, destination: 0 }
+<31>[   65.175652] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x4 entry=RedirectionEntry { vector: 23, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: false, extended_destination: 0, destination: 0 }
+<31>[   65.188883] chipset::ioapic: DEBUG run_vp{ vp_index=0x0}:  new redirection entry n=0x4 entry=RedirectionEntry { vector: 23, delivery_mode: 0, destination_mode_logical: false, delivery_status: false, active_low: false, remote_irr: false, trigger_mode_level: false, masked: false, extended_destination: 0, destination: 0 }
+<31>[   65.202540] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: false, out1: false, out2: true, loopback: false, reserved: 0 }
+<31>[   65.210209] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: false, out1: false, out2: true, loopback: false, reserved: 0 }
+<31>[   65.217585] serial_16550: DEBUG run_vp{ vp_index=0x0}:  mcr update mcr=ModemControlRegister { dtr: true, rts: true, out1: false, out2: true, loopback: false, reserved: 0 }
+<31>[   65.431528] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   65.437940] vmbus_client:  INFO  opening channel on host channel_id=0x4
+<31>[   65.442975] vmbus_client: DEBUG  received open result channel_id=0x4 result=0x0
+<31>[   65.448189] vmbus_server::channels: DEBUG  open complete offer_id=0x3 result=0
+<30>[   65.452633] vmbus_server::channels:  INFO  opened channel offer_id=0x3 channel_id=0xe result=0
+<31>[   65.457511] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<31>[   65.528263] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+<30>[   65.534052] vmbus_client:  INFO  opening channel on host channel_id=0x3
+<31>[   65.538534] vmbus_client: DEBUG  received open result channel_id=0x3 result=0x0
+<31>[   65.543319] vmbus_server::channels: DEBUG  open complete offer_id=0x2 result=0
+<30>[   65.548262] vmbus_server::channels:  INFO  opened channel dropped_ratelimited=0x0 offer_id=0x2 channel_id=0xb result=0
+<31>[   65.555004] hv1_emulator::message_queues: DEBUG run_vp{ vp_index=0x0}:  posted sint message sint=0x2
+
