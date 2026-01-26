@@ -195,6 +195,8 @@ Snapshot:
 
 The intent is: keep the **same save-to-host and restore-from-host protocol**, but replace only the **restart boundary mechanism** (host-triggered reload) with **guest-triggered Linux kexec** inside VTL2.
 
+kexec-servicing logs (with current state of the prototype): [logs](https://github.com/microsoft/OHCL-Linux-Kernel/blob/user/hargar/kexec-2026/kexec-design/logs/kexec-servicing-logs.txt)
+
 ### B.1 Target block diagram (kexec parity with servicing)
 
 <details>
