@@ -261,6 +261,8 @@ union hv_hypervisor_version_info {
 #define HVCALL_GET_VP_CPUID_VALUES		0x00f4
 #define HVCALL_START_VP				0x0099
 #define HVCALL_GET_VP_INDEX_FROM_APIC_ID		0x009a
+#define HVCALL_RESTORE_PARTITION_TIME		0x0103
+
 
 /*
  * Some macros - i.e. GENMASK_ULL and BIT_ULL - are not currently supported by
@@ -1309,5 +1311,15 @@ struct hv_input_install_intercept {
 	__u32 intercept_type;	/* hv_intercept_type */
 	union hv_intercept_parameters intercept_parameter;
 } __packed;
+
+#if defined(__x86_64__)
+struct hv_input_restore_partition_time {
+	__u64 partition_id;
+	__u32 tsc_sequence;
+	__u32 reserved;
+	__u64 reference_time_in_100_ns;
+	__u64 tsc;
+} __packed;
+#endif
 
 #endif /* _UAPI_HV_HVGDK_MINI_H */

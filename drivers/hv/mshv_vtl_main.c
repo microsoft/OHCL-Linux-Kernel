@@ -32,6 +32,7 @@
 
 #ifdef CONFIG_X86_64
 #include <linux/cleanup.h>
+#include <linux/stop_machine.h>
 
 #include <asm/apic.h>
 #include <uapi/asm/mtrr.h>
@@ -42,6 +43,7 @@
 #include <asm/vmx.h>
 
 #include "../../kernel/fpu/legacy.h"
+#include "../../kernel/time/timekeeping.h"
 
 #endif
 
@@ -864,6 +866,59 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	 */
 	return 0;
 }
+
+#ifdef CONFIG_X86_64
+// void hv_save_sched_clock_state(void);
+// void hv_restore_sched_clock_state(void);
+
+static int restore_partition_time_with_cpus_stopped(void *data)
+{
+	struct mshv_partition_time *partition_time = data;
+	struct hv_input_restore_partition_time *input;
+	unsigned long irq_flags;
+	int result = 0;
+	u64 status;
+
+	local_irq_save(irq_flags);
+
+	lock_map_acquire_try(&tick_freeze_map);
+	sched_clock_suspend();
+	timekeeping_suspend();
+
+	hv_save_sched_clock_state();
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	input->partition_id = HV_PARTITION_ID_SELF;
+	input->tsc_sequence = partition_time->tsc_sequence;
+	input->reserved = 0;
+	input->reference_time_in_100_ns = partition_time->reference_time_in_100_ns;
+	input->tsc = partition_time->tsc;
+	status = hv_do_hypercall(HVCALL_RESTORE_PARTITION_TIME, input, NULL);
+	if (hv_result_success(status)) {
+		hv_restore_sched_clock_state();
+	} else {
+		pr_err("HVCALL_RESTORE_PARTITION_TIME failed ! [Err: %#llx\n]", status);
+		result = -EINVAL;
+	}
+
+	timekeeping_resume();
+	sched_clock_resume();
+	lock_map_release(&tick_freeze_map);
+
+	local_irq_restore(irq_flags);
+
+	return result;
+}
+
+static int mshv_restore_partition_time(void __user *arg)
+{
+	struct mshv_partition_time partition_time;
+
+	if (copy_from_user(&partition_time, arg, sizeof(partition_time)))
+		return -EFAULT;
+
+	return stop_machine(restore_partition_time_with_cpus_stopped, &partition_time, cpu_online_mask);
+}
+#endif
 
 static void mshv_vtl_cancel(int cpu)
 {
@@ -2596,6 +2651,13 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_VTL_ADD_VTL0_MEMORY:
 		ret = mshv_vtl_ioctl_add_vtl0_mem(vtl, (void __user *)arg);
 		break;
+
+#if defined(CONFIG_X86_64)
+	case MSHV_RESTORE_PARTITION_TIME:
+		ret = mshv_restore_partition_time((void __user *)arg);
+		break;
+#endif
+
 #if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	case MSHV_VTL_TDCALL:
 		ret = mshv_vtl_ioctl_tdcall((void __user *)arg);

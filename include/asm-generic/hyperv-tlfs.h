@@ -197,6 +197,7 @@ union hv_reference_tsc_msr {
 #define HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_SPACE 0x00af
 #define HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_LIST 0x00b0
 #define HVCALL_MODIFY_SPARSE_GPA_PAGE_HOST_VISIBILITY 0x00db
+#define HVCALL_RESTORE_PARTITION_TIME		0x0103
 #define HVCALL_MMIO_READ			0x0106
 #define HVCALL_MMIO_WRITE			0x0107
 
@@ -1001,5 +1002,13 @@ struct hv_enable_vp_vtl {
 	u8				mbz0;
 	u16				mbz1;
 	struct hv_init_vp_context	vp_context;
+} __packed;
+
+struct hv_input_restore_partition_time {
+	u64 partition_id;
+	u32 tsc_sequence;
+	u32 reserved;
+	u64 reference_time_in_100_ns;
+	u64 tsc;
 } __packed;
 #endif
