@@ -298,6 +298,20 @@ struct mshv_kick_cpus {
 	__u64 flags;
 } __packed;
 
+struct mshv_map_device_intr {
+	__u32 vector;
+	__u32 apic_id;
+	__u8 create_mapping;
+	__u8 padding[7];
+} __packed;
+
+struct mshv_partition_time {
+	__u32 tsc_sequence;
+	__u32 reserved;
+    __u64 reference_time_in_100_ns;
+    __u64 tsc;
+} __packed;
+
 #define MSHV_KICK_CPUS_FLAG_WAIT_FOR_CPUS	(1 << 0)
 #define MSHV_KICK_CPUS_FLAG_CANCEL_CPU_RUN	(1 << 1)
 
@@ -361,6 +375,7 @@ struct mshv_kick_cpus {
 #define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
 
 /* For x86-64 only */
+#define MSHV_RESTORE_PARTITION_TIME	_IOW(MSHV_IOCTL, 0x13, struct mshv_partition_time)
 #define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
 
 /* For x86-64 SEV-SNP only */
