@@ -436,6 +436,9 @@ int __init hv_vtl_early_init(void)
 
 DEFINE_STATIC_CALL_NULL(__mshv_vtl_return_hypercall, void (*)(void));
 
+void mshv_tdx_request_cache_flush(bool wbnoinvd);
+noinline void mshv_vtl_return_tdx(void);
+
 void mshv_vtl_return_call_init(u64 vtl_return_offset)
 {
 	static_call_update(__mshv_vtl_return_hypercall,
