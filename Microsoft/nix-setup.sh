@@ -5,16 +5,34 @@
 
 set -euo pipefail
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KERNEL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 echo "==============================================="
 echo "OHCL Kernel - Reproducible Build Setup"
 echo "==============================================="
 echo ""
 
+# Helper function to source nix and update PATH
+source_nix_profile() {
+    if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+        . ~/.nix-profile/etc/profile.d/nix.sh
+        export PATH="$HOME/.nix-profile/bin:$PATH"
+        return 0
+    elif [ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+        . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+        export PATH="/nix/var/nix/profiles/default/bin:$PATH"
+        return 0
+    fi
+    return 1
+}
+
 # Check if nix is installed
 if ! command -v nix &> /dev/null; then
     # Try to source nix profile first in case it's installed but not in PATH
-    if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
-        . ~/.nix-profile/etc/profile.d/nix.sh
+    if source_nix_profile; then
+        echo ">>> Nix profile sourced from existing installation"
     fi
 fi
 
@@ -37,16 +55,38 @@ if ! command -v nix &> /dev/null; then
     echo "This will download and install Nix package manager."
     echo ""
 
+    # Create nixbld group and users for sandboxed builds (required for Nix sandbox)
+    if ! getent group nixbld > /dev/null 2>&1; then
+        echo "Creating nixbld group and users for sandbox..."
+        groupadd -r nixbld || sudo groupadd -r nixbld
+
+        # Create 10 build users (Nix uses these for parallel isolated builds)
+        for i in $(seq 1 10); do
+            useradd -r -g nixbld -G nixbld \
+                -d /var/empty -s /sbin/nologin \
+                -c "Nix build user $i" \
+                "nixbld$i" 2>/dev/null || \
+            sudo useradd -r -g nixbld -G nixbld \
+                -d /var/empty -s /sbin/nologin \
+                -c "Nix build user $i" \
+                "nixbld$i" 2>/dev/null || true
+        done
+        echo "✓ Created nixbld group and 10 build users"
+    fi
+
     # Install Nix
+    echo "install nix"
     if curl -L https://nixos.org/nix/install | sh -s -- --no-daemon; then
         echo ""
         echo "✓ Nix installed successfully!"
         echo ""
-        echo "⚠️  Please restart your shell or run:"
-        echo "  . ~/.nix-profile/etc/profile.d/nix.sh"
-        echo ""
-        echo "Then run this script again: $0"
-        exit 0
+        # Source nix profile immediately for current session
+        if source_nix_profile; then
+            echo "✓ Nix environment loaded"
+        else
+            echo "⚠️  Could not source Nix profile"
+        fi
+        # Continue with setup instead of exiting
     else
         echo ""
         echo "❌ Nix installation failed!"
@@ -80,21 +120,23 @@ else
     echo "⚠ Could not verify flakes, but config is set"
 fi
 
-# Initialize flake.lock if it doesn't exist
-if [ ! -f flake.lock ]; then
-    echo ""
-    echo "Initializing flake.lock..."
-    nix --extra-experimental-features "nix-command flakes" flake lock
-    echo "✓ flake.lock created"
+# Initialize flake.lock if it doesn't exist (must be in kernel root where flake.nix is)
+if [ -f "${KERNEL_ROOT}/flake.nix" ]; then
+    if [ ! -f "${KERNEL_ROOT}/flake.lock" ]; then
+        echo ""
+        echo "Initializing flake.lock..."
+        cd "${KERNEL_ROOT}"
+        nix --extra-experimental-features "nix-command flakes" flake lock
+        echo "✓ flake.lock created"
+    else
+        echo "✓ flake.lock already exists"
+    fi
+else
+    echo "⚠ No flake.nix found in ${KERNEL_ROOT}, skipping flake.lock initialization"
 fi
 
-# Source nix profile for current session
-if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
-    echo ""
-    echo "Sourcing Nix profile for current session..."
-    . ~/.nix-profile/etc/profile.d/nix.sh
-    echo "✓ Nix environment loaded"
-fi
+# Source nix profile for current session (ensure it's available)
+source_nix_profile && echo "✓ Nix environment ready"
 
 echo ""
 echo "==============================================="
