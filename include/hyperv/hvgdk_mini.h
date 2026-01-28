@@ -1137,6 +1137,9 @@ enum hv_register_name {
 	HV_X64_REGISTER_MSR_MTRR_FIX4KF8000	= 0x0008007A,
 
 	HV_X64_REGISTER_REG_PAGE	= 0x0009001C,
+
+	/* AMD SEV SNP configuration register */
+	HV_X64_REGISTER_SEV_CONTROL             = 0x00090040,
 #endif
 };
 

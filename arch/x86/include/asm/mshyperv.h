@@ -285,8 +285,6 @@ struct mshv_vtl_cpu_context {
 	struct fxregs_state fx_state;
 };
 
-extern void __cpuidle tdx_safe_halt(void);
-
 #define MSHV_VTL_RUN_FLAG_HALTED BIT(0)
 
 static inline void hv_vtl_idle(void)
@@ -303,6 +301,8 @@ int __init hv_vtl_early_init(void);
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 void mshv_vtl_return_call_init(u64 vtl_return_offset);
 void mshv_vtl_return_hypercall(void);
+struct mshv_vtl_run *mshv_vtl_this_run(void);
+void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0);
 void __mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared);
 #else
