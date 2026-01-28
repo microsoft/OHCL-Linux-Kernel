@@ -21,7 +21,14 @@ if [ -z "${IN_NIX_SHELL:-}" ]; then
     fi
 
     # Re-execute this script inside nix develop with experimental features enabled
-    exec nix --extra-experimental-features "nix-command flakes" develop --command "$0" "$@"
+    # Use --ignore-environment (-i) to create a pure shell that excludes system packages
+    # Keep essential variables: HOME (for temp files), USER (for build metadata), TERM (for output)
+    exec nix --extra-experimental-features "nix-command flakes" develop \
+        --ignore-environment \
+        --keep-env-var HOME \
+        --keep-env-var USER \
+        --keep-env-var TERM \
+        --command "$0" "$@"
 fi
 
 # Script directory
@@ -120,6 +127,13 @@ main() {
 
     log_info "Build completed successfully!"
     log_info "Build artifacts are in: ${BUILD_OUTPUT}"
+
+    # Print sha256sum of vmlinux for reproducibility verification
+    if [ -f "${BUILD_OUTPUT}/vmlinux" ]; then
+        echo ""
+        log_info "Reproducibility verification:"
+        echo "  vmlinux sha256sum: $(sha256sum "${BUILD_OUTPUT}/vmlinux" | cut -d' ' -f1)"
+    fi
 }
 
 # Handle command line arguments

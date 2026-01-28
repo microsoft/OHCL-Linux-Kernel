@@ -70,18 +70,46 @@ if test -z "$arch"; then
 	arch=("x64")
 fi
 
+# Detect host architecture
+HOST_ARCH="$(uname -m)"
+
 objcopy=("objcopy")
-makeargs=("ARCH=x86_64")
+if [ -n "$REPRODUCIBLE_BUILD" ]; then
+	# For reproducible builds, explicitly set CC to use Nix's gcc
+	makeargs=("ARCH=x86_64" "CC=gcc")
+else
+	makeargs=("ARCH=x86_64")
+fi
 targets=("vmlinux modules")
 if [ "$arch" = "arm64" ]; then
-	# Use Nix cross-compiler prefix for reproducible builds, system prefix otherwise
-	if [ -n "$REPRODUCIBLE_BUILD" ]; then
+	# Only use cross-compiler when cross-compiling (host != target)
+	if [ "$HOST_ARCH" = "aarch64" ]; then
+		# Native arm64 build - no cross-compile prefix needed
+		cross_prefix=""
+	elif [ -n "$REPRODUCIBLE_BUILD" ]; then
+		# Cross-compiling from x86_64 with Nix toolchain
 		cross_prefix="aarch64-unknown-linux-gnu-"
 	else
+		# Cross-compiling from x86_64 with system toolchain
 		cross_prefix="aarch64-linux-gnu-"
 	fi
-	objcopy=("${cross_prefix}objcopy")
-	makeargs=("ARCH=arm64" "CROSS_COMPILE=${cross_prefix}")
+
+	if [ -n "$cross_prefix" ]; then
+		objcopy=("${cross_prefix}objcopy")
+		# For reproducible builds, explicitly set CC to use the Nix cross-compiler
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			makeargs=("ARCH=arm64" "CROSS_COMPILE=${cross_prefix}" "CC=${cross_prefix}gcc")
+		else
+			makeargs=("ARCH=arm64" "CROSS_COMPILE=${cross_prefix}")
+		fi
+	else
+		# For native builds, explicitly set CC to ensure we use Nix's gcc in reproducible mode
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			makeargs=("ARCH=arm64" "CC=gcc")
+		else
+			makeargs=("ARCH=arm64")
+		fi
+	fi
 	targets=("vmlinux Image modules")
 fi
 
@@ -94,6 +122,8 @@ SRC_DIR=`realpath ${SCRIPT_DIR}/..`
 if [ -n "$REPRODUCIBLE_BUILD" ]; then
 	makeargs+=("KBUILD_BUILD_ID=none")
 	makeargs+=("KCFLAGS=-fdebug-prefix-map=$SRC_DIR=.")
+	# Prevent + suffix from being added to version string
+	makeargs+=("LOCALVERSION=")
 fi
 
 build_kernel() {

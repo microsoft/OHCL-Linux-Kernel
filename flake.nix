@@ -26,6 +26,18 @@
           perl
           python3
 
+          # Shell utilities needed for build scripts
+          getopt
+          coreutils
+          findutils
+          gnugrep
+          gnused
+          gawk
+          bash
+          rsync
+          hostname
+          which
+
           # ARM64 cross-compilation toolchain
           pkgsCross.aarch64-multiplatform.stdenv.cc
           pkgsCross.aarch64-multiplatform.buildPackages.binutils
