@@ -21,6 +21,7 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/acpi.h>
+#include <linux/stop_machine.h>
 #include <linux/hyperv.h>
 #include <clocksource/hyperv_timer.h>
 #include <asm/hyperv-tlfs.h>
@@ -481,6 +482,38 @@ void hv_adj_sched_clock_offset(u64 offset)
 {
 	hv_sched_clock_offset -= offset;
 }
+
+struct hv_restore_partition_time_ctx {
+	u64 delta;
+};
+
+static int hv_restore_partition_time_sm(void *data)
+{
+	struct hv_restore_partition_time_ctx *ctx = data;
+
+	hv_adj_sched_clock_offset(ctx->delta);
+	return 0;
+}
+
+/**
+ * hv_restore_partition_time_adjust - apply time-base delta coherently
+ * @delta: difference in Hyper-V reference time units (100ns ticks)
+ *
+ * Apply a Hyper-V time-base correction (e.g. after HvCallRestorePartitionTime)
+ * while all CPUs are stopped, to avoid torn time state across CPUs.
+ *
+ * This is a stop_machine()-based implementation (Option A) and should be used
+ * only for rare events.
+ */
+int hv_restore_partition_time_adjust(u64 delta)
+{
+	struct hv_restore_partition_time_ctx ctx = {
+		.delta = delta,
+	};
+
+	return stop_machine(hv_restore_partition_time_sm, &ctx, cpu_online_mask);
+}
+EXPORT_SYMBOL_GPL(hv_restore_partition_time_adjust);
 
 #ifdef HAVE_VDSO_CLOCKMODE_HVCLOCK
 static int hv_cs_enable(struct clocksource *cs)

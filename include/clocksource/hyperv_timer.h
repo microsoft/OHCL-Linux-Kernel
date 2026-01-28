@@ -14,6 +14,7 @@
 #define __CLKSOURCE_HYPERV_TIMER_H
 
 #include <linux/clocksource.h>
+#include <linux/errno.h>
 #include <linux/math64.h>
 #include <asm/hyperv-tlfs.h>
 
@@ -39,6 +40,7 @@ extern unsigned long hv_get_tsc_pfn(void);
 extern struct ms_hyperv_tsc_page *hv_get_tsc_page(void);
 
 extern void hv_adj_sched_clock_offset(u64 offset);
+extern int hv_restore_partition_time_adjust(u64 delta);
 
 static __always_inline bool
 hv_read_tsc_page_tsc(const struct ms_hyperv_tsc_page *tsc_pg,
@@ -111,6 +113,11 @@ static inline void hv_stimer_legacy_init(unsigned int cpu, int sint) {}
 static inline void hv_stimer_legacy_cleanup(unsigned int cpu) {}
 static inline void hv_stimer_global_cleanup(void) {}
 static inline void hv_stimer0_isr(void) {}
+
+static inline int hv_restore_partition_time_adjust(u64 delta)
+{
+	return -EOPNOTSUPP;
+}
 
 #endif /* CONFIG_HYPERV_TIMER */
 
