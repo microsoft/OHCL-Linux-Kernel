@@ -374,6 +374,43 @@ struct mshv_tdcall {
 	__u64 r11_out;	/* Only supported as output */
 } __packed;
 
+struct mshv_pvalidate {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u8 validate;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding;
+} __packed;
+
+struct mshv_rmpadjust {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u64 value;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[6];
+} __packed;
+
+struct mshv_rmpquery {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[6];
+	__u64 *flags;
+	__u64 *page_size;
+	__u64 *pages_processed;
+} __packed;
+
+struct mshv_invlpgb {
+	__u64 rax;
+	__u32 pad0;
+	__u32 edx;
+	__u32 pad1;
+	__u32 ecx;
+} __packed;
+
 #define MSHV_IOCTL 0xB8
 
 #define MSHV_CHECK_EXTENSION    _IOW(MSHV_IOCTL, 0x00, __u32)
@@ -385,17 +422,21 @@ struct mshv_tdcall {
 #define MSHV_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
 #define MSHV_GET_VP_REGISTERS		_IOWR(MSHV_IOCTL, 0x05, struct mshv_vp_registers)
 #define MSHV_SET_VP_REGISTERS		_IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
-#define MSHV_VTL_KICK_CPU 		_IOW(MSHV_IOCTL, 0x38, struct mshv_kick_cpus)
-
-/* For x86-64 TDX only */
-#define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
-#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
+#define MSHV_VTL_KICK_CPU		_IOW(MSHV_IOCTL, 0x38, struct mshv_kick_cpus)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
 #define MSHV_SINT_POST_MESSAGE    _IOW(MSHV_IOCTL, 0x23, struct mshv_vtl_sint_post_msg)
 #define MSHV_SINT_SET_EVENTFD     _IOW(MSHV_IOCTL, 0x24, struct mshv_vtl_set_eventfd)
 #define MSHV_SINT_PAUSE_MESSAGE_STREAM     _IOW(MSHV_IOCTL, 0x25, struct mshv_sint_mask)
+
+/* For x86-64 TDX only */
+#define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
+#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
+#define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
+#define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
+#define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
+#define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
 
 /* hv_hvcall device */
 #define MSHV_HVCALL_SETUP        _IOW(MSHV_IOCTL, 0x1E, struct mshv_vtl_hvcall_setup)

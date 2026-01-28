@@ -22,6 +22,7 @@
 #include <linux/memblock.h>
 #include <asm/tdx.h>
 #include <asm/smap.h>
+#include <asm/sev.h>
 #include <uapi/asm/mtrr.h>
 #include <asm/debugreg.h>
 #include <linux/export.h>
@@ -442,29 +443,9 @@ void mshv_vtl_return_call_init(u64 vtl_return_offset)
 }
 EXPORT_SYMBOL(mshv_vtl_return_call_init);
 
-extern void __cpuidle tdx_safe_halt(void);
-
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
 {
 	struct hv_vp_assist_page *hvp;
-
-#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
-	if (hv_isolation_type_tdx()) {
-		/*
-		 * Clear RAX to an exit (PENDING_INTERRUPT) that the usermode
-		 * VMM will do nothing, if we are halting.
-		 */
-		mshv_vtl_this_run()->tdx_context.exit_info.rax = 0x112000000000;
-
-		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED)) {
-			tdx_safe_halt();
-		} else {
-			/* Only supports VTL0 */
-			mshv_vtl_return_tdx();
-		}
-		return;
-	}
-#endif
 
 	hvp = hv_vp_assist_page[smp_processor_id()];
 	hvp->vtl_ret_x64rax = vtl0->rax;
