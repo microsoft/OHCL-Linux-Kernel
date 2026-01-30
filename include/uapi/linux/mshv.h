@@ -309,8 +309,8 @@ struct mshv_map_device_intr {
 struct mshv_partition_time {
 	__u32 tsc_sequence;
 	__u32 reserved;
-    __u64 reference_time_in_100_ns;
-    __u64 tsc;
+	__u64 reference_time_in_100_ns;
+	__u64 tsc;
 } __packed;
 
 #define MSHV_KICK_CPUS_FLAG_WAIT_FOR_CPUS	(1 << 0)
