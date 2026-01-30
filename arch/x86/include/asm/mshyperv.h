@@ -167,6 +167,8 @@ void __init hyperv_init(void);
 void hyperv_setup_mmu_ops(void);
 void set_hv_tscchange_cb(void (*cb)(void));
 void clear_hv_tscchange_cb(void);
+void hv_save_sched_clock_state(void);
+void hv_restore_sched_clock_state(void);
 void hyperv_stop_tsc_emulation(void);
 int hyperv_flush_guest_mapping(u64 as);
 int hyperv_flush_guest_mapping_range(u64 as,

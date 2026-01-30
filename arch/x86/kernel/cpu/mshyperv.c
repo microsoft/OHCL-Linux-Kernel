@@ -261,13 +261,13 @@ static void restore_hv_clock_tsc_state(void)
  * suspend-resume and the offset used to measure time needs to be
  * corrected, post resume.
  */
-static void hv_save_sched_clock_state(void)
+void hv_save_sched_clock_state(void)
 {
 	old_save_sched_clock_state();
 	save_hv_clock_tsc_state();
 }
 
-static void hv_restore_sched_clock_state(void)
+void hv_restore_sched_clock_state(void)
 {
 	restore_hv_clock_tsc_state();
 	old_restore_sched_clock_state();

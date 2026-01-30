@@ -37,6 +37,7 @@
 #include <asm/debugreg.h>
 #include "../../kernel/fpu/legacy.h"
 #include <linux/cleanup.h>
+#include <linux/stop_machine.h>
 
 #include <asm/apic.h>
 #include <uapi/asm/mtrr.h>
@@ -47,6 +48,7 @@
 #include <asm/vmx.h>
 
 #include "../../kernel/fpu/legacy.h"
+#include "../../kernel/time/timekeeping.h"
 
 #endif
 #include "mshv.h"
@@ -929,6 +931,58 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	 */
 	return 0;
 }
+
+#ifdef CONFIG_X86_64
+static int restore_partition_time_with_cpus_stopped(void *data)
+{
+	struct mshv_partition_time *partition_time = data;
+	struct hv_input_restore_partition_time *input;
+	int result = 0;
+	u64 status;
+
+	/* Save current clock state. No other CPUs are running so no locks are taken. */
+	sched_clock_suspend();
+	timekeeping_suspend();
+	hv_save_sched_clock_state();
+
+	/* Interrupts are disabled, make the hypercall to update the TSC. */
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	input->partition_id = HV_PARTITION_ID_SELF;
+	input->tsc_sequence = partition_time->tsc_sequence;
+	input->reserved = 0;
+	input->reference_time_in_100_ns = partition_time->reference_time_in_100_ns;
+	input->tsc = partition_time->tsc;
+	status = hv_do_hypercall(MSHV_RESTORE_PARTITION_TIME, input, NULL);
+	if (!hv_result_success(status)) {
+		pr_err("HVCALL_RESTORE_PARTITION_TIME failed with %#llx\n", status);
+		result = -EINVAL;
+	}
+
+	/* Restore clock state using current TSC value. */
+	hv_restore_sched_clock_state();
+	timekeeping_resume();
+	sched_clock_resume();
+
+	return result;
+}
+
+static int mshv_restore_partition_time(void __user *arg)
+{
+	unsigned long irq_flags;
+	struct mshv_partition_time partition_time;
+	int ret;
+
+	if (copy_from_user(&partition_time, arg, sizeof(partition_time)))
+		return -EFAULT;
+
+	/* Stop other CPUs, using the current one to restore partition time. */
+	local_irq_save(irq_flags);
+	ret = stop_machine(restore_partition_time_with_cpus_stopped, &partition_time,
+			cpumask_of(smp_processor_id()));
+	local_irq_restore(irq_flags);
+	return ret;
+}
+#endif
 
 static void mshv_vtl_cancel(int cpu)
 {
@@ -2639,6 +2693,13 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_VTL_KICK_CPU:
 		ret = mshv_vtl_ioctl_kick_cpu((void __user *)arg);
 		break;
+
+#if defined(CONFIG_X86_64)
+	case MSHV_RESTORE_PARTITION_TIME:
+		ret = mshv_restore_partition_time((void __user *)arg);
+		break;
+#endif
+
 #if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 	case MSHV_VTL_TDCALL:
 		ret = mshv_vtl_ioctl_tdcall((void __user *)arg);
