@@ -1596,4 +1596,14 @@ enum hv_intercept_access_type {
 	HV_INTERCEPT_ACCESS_EXECUTE	= 2
 };
 
+#if defined(__x86_64__)
+struct hv_input_restore_partition_time {
+	__u64 partition_id;
+	__u32 tsc_sequence;
+	__u32 reserved;
+	__u64 reference_time_in_100_ns;
+	__u64 tsc;
+} __packed;
+#endif
+
 #endif /* _HV_HVGDK_MINI_H */
