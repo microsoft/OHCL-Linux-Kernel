@@ -1,7 +1,7 @@
 # Servicing vs. Kexec — Design Doc
 
 ## Primary goal
-Replace the host-triggered VTL2 reload boundary with a guest-driven Linux kexec boundary, while preserving servicing semantics end-to-end: enter the same blackout window, stop and save the unit/device graph, stream the servicing-state blob to the host (with an explicit host ACK/COMMIT before crossing the boundary), then boot a new VTL2 instance that fetches the blob back, restores state, starts the graph, and resumes the VM.
+Replace the host-triggered VTL2 reload boundary with a guest-driven Linux kexec boundary, while preserving servicing semantics end-to-end: enter the same blackout window, stop and save the unit/device graph, then carry the saved state across the boundary either by streaming it to the host (with an explicit host ACK/COMMIT before kexec) or by passing it directly to the new kernel via KHO kexec as FTD. After the boundary, the new VTL2 instance restores state, starts the graph, and resumes the VM.
 
 ---
 
@@ -193,11 +193,11 @@ Snapshot:
 
 ## B. Kexec-based approach (current)
 
-The intent is: keep the **same save-to-host and restore-from-host protocol**, but replace only the **restart boundary mechanism** (host-triggered reload) with **guest-triggered Linux kexec** inside VTL2.
+Replace the **restart boundary mechanism** (host-triggered reload) with **guest-triggered Linux kexec** inside VTL2.
 
 kexec-servicing logs (with current state of the prototype): [logs](https://github.com/microsoft/OHCL-Linux-Kernel/blob/user/hargar/kexec-2026/kexec-design/logs/kexec-servicing-logs.txt)
 
-### B.1 Target block diagram (kexec parity with servicing)
+### B.1 Block diagram (current state of prototype: servicing with kexec)
 
 <details>
 <summary>Block diagram (kexec parity)</summary>
@@ -220,40 +220,16 @@ kexec-servicing logs (with current state of the prototype): [logs](https://githu
 |  | Save graph                |                                                 |
 |  +-------------+-------------+                                                 |
 |                |                                                               |
-|                v                                                               |
-|  +---------------------------+                                                 |
-|  | Stream blob to host       |  GET/GED write completes                        |
-|  +-------------+-------------+                                                 |
-|                |                                                               |
-|                v                                                               |
-|  +---------------------------+                                                 |
-|  | Host ACK/COMMIT           |  Host confirms blob is durable                  |
-|  +-------------+-------------+                                                 |
-|                |                                                               |
-|                v                                                               |
+|                v                                                               |                                                                                |
 |  +===========================+                                                 |
-|  || Restart boundary (kexec) ||  <-- REPLACES: "Host reloads VTL2" boundary     |
+|  || Restart boundary (kexec) ||  <-- REPLACES: "Host reloads VTL2" boundary    |
 |  +=============+=============+  VTL2 runs Linux kexec into new VTL2 kernel     |
 |                |                                                               |
 |                v                                                               |
 |  +---------------------------+                                                 |
-|  | New VTL2 boots            |  Detect servicing restore mode                  |
+|  | New VTL2 boots            |                                                 |
 |  +-------------+-------------+                                                 |
-|                |                                                               |
-|                v                                                               |
-|  +---------------------------+                                                 |
-|  | Fetch blob from host      |                                                 |
-|  +-------------+-------------+                                                 |
-|                |                                                               |
-|                v                                                               |
-|  +---------------------------+                                                 |
-|  | Restore graph             |                                                 |
-|  +-------------+-------------+                                                 |
-|                |                                                               |
-|                v                                                               |
-|  +---------------------------+                                                 |
-|  | Start graph + resume      |                                                 |
-|  +---------------------------+                                                 |
+|                                                                                 |
 +--------------------------------------------------------------------------------+
 ```
 
@@ -269,17 +245,19 @@ Why this is not yet servicing-parity:
 - The servicing-state blob must be **fully streamed to the host and durably stored** before the restart boundary.
 - Today, kexec can happen **before** `send_servicing_state()` finishes, so the host may not have a committed blob and the new VTL2 cannot reliably restore.
 
-What we need to add:
-- A **host ACK/COMMIT** durability barrier, and a hard gate: **no kexec until ACK/COMMIT**.
-- After kexec, the new VTL2 instance must fetch the blob and run the normal restore/start/resume.
+What we need to figure out:
+- Audit what data is captured in the save stage (“saved state”).
+- Determine what subset can be passed directly to the new kernel via KHO kexec as FTD, and what (if anything) must still be sent to the host.
 
 ---
 
 ## D. Next steps / open questions
 
 Host + protocol:
-- Update host behavior to support guest-driven restart: define and implement the “blob committed” **ACK/COMMIT**, and gate kexec on it.
-- Ensure the post-kexec boot path reliably fetches the saved blob and reports restore success/failure back to the host.
+- Update host behavior to support guest-driven restart:
+    - If any data is required by the host from the save stage, kexec should happen only after the host ACK (i.e. after the “awaiting host response” ACK is received).
+      Ensure the post-kexec boot path reliably fetches the saved blob and reports restore success/failure back to the host.
+    - If no data is required to be sent to the host, pass the required data via KHO kexec as FTD and notify the host once kexec is complete.
 
 Measurement:
 - Do a fair latency/perf comparison only after the host changes exist (otherwise the flow is not equivalent).
