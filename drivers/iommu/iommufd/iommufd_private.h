@@ -463,6 +463,8 @@ static inline void iommufd_hw_pagetable_put(struct iommufd_ctx *ictx,
 	refcount_dec(&hwpt->obj.users);
 }
 
+extern const struct iommu_ops iommufd_noiommu_ops;
+
 struct iommufd_attach;
 
 struct iommufd_group {
@@ -498,6 +500,16 @@ iommufd_get_device(struct iommufd_ucmd *ucmd, u32 id)
 	return container_of(iommufd_get_object(ucmd->ictx, id,
 					       IOMMUFD_OBJ_DEVICE),
 			    struct iommufd_device, obj);
+}
+
+static inline struct iommu_device *
+iommufd_device_get_iommu_dev(struct iommufd_device *idev)
+{
+	if (IS_ENABLED(CONFIG_IOMMUFD_NOIOMMU) && !idev->igroup->group)
+		return NULL;
+	if (WARN_ON_ONCE(!idev->dev->iommu))
+		return NULL;
+	return __iommu_get_iommu_dev(idev->dev);
 }
 
 void iommufd_device_pre_destroy(struct iommufd_object *obj);
