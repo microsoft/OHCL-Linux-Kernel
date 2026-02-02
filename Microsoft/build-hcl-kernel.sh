@@ -126,6 +126,49 @@ if [ -n "$REPRODUCIBLE_BUILD" ]; then
 	makeargs+=("LOCALVERSION=")
 fi
 
+# Post-process binary to normalize for reproducibility:
+# 1. Zero out any remaining absolute build paths
+# 2. Zero out ALL Build IDs (which are non-deterministic across machines)
+normalize_binary_for_reproducibility() {
+	local binary="$1"
+	local src_path="$2"
+
+	if [ ! -f "$binary" ]; then
+		return 0
+	fi
+
+	# Zero out any remaining build paths (replace with null bytes of same length)
+	if [ -n "$src_path" ]; then
+		local path_len=${#src_path}
+		local null_padding=$(printf '%*s' "$path_len" '' | tr ' ' '\0')
+		LC_ALL=C sed -i "s|$src_path|$null_padding|g" "$binary" 2>/dev/null || true
+	fi
+
+	# Zero out ALL Build IDs in the binary
+	# Build ID note format: 04 00 00 00 14 00 00 00 03 00 00 00 "GNU\0" <20 bytes>
+	# We search for the exact byte pattern and zero the 20 bytes after "GNU\0"
+	# Pattern in hex: 04000000 14000000 03000000 474e5500 (little-endian)
+	local pattern=$(printf '\x04\x00\x00\x00\x14\x00\x00\x00\x03\x00\x00\x00GNU\x00')
+	local pattern_len=16
+	local build_id_len=20
+
+	# Use od to find all occurrences of the pattern
+	LC_ALL=C grep -oba "GNU" "$binary" 2>/dev/null | while IFS=: read -r offset _; do
+		if [ "$offset" -ge 12 ]; then
+			local header_offset=$((offset - 12))
+			# Read 16 bytes and check if it matches the Build ID note header
+			local header=$(dd if="$binary" bs=1 skip="$header_offset" count=16 2>/dev/null | od -An -tx1 | tr -d ' \n')
+			# Check for Build ID note header: 04000000 14000000 03000000 474e5500
+			if [[ "$header" == "04000000140000000300000047"* ]]; then
+				local build_id_offset=$((offset + 4))
+				# Zero out the 20-byte Build ID
+				printf '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | \
+					dd of="$binary" bs=1 seek="$build_id_offset" conv=notrunc 2>/dev/null
+			fi
+		fi
+	done
+}
+
 build_kernel() {
 	if [ -n "$clean" ]; then
 		make mrproper
@@ -139,6 +182,8 @@ build_kernel() {
 	# essential for the kernel to function.
 	if [ -n "$REPRODUCIBLE_BUILD" ]; then
 		$objcopy --strip-all $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+		# Post-process to zero out build paths and Build ID for reproducibility
+		normalize_binary_for_reproducibility "$BUILD_DIR/vmlinux" "$SRC_DIR"
 	else
 		$objcopy --strip-all --add-gnu-debuglink=$BUILD_DIR/vmlinux.dbg $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
 	fi
@@ -151,6 +196,8 @@ build_kernel() {
 		$objcopy --only-keep-debug --compress-debug-sections "$mod" "$outmod.dbg"
 		if [ -n "$REPRODUCIBLE_BUILD" ]; then
 			$objcopy --strip-unneeded "$mod" "$outmod"
+			# Post-process to zero out build paths and Build ID for reproducibility
+			normalize_binary_for_reproducibility "$outmod" "$SRC_DIR"
 		else
 			$objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod" "$outmod"
 		fi
