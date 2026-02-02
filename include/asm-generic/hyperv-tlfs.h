@@ -1004,6 +1004,10 @@ struct hv_enable_vp_vtl {
 	struct hv_init_vp_context	vp_context;
 } __packed;
 
+/*
+ * Must match struct hv_input_restore_partition_time in
+ * include/uapi/hyperv/hvgdk_mini.h
+ */
 struct hv_input_restore_partition_time {
 	u64 partition_id;
 	u32 tsc_sequence;
