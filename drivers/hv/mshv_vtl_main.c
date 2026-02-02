@@ -757,12 +757,12 @@ static int restore_partition_time_with_cpus_stopped(void *data)
 	int result = 0;
 	u64 status;
 
-	/* Save current clock state. No other CPUs are running so no locks are taken. */
+	/* Save current clock state. Other CPUs are waiting in stop code, so no locks are taken. */
 	sched_clock_suspend();
 	timekeeping_suspend();
 	hv_save_sched_clock_state();
 
-	/* Interrupts are disabled, make the hypercall to update the TSC. */
+	/* Interrupts are disabled. Make the hypercall to update the TSC. */
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 	input->partition_id = HV_PARTITION_ID_SELF;
 	input->tsc_sequence = partition_time->tsc_sequence;
@@ -785,7 +785,6 @@ static int restore_partition_time_with_cpus_stopped(void *data)
 
 static int mshv_restore_partition_time(void __user *arg)
 {
-	unsigned long irq_flags;
 	struct mshv_partition_time partition_time;
 	int ret;
 
@@ -793,10 +792,8 @@ static int mshv_restore_partition_time(void __user *arg)
 		return -EFAULT;
 
 	/* Stop other CPUs, using the current one to restore partition time. */
-	local_irq_save(irq_flags);
 	ret = stop_machine(restore_partition_time_with_cpus_stopped, &partition_time,
-			cpumask_of(smp_processor_id()));
-	local_irq_restore(irq_flags);
+			cpumask_of(raw_smp_processor_id()));
 	return ret;
 }
 #endif
