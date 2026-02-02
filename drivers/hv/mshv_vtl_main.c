@@ -794,7 +794,8 @@ static int mshv_restore_partition_time(void __user *arg)
 
 	/* Stop other CPUs, using the current one to restore partition time. */
 	local_irq_save(irq_flags);
-	ret = stop_machine(restore_partition_time_with_cpus_stopped, &partition_time, cpumask_of(smp_processor_id()));
+	ret = stop_machine(restore_partition_time_with_cpus_stopped, &partition_time,
+			cpumask_of(smp_processor_id()));
 	local_irq_restore(irq_flags);
 	return ret;
 }
