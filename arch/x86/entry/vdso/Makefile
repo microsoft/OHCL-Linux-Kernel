@@ -154,8 +154,7 @@ quiet_cmd_vdso = VDSO    $@
 		       -T $(filter %.lds,$^) $(filter %.o,$^) && \
 		 sh $(src)/checkundef.sh '$(NM)' '$@'
 
-# For reproducible builds, use --build-id=none to avoid non-deterministic Build IDs.
-VDSO_LDFLAGS = -shared --hash-style=both --build-id=none \
+VDSO_LDFLAGS = -shared --hash-style=both --build-id=sha1 \
 	$(call ld-option, --eh-frame-hdr) -Bsymbolic -z noexecstack
 
 quiet_cmd_vdso_and_check = VDSO    $@
