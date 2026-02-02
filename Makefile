@@ -1041,8 +1041,13 @@ KBUILD_AFLAGS   += $(KAFLAGS)
 KBUILD_CFLAGS   += $(KCFLAGS)
 KBUILD_RUSTFLAGS += $(KRUSTFLAGS)
 
-KBUILD_LDFLAGS_MODULE += --build-id=sha1
-LDFLAGS_vmlinux += --build-id=sha1
+# Build ID style for ELF binaries (sha1, md5, uuid, none)
+# Can be overridden for reproducible builds: make KBUILD_BUILD_ID=none
+KBUILD_BUILD_ID ?= sha1
+export KBUILD_BUILD_ID
+
+KBUILD_LDFLAGS_MODULE += --build-id=$(KBUILD_BUILD_ID)
+LDFLAGS_vmlinux += --build-id=$(KBUILD_BUILD_ID)
 
 KBUILD_LDFLAGS	+= -z noexecstack
 ifeq ($(CONFIG_LD_IS_BFD),y)
