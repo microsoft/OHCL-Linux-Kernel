@@ -121,7 +121,7 @@ SRC_DIR=`realpath ${SCRIPT_DIR}/..`
 # For reproducible builds, add flags to disable Build ID and normalize debug paths
 if [ -n "$REPRODUCIBLE_BUILD" ]; then
 	makeargs+=("KBUILD_BUILD_ID=none")
-	makeargs+=("KCFLAGS=-fdebug-prefix-map=$SRC_DIR= -fmacro-prefix-map=$SRC_DIR=")
+	makeargs+=("KCFLAGS=-fdebug-prefix-map=$SRC_DIR=.")
 	# Prevent + suffix from being added to version string
 	makeargs+=("LOCALVERSION=")
 fi
