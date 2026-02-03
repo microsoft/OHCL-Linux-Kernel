@@ -249,10 +249,6 @@ else
     fi
 fi
 
-# Resolve paths
-SOURCE_DIR=$(realpath "$SOURCE_DIR")
-BUILD_DIR=$(realpath "$BUILD_DIR")
-
 # Define output directories (matching pipeline structure)
 LINUX_HEADERS_DIR="$BUILD_DIR/linux-headers"
 DEBUG_SYMBOL_DIR="$BUILD_DIR/debug_symbols"
@@ -364,6 +360,10 @@ build_kernel() {
         make mrproper
     fi
 
+    # Set KBUILD_OUTPUT to match build-hcl-kernel.sh behavior
+    # This ensures consistent build artifact locations
+    export KBUILD_OUTPUT="$BUILD_DIR"
+    
     # Copy config to build directory
     cp "$CONFIG" "$BUILD_DIR/.config"
 
@@ -550,23 +550,19 @@ main() {
         echo "  KBUILD_BUILD_USER: $KBUILD_BUILD_USER"
         echo "  KBUILD_BUILD_HOST: $KBUILD_BUILD_HOST"
     fi
-
-    # Print sha256sum of vmlinux for reproducibility verification
-    local KERNEL_VERSION
-    KERNEL_VERSION=$(cat "$BUILD_DIR/include/config/kernel.release" 2>/dev/null || echo "unknown")
-    if [[ -f "$LINUX_BOOT_DIR/vmlinux-$KERNEL_VERSION" ]]; then
-        echo ""
-        echo "Reproducibility verification:"
-        echo "  vmlinux sha256sum: $(sha256sum "$LINUX_BOOT_DIR/vmlinux-$KERNEL_VERSION" | cut -d' ' -f1)"
-    elif [[ -f "$BUILD_DIR/vmlinux" ]]; then
-        echo ""
-        echo "Reproducibility verification:"
-        echo "  vmlinux sha256sum: $(sha256sum "$BUILD_DIR/vmlinux" | cut -d' ' -f1)"
-    fi
     echo "=============================================="
 
     # Copy artifacts back to original location for reproducible builds
     copy_artifacts_back
+
+    # Print sha256sum of vmlinux for reproducibility verification
+    # Check the STRIPPED vmlinux after it's been copied back to original location
+    if [[ -n "$REPRODUCIBLE_BUILD" ]] && [[ -f "$ORIGINAL_BUILD_DIR/vmlinux" ]]; then
+        echo ""
+        echo "Reproducibility verification:"
+        echo "  vmlinux sha256sum: $(sha256sum "$ORIGINAL_BUILD_DIR/vmlinux" | cut -d' ' -f1)"
+        echo "  (stripped vmlinux from $ORIGINAL_BUILD_DIR/vmlinux)"
+    fi
 }
 
 # Run main

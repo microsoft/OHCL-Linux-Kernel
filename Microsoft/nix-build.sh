@@ -164,10 +164,14 @@ main() {
     log_info "Build artifacts are in: ${KERNEL_ROOT_ORIGINAL}/out"
 
     # Print sha256sum of vmlinux for reproducibility verification
-    if [ -f "${BUILD_OUTPUT}/vmlinux" ]; then
+    # Check the STRIPPED vmlinux (final post-processed output)
+    # build-hcl-kernel.sh creates stripped vmlinux at $BUILD_DIR/vmlinux
+    local VMLINUX_PATH="${KERNEL_ROOT_ORIGINAL}/../build/vmlinux"
+    if [ -f "${VMLINUX_PATH}" ]; then
         echo ""
         log_info "Reproducibility verification:"
-        echo "  vmlinux sha256sum: $(sha256sum "${BUILD_OUTPUT}/vmlinux" | cut -d' ' -f1)"
+        echo "  vmlinux sha256sum: $(sha256sum "${VMLINUX_PATH}" | cut -d' ' -f1)"
+        echo "  (stripped vmlinux from ${VMLINUX_PATH})"
     fi
 }
 
