@@ -158,6 +158,63 @@ setup_reproducible_build() {
 # Call reproducible build setup before anything else
 setup_reproducible_build
 
+# For reproducible builds, copy source to a fixed path
+# This ensures identical paths in binaries regardless of where source is located
+ORIGINAL_SOURCE_DIR="$SOURCE_DIR"
+ORIGINAL_BUILD_DIR="$BUILD_DIR"
+
+setup_fixed_build_path() {
+    if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+        FIXED_BUILD_PATH="${FIXED_BUILD_PATH:-/tmp/ohcl-kernel-build}"
+        FIXED_SOURCE_DIR="${FIXED_BUILD_PATH}/src"
+        FIXED_BUILD_DIR="${FIXED_BUILD_PATH}/build"
+
+        echo ">>> Setting up fixed build path for reproducibility..."
+        echo "    Original source: $ORIGINAL_SOURCE_DIR"
+        echo "    Fixed source: $FIXED_SOURCE_DIR"
+
+        # Clean and create fixed build path
+        rm -rf "${FIXED_BUILD_PATH}"
+        mkdir -p "${FIXED_BUILD_PATH}"
+
+        # Copy source to fixed path (use anchored excludes to avoid matching subdirs like tools/build)
+        rsync -a --exclude='/.git' --exclude='/build' --exclude='/out' --exclude='/compare' \
+            "${ORIGINAL_SOURCE_DIR}/" "${FIXED_SOURCE_DIR}/"
+
+        # Update paths to use fixed locations
+        SOURCE_DIR="${FIXED_SOURCE_DIR}"
+        BUILD_DIR="${FIXED_BUILD_DIR}"
+
+        echo "    Source copied to fixed path"
+    fi
+}
+
+# Cleanup function to remove temporary build directory
+cleanup_fixed_build_path() {
+    if [[ -n "$REPRODUCIBLE_BUILD" ]] && [[ -n "${FIXED_BUILD_PATH:-}" ]] && [[ -d "${FIXED_BUILD_PATH:-}" ]]; then
+        echo ">>> Cleaning up temporary build directory: ${FIXED_BUILD_PATH}"
+        rm -rf "${FIXED_BUILD_PATH}"
+    fi
+}
+
+# Copy build artifacts back to original location
+copy_artifacts_back() {
+    if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+        echo ">>> Copying build artifacts back to original location..."
+        mkdir -p "${ORIGINAL_BUILD_DIR}"
+        rsync -a "${FIXED_BUILD_DIR}/" "${ORIGINAL_BUILD_DIR}/"
+        echo "    Artifacts copied to ${ORIGINAL_BUILD_DIR}"
+    fi
+}
+
+# Set trap to cleanup on exit (success or failure)
+if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+    trap cleanup_fixed_build_path EXIT
+fi
+
+# Setup fixed build path for reproducible builds
+setup_fixed_build_path
+
 # Detect host architecture
 HOST_ARCH="$(uname -m)"
 
@@ -507,6 +564,9 @@ main() {
         echo "  vmlinux sha256sum: $(sha256sum "$BUILD_DIR/vmlinux" | cut -d' ' -f1)"
     fi
     echo "=============================================="
+
+    # Copy artifacts back to original location for reproducible builds
+    copy_artifacts_back
 }
 
 # Run main
