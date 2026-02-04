@@ -365,6 +365,11 @@ build_kernel() {
         mkdir -p "$BUILD_DIR"
     fi
 
+    # Create output directories
+    mkdir -p "$LINUX_HEADERS_DIR"
+    mkdir -p "$DEBUG_SYMBOL_DIR"
+    mkdir -p "$LINUX_BOOT_DIR"
+
     # For CVM kernel type, run mrproper first
     if [[ "$KERNEL_TYPE" == "cvm" ]]; then
         echo "Running make mrproper for CVM build..."
