@@ -155,6 +155,10 @@ setup_reproducible_build() {
     fi
 }
 
+# Resolve paths first (needed by setup_reproducible_build)
+SOURCE_DIR=$(realpath "$SOURCE_DIR")
+BUILD_DIR=$(realpath "$BUILD_DIR")
+
 # Call reproducible build setup before anything else
 setup_reproducible_build
 
