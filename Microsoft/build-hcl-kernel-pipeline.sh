@@ -361,7 +361,7 @@ build_kernel() {
     # For CVM kernel type, run mrproper first
     if [[ "$KERNEL_TYPE" == "cvm" ]]; then
         echo "Running make mrproper for CVM build..."
-        make mrproper
+        make O="$BUILD_DIR" mrproper
     fi
 
     # Set KBUILD_OUTPUT to match build-hcl-kernel.sh behavior
