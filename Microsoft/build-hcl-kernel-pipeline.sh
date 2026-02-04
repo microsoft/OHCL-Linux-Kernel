@@ -368,7 +368,16 @@ build_kernel() {
         mkdir -p "$BUILD_DIR"
     fi
 
+    # Set KBUILD_OUTPUT to match build-hcl-kernel.sh behavior
+    # This ensures consistent build artifact locations
+    # Note: build-hcl-kernel.sh uses $BUILD_DIR/linux subdirectory
+    export KBUILD_OUTPUT="$BUILD_DIR/linux"
+    
+    # Export KCONFIG_CONFIG with absolute path (matches build-hcl-kernel.sh)
+    export KCONFIG_CONFIG="$SOURCE_DIR/$CONFIG"
+
     # Create output directories
+    mkdir -p "$KBUILD_OUTPUT"
     mkdir -p "$LINUX_HEADERS_DIR"
     mkdir -p "$DEBUG_SYMBOL_DIR"
     mkdir -p "$LINUX_BOOT_DIR"
@@ -376,25 +385,18 @@ build_kernel() {
     # For CVM kernel type, run mrproper first
     if [[ "$KERNEL_TYPE" == "cvm" ]]; then
         echo "Running make mrproper for CVM build..."
-        make O="$BUILD_DIR" mrproper
+        make O="$KBUILD_OUTPUT" mrproper
     fi
-
-    # Set KBUILD_OUTPUT to match build-hcl-kernel.sh behavior
-    # This ensures consistent build artifact locations
-    export KBUILD_OUTPUT="$BUILD_DIR"
-    
-    # Export KCONFIG_CONFIG with absolute path (matches build-hcl-kernel.sh)
-    export KCONFIG_CONFIG="$SOURCE_DIR/$CONFIG"
     
     # Copy config to build directory
-    cp "$SOURCE_DIR/$CONFIG" "$BUILD_DIR/.config"
+    cp "$SOURCE_DIR/$CONFIG" "$KBUILD_OUTPUT/.config"
 
     # Build make arguments
     local make_args=()
     make_args+=("ARCH=$KERNEL_ARCH")
     make_args+=("LOCALVERSION=")
     make_args+=("CC=$COMPILER")
-    make_args+=("O=$BUILD_DIR")
+    make_args+=("O=$KBUILD_OUTPUT")
 
     # Add cross-compile prefix for arm64
     if [[ -n "$CROSS_COMPILE_PREFIX" ]]; then
@@ -407,23 +409,23 @@ build_kernel() {
         make_args+=("KCFLAGS=-fdebug-prefix-map=$SOURCE_DIR=.")
     fi
 
-    # Determine build targets based on architecture
-    local targets="vmlinux modules"
-    if [[ "$ARCH" == "arm64" ]]; then
-        targets="vmlinux Image modules"
-    fi
-
-    # Run olddefconfig and build in single command (matches build-hcl-kernel.sh)
-    echo "Building kernel (olddefconfig + $targets)..."
+    # Run olddefconfig
+    echo "Running olddefconfig..."
     echo ">>> Current directory: $(pwd)"
-    echo ">>> Exact make command: make ${make_args[*]} -j $(nproc) olddefconfig $targets"
-    make "${make_args[@]}" -j "$(nproc)" olddefconfig $targets
+    echo ">>> Exact make command: make ${make_args[*]} olddefconfig"
+    make "${make_args[@]}" olddefconfig
+
+    # Build kernel with all targets
+    echo "Building kernel (make all)..."
+    echo ">>> Current directory: $(pwd)"
+    echo ">>> Exact make command: make ${make_args[*]} -j $(nproc) all"
+    make "${make_args[@]}" -j "$(nproc)" all
     # Print sha256sum of generated vmlinux (before any stripping)
-    if [[ -f "$BUILD_DIR/vmlinux" ]]; then
+    if [[ -f "$KBUILD_OUTPUT/vmlinux" ]]; then
         echo ">>> SHA256 of vmlinux (before stripping):"
-        sha256sum "$BUILD_DIR/vmlinux"
+        sha256sum "$KBUILD_OUTPUT/vmlinux"
     else
-        echo ">>> Warning: vmlinux not found at $BUILD_DIR/vmlinux"
+        echo ">>> Warning: vmlinux not found at $KBUILD_OUTPUT/vmlinux"
     fi
     echo ">>> Kernel build complete"
 }
@@ -435,7 +437,7 @@ build_headers() {
     echo ""
     echo ">>> Installing kernel headers..."
 
-    local make_args=("CC=$COMPILER" "O=$BUILD_DIR" "ARCH=$KERNEL_ARCH")
+    local make_args=("CC=$COMPILER" "O=$KBUILD_OUTPUT" "ARCH=$KERNEL_ARCH")
     if [[ -n "$CROSS_COMPILE_PREFIX" ]]; then
         make_args+=("CROSS_COMPILE=$CROSS_COMPILE_PREFIX")
     fi
@@ -452,7 +454,7 @@ build_modules() {
     echo ""
     echo ">>> Installing kernel modules..."
 
-    local make_args=("CC=$COMPILER" "O=$BUILD_DIR" "ARCH=$KERNEL_ARCH")
+    local make_args=("CC=$COMPILER" "O=$KBUILD_OUTPUT" "ARCH=$KERNEL_ARCH")
     if [[ -n "$CROSS_COMPILE_PREFIX" ]]; then
         make_args+=("CROSS_COMPILE=$CROSS_COMPILE_PREFIX")
     fi
@@ -474,17 +476,28 @@ build_debug_symbols() {
     # Use cross-compile objcopy for arm64
     local OBJCOPY="${CROSS_COMPILE_PREFIX}objcopy"
 
-    # Copy vmlinux to debug symbol directory
-    cp -a "$BUILD_DIR/vmlinux" "$DEBUG_SYMBOL_DIR/"
-
+    # Copy vmlinux to debug symbol directory and extract debug info
+    cp -a "$KBUILD_OUTPUT/vmlinux" "$DEBUG_SYMBOL_DIR/"
+    
     # Generate kernel debug symbols with compression
     echo "Extracting vmlinux debug symbols..."
     $OBJCOPY --only-keep-debug --compress-debug-sections "$DEBUG_SYMBOL_DIR/vmlinux" \
         "$DEBUG_SYMBOL_DIR/vmlinux.debug"
+    
+    # Create stripped vmlinux at BUILD_DIR root (matches build-hcl-kernel.sh behavior)
+    echo "Creating stripped vmlinux at $BUILD_DIR/vmlinux..."
+    if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+        $OBJCOPY --strip-all "$KBUILD_OUTPUT/vmlinux" "$BUILD_DIR/vmlinux"
+    else
+        $OBJCOPY --strip-all --add-gnu-debuglink="$DEBUG_SYMBOL_DIR/vmlinux.debug" "$KBUILD_OUTPUT/vmlinux" "$BUILD_DIR/vmlinux"
+    fi
+    
+    # Also save debug info with .dbg extension (matches build-hcl-kernel.sh)
+    cp -a "$DEBUG_SYMBOL_DIR/vmlinux.debug" "$BUILD_DIR/vmlinux.dbg"
 
     # Generate module debug symbols and strip modules
     echo "Processing module debug symbols..."
-    for module_path in $(find "$BUILD_DIR" -name '*.ko'); do
+    for module_path in $(find "$KBUILD_OUTPUT" -name '*.ko'); do
         module=$(basename "$module_path")
 
         # Copy module to debug symbol directory
@@ -519,28 +532,36 @@ package_kernel() {
     local OBJCOPY="${CROSS_COMPILE_PREFIX}objcopy"
 
     # Get kernel version
-    KERNEL_VERSION=$(cat "$BUILD_DIR/include/config/kernel.release")
+    KERNEL_VERSION=$(cat "$KBUILD_OUTPUT/include/config/kernel.release")
     echo "Kernel version: $KERNEL_VERSION"
 
     # Copy architecture-specific kernel image
     if [[ "$MAKE_ARCH" == "arm64" ]]; then
-        cp -a "$BUILD_DIR/arch/arm64/boot/Image" \
-            "$LINUX_BOOT_DIR/Image-$KERNEL_VERSION"
-        echo "Copied Image to $LINUX_BOOT_DIR/Image-$KERNEL_VERSION"
+        if [[ -f "$KBUILD_OUTPUT/arch/arm64/boot/Image" ]]; then
+            cp -a "$KBUILD_OUTPUT/arch/arm64/boot/Image" \
+                "$LINUX_BOOT_DIR/Image-$KERNEL_VERSION"
+            echo "Copied Image to $LINUX_BOOT_DIR/Image-$KERNEL_VERSION"
+        else
+            echo "Warning: Image not found at $KBUILD_OUTPUT/arch/arm64/boot/Image"
+        fi
     else
-        cp -a "$BUILD_DIR/arch/x86/boot/bzImage" \
-            "$LINUX_BOOT_DIR/vmlinuz-$KERNEL_VERSION"
-        echo "Copied bzImage to $LINUX_BOOT_DIR/vmlinuz-$KERNEL_VERSION"
+        if [[ -f "$KBUILD_OUTPUT/arch/x86/boot/bzImage" ]]; then
+            cp -a "$KBUILD_OUTPUT/arch/x86/boot/bzImage" \
+                "$LINUX_BOOT_DIR/vmlinuz-$KERNEL_VERSION"
+            echo "Copied bzImage to $LINUX_BOOT_DIR/vmlinuz-$KERNEL_VERSION"
+        else
+            echo "Warning: bzImage not found at $KBUILD_OUTPUT/arch/x86/boot/bzImage"
+        fi
     fi
 
     # Strip and copy vmlinux
     echo "Stripping vmlinux..."
-    $OBJCOPY --strip-all "$BUILD_DIR/vmlinux"
-    cp -a "$BUILD_DIR/vmlinux" "$LINUX_BOOT_DIR/vmlinux-$KERNEL_VERSION"
+    $OBJCOPY --strip-all "$KBUILD_OUTPUT/vmlinux"
+    cp -a "$KBUILD_OUTPUT/vmlinux" "$LINUX_BOOT_DIR/vmlinux-$KERNEL_VERSION"
 
     # Copy config and System.map
-    cp -a "$BUILD_DIR/.config" "$LINUX_BOOT_DIR/config-$KERNEL_VERSION"
-    cp -a "$BUILD_DIR/System.map" "$LINUX_BOOT_DIR/System.map-$KERNEL_VERSION"
+    cp -a "$KBUILD_OUTPUT/.config" "$LINUX_BOOT_DIR/config-$KERNEL_VERSION"
+    cp -a "$KBUILD_OUTPUT/System.map" "$LINUX_BOOT_DIR/System.map-$KERNEL_VERSION"
 
     echo ">>> Kernel files packaged in $LINUX_BOOT_DIR"
 }
