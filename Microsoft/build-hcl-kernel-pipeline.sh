@@ -358,6 +358,9 @@ build_kernel() {
     echo ""
     echo ">>> Building kernel..."
 
+    # Print current directory for debugging
+    echo ">>> Current directory: $(pwd)"
+
     # For reproducible builds, always clean the build directory to ensure no stale state
     if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
         echo "Cleaning build directory for reproducible build..."
@@ -380,8 +383,11 @@ build_kernel() {
     # This ensures consistent build artifact locations
     export KBUILD_OUTPUT="$BUILD_DIR"
     
+    # Export KCONFIG_CONFIG with absolute path (matches build-hcl-kernel.sh)
+    export KCONFIG_CONFIG="$SOURCE_DIR/$CONFIG"
+    
     # Copy config to build directory
-    cp "$CONFIG" "$BUILD_DIR/.config"
+    cp "$SOURCE_DIR/$CONFIG" "$BUILD_DIR/.config"
 
     # Build make arguments
     local make_args=()
@@ -401,14 +407,24 @@ build_kernel() {
         make_args+=("KCFLAGS=-fdebug-prefix-map=$SOURCE_DIR=.")
     fi
 
-    # Run olddefconfig
-    echo "Running olddefconfig..."
-    make "${make_args[@]}" olddefconfig
+    # Determine build targets based on architecture
+    local targets="vmlinux modules"
+    if [[ "$ARCH" == "arm64" ]]; then
+        targets="vmlinux Image modules"
+    fi
 
-    # Build kernel with all targets
-    echo "Building kernel (make all)..."
-    make "${make_args[@]}" -j "$(nproc)" all
-
+    # Run olddefconfig and build in single command (matches build-hcl-kernel.sh)
+    echo "Building kernel (olddefconfig + $targets)..."
+    echo ">>> Current directory: $(pwd)"
+    echo ">>> Exact make command: make ${make_args[*]} -j $(nproc) olddefconfig $targets"
+    make "${make_args[@]}" -j "$(nproc)" olddefconfig $targets
+    # Print sha256sum of generated vmlinux (before any stripping)
+    if [[ -f "$BUILD_DIR/vmlinux" ]]; then
+        echo ">>> SHA256 of vmlinux (before stripping):"
+        sha256sum "$BUILD_DIR/vmlinux"
+    else
+        echo ">>> Warning: vmlinux not found at $BUILD_DIR/vmlinux"
+    fi
     echo ">>> Kernel build complete"
 }
 

@@ -127,11 +127,21 @@ if [ -n "$REPRODUCIBLE_BUILD" ]; then
 fi
 
 build_kernel() {
+	echo ">>> Current directory: $(pwd)"
 	if [ -n "$clean" ]; then
 		make mrproper
 	fi
 	export KCONFIG_CONFIG=$LINUX_SRC/Microsoft/hcl-$arch.config
+	echo ">>> Current directory: $(pwd)"
+	echo ">>> Exact make command: make ${makeargs[*]} -j $(nproc) olddefconfig $targets"
 	make "${makeargs[@]}" -j `nproc` olddefconfig $targets
+	# Print sha256sum of generated vmlinux (before any stripping)
+	if [ -f "$KBUILD_OUTPUT/vmlinux" ]; then
+		echo ">>> SHA256 of vmlinux (before stripping):"
+		sha256sum "$KBUILD_OUTPUT/vmlinux"
+	else
+		echo ">>> Warning: vmlinux not found at $KBUILD_OUTPUT/vmlinux"
+	fi
 	cp $LINUX_SRC/Microsoft/hcl-$arch.config $OUT_DIR
 	$objcopy --only-keep-debug --compress-debug-sections $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux.dbg
 	# For reproducible builds, skip --add-gnu-debuglink as it embeds a CRC of the debug file
