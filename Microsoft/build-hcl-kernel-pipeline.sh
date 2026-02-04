@@ -358,6 +358,13 @@ build_kernel() {
     echo ""
     echo ">>> Building kernel..."
 
+    # For reproducible builds, always clean the build directory to ensure no stale state
+    if [[ -n "$REPRODUCIBLE_BUILD" ]]; then
+        echo "Cleaning build directory for reproducible build..."
+        rm -rf "$BUILD_DIR"
+        mkdir -p "$BUILD_DIR"
+    fi
+
     # For CVM kernel type, run mrproper first
     if [[ "$KERNEL_TYPE" == "cvm" ]]; then
         echo "Running make mrproper for CVM build..."
