@@ -586,6 +586,13 @@ main() {
     echo ">>> [5/5] Packaging kernel files..."
     package_kernel
 
+    # Move build artifacts from /linux subdirectory to BUILD_DIR root for pipeline compatibility
+    echo ""
+    echo ">>> Moving build artifacts from $KBUILD_OUTPUT to $BUILD_DIR for pipeline..."
+    rsync -a --remove-source-files "$KBUILD_OUTPUT/" "$BUILD_DIR/"
+    find "$KBUILD_OUTPUT" -type d -empty -delete
+    echo ">>> Artifacts moved to $BUILD_DIR"
+
     echo ""
     echo "=============================================="
     echo "Build completed successfully!"
