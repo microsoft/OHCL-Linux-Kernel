@@ -368,6 +368,12 @@ build_kernel() {
         mkdir -p "$BUILD_DIR"
     fi
 
+    # Clean source tree for CVM builds (merge_cvm_config leaves artifacts)
+    if [[ "$KERNEL_TYPE" == "cvm" ]]; then
+        echo "Running make mrproper for CVM build..."
+        make mrproper
+    fi
+
     # Set KBUILD_OUTPUT to match build-hcl-kernel.sh behavior
     # This ensures consistent build artifact locations
     # Note: build-hcl-kernel.sh uses $BUILD_DIR/linux subdirectory
@@ -381,15 +387,6 @@ build_kernel() {
     mkdir -p "$LINUX_HEADERS_DIR"
     mkdir -p "$DEBUG_SYMBOL_DIR"
     mkdir -p "$LINUX_BOOT_DIR"
-
-    # For CVM kernel type, run mrproper first
-    if [[ "$KERNEL_TYPE" == "cvm" ]]; then
-        echo "Running make mrproper for CVM build..."
-        # Clean source tree first (required after merge_cvm_config modifies source files)
-        make mrproper
-        # Then clean output directory
-        make O="$KBUILD_OUTPUT" mrproper
-    fi
     
     # Copy config to build directory
     cp "$SOURCE_DIR/$CONFIG" "$KBUILD_OUTPUT/.config"
