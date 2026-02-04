@@ -385,6 +385,9 @@ build_kernel() {
     # For CVM kernel type, run mrproper first
     if [[ "$KERNEL_TYPE" == "cvm" ]]; then
         echo "Running make mrproper for CVM build..."
+        # Clean source tree first (required after merge_cvm_config modifies source files)
+        make mrproper
+        # Then clean output directory
         make O="$KBUILD_OUTPUT" mrproper
     fi
     
