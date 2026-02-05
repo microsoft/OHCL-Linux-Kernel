@@ -332,6 +332,18 @@ build_kernel() {
         make mrproper
     fi
 
+    # Build in /tmp for better performance, then copy back
+    # Store original BUILD_DIR for final artifact location
+    FINAL_BUILD_DIR="$BUILD_DIR"
+    TMP_BUILD_DIR="/tmp/ohcl-kernel-build"
+    BUILD_DIR="$TMP_BUILD_DIR"
+    
+    # Clean up temp directory if it exists from previous build
+    if [[ -d "$TMP_BUILD_DIR" ]]; then
+        echo "Warning: Temp build directory $TMP_BUILD_DIR already exists, cleaning it up..."
+        rm -rf "$TMP_BUILD_DIR"
+    fi
+    
     # Set KBUILD_OUTPUT to match build-hcl-kernel.sh behavior
     # This ensures consistent build artifact locations
     # Note: build-hcl-kernel.sh uses $BUILD_DIR/linux subdirectory
@@ -557,6 +569,17 @@ main() {
         echo "  KBUILD_BUILD_HOST: $KBUILD_BUILD_HOST"
     fi
     echo "=============================================="
+
+    # Copy build artifacts from /tmp back to final location
+    echo ">>> Copying build artifacts from $TMP_BUILD_DIR to $FINAL_BUILD_DIR"
+    mkdir -p "$FINAL_BUILD_DIR"
+    rsync -a "$TMP_BUILD_DIR/" "$FINAL_BUILD_DIR/"
+    
+    # Cleanup temporary build directory
+    rm -rf "$TMP_BUILD_DIR"
+    
+    # Update BUILD_DIR back to final location for sha256sum
+    BUILD_DIR="$FINAL_BUILD_DIR"
 
     # Print sha256sum of vmlinux for reproducibility verification
     if [[ -n "$REPRODUCIBLE_BUILD" ]] && [[ -f "$BUILD_DIR/vmlinux" ]]; then

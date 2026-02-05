@@ -188,14 +188,23 @@ build_kernel() {
 }
 
 LINUX_SRC=$SRC_DIR
-BUILD_DIR=`realpath $LINUX_SRC/../build`
+FINAL_BUILD_DIR=`realpath $LINUX_SRC/../build`
 OUT_DIR=`realpath $LINUX_SRC/out`
 MOD_DIR=/build/native/bin/$arch/modules/kernel/
 
-export KBUILD_OUTPUT=$BUILD_DIR/linux
+# Build in /tmp for better performance, then copy back
+TMP_BUILD_DIR="/tmp/ohcl-kernel-build"
+export KBUILD_OUTPUT=$TMP_BUILD_DIR/linux
+BUILD_DIR=$TMP_BUILD_DIR
+
+# Clean up temp directory if it exists from previous build
+if [ -d "$TMP_BUILD_DIR" ]; then
+	echo "Warning: Temp build directory $TMP_BUILD_DIR already exists, cleaning it up..."
+	rm -rf "$TMP_BUILD_DIR"
+fi
 
 if [ -n "$clean" ]; then
-	rm -rf $KBUILD_OUTPUT
+	rm -rf $FINAL_BUILD_DIR/linux
 	rm -rf $OUT_DIR
 fi
 
@@ -221,3 +230,11 @@ if [ "$arch" = "arm64" ]; then
 else
 	make headers_install ARCH=x86_64 INSTALL_HDR_PATH=$BUILD_DIR -j `nproc` > /dev/null
 fi
+
+# Copy build artifacts from /tmp back to final location
+echo "Copying build artifacts from $TMP_BUILD_DIR to $FINAL_BUILD_DIR"
+mkdir -p $FINAL_BUILD_DIR
+rsync -a $TMP_BUILD_DIR/ $FINAL_BUILD_DIR/
+
+# Cleanup temporary build directory
+rm -rf $TMP_BUILD_DIR
