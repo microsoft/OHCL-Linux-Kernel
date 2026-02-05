@@ -70,12 +70,67 @@ if test -z "$arch"; then
 	arch=("x64")
 fi
 
+# Detect host architecture
+HOST_ARCH="$(uname -m)"
+
 objcopy=("objcopy")
-makeargs=("ARCH=x86_64")
+if [ -n "$REPRODUCIBLE_BUILD" ]; then
+	# For reproducible builds, explicitly set CC to use Nix's gcc
+	makeargs=("ARCH=x86_64" "CC=gcc")
+else
+	makeargs=("ARCH=x86_64")
+fi
 targets=("vmlinux modules")
+
+# Handle x86_64 target architecture
+if [ "$arch" = "x64" ]; then
+	# Check if we're cross-compiling from arm64 to x86_64
+	if [ "$HOST_ARCH" = "aarch64" ]; then
+		# Cross-compiling from arm64 with Nix toolchain
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			cross_prefix="x86_64-unknown-linux-gnu-"
+		else
+			cross_prefix="x86_64-linux-gnu-"
+		fi
+		objcopy=("${cross_prefix}objcopy")
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			makeargs=("ARCH=x86_64" "CROSS_COMPILE=${cross_prefix}" "CC=${cross_prefix}gcc")
+		else
+			makeargs=("ARCH=x86_64" "CROSS_COMPILE=${cross_prefix}")
+		fi
+	fi
+fi
+
+# Handle arm64 target architecture
 if [ "$arch" = "arm64" ]; then
-	objcopy=("aarch64-linux-gnu-objcopy")
-	makeargs=("ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-")
+	# Only use cross-compiler when cross-compiling (host != target)
+	if [ "$HOST_ARCH" = "aarch64" ]; then
+		# Native arm64 build - no cross-compile prefix needed
+		cross_prefix=""
+	elif [ -n "$REPRODUCIBLE_BUILD" ]; then
+		# Cross-compiling from x86_64 with Nix toolchain
+		cross_prefix="aarch64-unknown-linux-gnu-"
+	else
+		# Cross-compiling from x86_64 with system toolchain
+		cross_prefix="aarch64-linux-gnu-"
+	fi
+
+	if [ -n "$cross_prefix" ]; then
+		objcopy=("${cross_prefix}objcopy")
+		# For reproducible builds, explicitly set CC to use the Nix cross-compiler
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			makeargs=("ARCH=arm64" "CROSS_COMPILE=${cross_prefix}" "CC=${cross_prefix}gcc")
+		else
+			makeargs=("ARCH=arm64" "CROSS_COMPILE=${cross_prefix}")
+		fi
+	else
+		# For native builds, explicitly set CC to ensure we use Nix's gcc in reproducible mode
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			makeargs=("ARCH=arm64" "CC=gcc")
+		else
+			makeargs=("ARCH=arm64")
+		fi
+	fi
 	targets=("vmlinux Image modules")
 fi
 
@@ -84,15 +139,31 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SRC_DIR=`realpath ${SCRIPT_DIR}/..`
 
+# For reproducible builds, add flags to normalize debug paths
+if [ -n "$REPRODUCIBLE_BUILD" ]; then
+	makeargs+=("KCFLAGS=-fdebug-prefix-map=$SRC_DIR=.")
+	# Prevent + suffix from being added to version string
+	makeargs+=("LOCALVERSION=")
+fi
+
 build_kernel() {
+	echo ">>> Current directory: $(pwd)"
 	if [ -n "$clean" ]; then
 		make mrproper
 	fi
 	export KCONFIG_CONFIG=$LINUX_SRC/Microsoft/hcl-$arch.config
-	make $makeargs -j `nproc` olddefconfig $targets
+
+	make "${makeargs[@]}" -j `nproc` olddefconfig $targets
 	cp $LINUX_SRC/Microsoft/hcl-$arch.config $OUT_DIR
 	$objcopy --only-keep-debug --compress-debug-sections $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux.dbg
-	$objcopy --strip-all --add-gnu-debuglink=$BUILD_DIR/vmlinux.dbg $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	# For reproducible builds, skip --add-gnu-debuglink as it embeds a CRC of the debug file
+	# which can vary between builds. The debuglink is only used for debugging and is not
+	# essential for the kernel to function.
+	if [ -n "$REPRODUCIBLE_BUILD" ]; then
+		$objcopy --strip-all $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	else
+		$objcopy --strip-all --add-gnu-debuglink=$BUILD_DIR/vmlinux.dbg $KBUILD_OUTPUT/vmlinux $BUILD_DIR/vmlinux
+	fi
 
 	find $BUILD_DIR -name '*.ko' | while read -r mod; do
 		relative_path="${mod#$BUILD_DIR/linux}"
@@ -100,7 +171,11 @@ build_kernel() {
 		mkdir -p "$dest_dir"
 		outmod="$dest_dir/$(basename $mod)"
 		$objcopy --only-keep-debug --compress-debug-sections "$mod" "$outmod.dbg"
-		$objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod" "$outmod"
+		if [ -n "$REPRODUCIBLE_BUILD" ]; then
+			$objcopy --strip-unneeded "$mod" "$outmod"
+		else
+			$objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod" "$outmod"
+		fi
 	done
 
 	cp $BUILD_DIR/vmlinux $OUT_DIR/build/native/bin/$arch
