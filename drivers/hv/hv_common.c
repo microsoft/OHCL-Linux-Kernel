@@ -625,8 +625,8 @@ int hv_common_cpu_die(unsigned int cpu)
 	 * If a previously offlined CPU is brought back online again, the
 	 * originally allocated memory is reused in hv_common_cpu_init().
 	 */
-	unsigned long flags;
-	void **inputarg, **outputarg;
+	//unsigned long flags;
+	//void **inputarg, **outputarg;
 	int ret;
 
 	if (hv_parent_partition()) {
