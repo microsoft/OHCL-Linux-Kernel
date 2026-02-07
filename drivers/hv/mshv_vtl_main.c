@@ -1617,11 +1617,12 @@ mshv_vtl_ioctl_get_regs(void __user *user_args)
 			   sizeof(reg)))
 		return -EFAULT;
 
-		ret = mshv_vtl_get_set_reg(&reg, false, mshv_vsm_capabilities.dr6_shared);
+	ret = mshv_vtl_get_set_reg(&reg, false, mshv_vsm_capabilities.dr6_shared);
 	if (!ret)
-			goto copy_args; /* No need of hypercall */
+		goto copy_args; /* No need of hypercall */
+
 	ret = vtl_get_vp_register(&reg);
-		if (ret)
+	if (ret)
 		return ret;
 
 copy_args:
