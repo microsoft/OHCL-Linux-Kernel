@@ -306,20 +306,6 @@ static int mshv_tdx_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask
 }
 #endif
 
-static long __mshv_vtl_ioctl_check_extension(u32 arg)
-{
-	switch (arg) {
-	case MSHV_CAP_REGISTER_PAGE:
-		return mshv_has_reg_page;
-	case MSHV_CAP_VTL_RETURN_ACTION:
-		return mshv_vsm_capabilities.return_action_available;
-	case MSHV_CAP_DR6_SHARED:
-		return mshv_vsm_capabilities.dr6_shared;
-	}
-
-	return -EOPNOTSUPP;
-}
-
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
 #ifdef CONFIG_X86_64
