@@ -520,6 +520,8 @@ static const struct {
 	{HV_X64_REGISTER_MSR_MTRR_FIX4KE8000, -1, MSR_MTRRfix4K_E8000},
 	{HV_X64_REGISTER_MSR_MTRR_FIX4KF0000, -1, MSR_MTRRfix4K_F0000},
 	{HV_X64_REGISTER_MSR_MTRR_FIX4KF8000, -1, MSR_MTRRfix4K_F8000},
+	/* Control Registers */
+	{HV_X64_REGISTER_XFEM, -1, MSR_MTRRfix4K_F8000},
 };
 
 int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
@@ -544,6 +546,29 @@ int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
 			else
 				*reg64 = native_get_debugreg(reg_table[i].debug_reg_num);
 		} else {
+			if (gpr_name == HV_X64_REGISTER_XFEM) {
+				u64 cr4;
+
+				if (!hv_isolation_type_tdx())
+					return -EINVAL;
+
+				cr4 = native_read_cr4();
+				WARN_ON_ONCE(cr4 & X86_CR4_OSXSAVE);
+
+				/* Briefly enable xsave in order to access xcr0. */
+				native_write_cr4(cr4 | X86_CR4_OSXSAVE);
+
+				/* The xsetbv may fault. Right now we trust user mode. */
+				if (set)
+					xsetbv(0, *reg64);
+				else
+					*reg64 = xgetbv(0);
+
+				native_write_cr4(cr4);
+
+				return 0;
+			}
+
 			/* Handle MSRs */
 			if (set)
 				wrmsrl(reg_table[i].msr_addr, *reg64);
