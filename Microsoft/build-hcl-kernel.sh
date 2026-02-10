@@ -196,7 +196,7 @@ BUILD_DIR=`realpath $LINUX_SRC/../build`
 OUT_DIR=`realpath $LINUX_SRC/out`
 MOD_DIR=/build/native/bin/$arch/modules/kernel/
 
-export KBUILD_OUTPUT=$BUILD_DIR/linux
+export KBUILD_OUTPUT=/tmp/linux
 
 if [ -n "$clean" ]; then
 	rm -rf $KBUILD_OUTPUT
