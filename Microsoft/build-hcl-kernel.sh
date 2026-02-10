@@ -141,7 +141,11 @@ SRC_DIR=`realpath ${SCRIPT_DIR}/..`
 
 # For reproducible builds, add flags to normalize debug paths
 if [ -n "$REPRODUCIBLE_BUILD" ]; then
-	makeargs+=("KCFLAGS=-fdebug-prefix-map=$SRC_DIR=.")
+	# Use all three prefix mapping flags for complete path normalization:
+	# -fdebug-prefix-map: Strip directory prefixes from debug info
+	# -fmacro-prefix-map: Handle __FILE__ macros in assert calls
+	# -ffile-prefix-map: Alias for both (supported in GCC 8+, Clang 10+)
+	makeargs+=("KCFLAGS=-fdebug-prefix-map=$SRC_DIR=. -fmacro-prefix-map=$SRC_DIR=. -ffile-prefix-map=$SRC_DIR=.")
 	# Prevent + suffix from being added to version string
 	makeargs+=("LOCALVERSION=")
 fi

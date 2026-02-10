@@ -35,11 +35,7 @@ fi
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KERNEL_ROOT_ORIGINAL="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
-# Fixed build path for reproducibility - ensures identical paths across machines
-FIXED_BUILD_PATH="${FIXED_BUILD_PATH:-/tmp/ohcl-kernel-build}"
-KERNEL_ROOT="${FIXED_BUILD_PATH}/src"
+KERNEL_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Colors for output
 RED='\033[0;31m'
@@ -100,35 +96,13 @@ export KBUILD_BUILD_USER="${KBUILD_BUILD_USER:-builder}"
 export KBUILD_BUILD_HOST="${KBUILD_BUILD_HOST:-nixos}"
 export KBUILD_BUILD_VERSION="1"
 
-# Cleanup function to remove temporary build directory
-cleanup_build_path() {
-    if [ -n "${FIXED_BUILD_PATH}" ] && [ -d "${FIXED_BUILD_PATH}" ]; then
-        log_info "Cleaning up temporary build directory: ${FIXED_BUILD_PATH}"
-        rm -rf "${FIXED_BUILD_PATH}"
-    fi
-}
-
-# Set trap to cleanup on exit (success or failure)
-trap cleanup_build_path EXIT
-
 main() {
     log_info "Starting reproducible kernel build..."
-    log_info "Original source: ${KERNEL_ROOT_ORIGINAL}"
-    log_info "Fixed build path: ${KERNEL_ROOT}"
+    log_info "Kernel source: ${KERNEL_ROOT}"
     log_info "Reproducible environment:"
     log_info "  SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"
     log_info "  KBUILD_BUILD_USER=${KBUILD_BUILD_USER}"
     log_info "  KBUILD_BUILD_HOST=${KBUILD_BUILD_HOST}"
-
-    # Copy source to fixed path for reproducibility
-    # This ensures the same paths are embedded in binaries regardless of where source is located
-    log_info "Copying source to fixed build path..."
-    rm -rf "${FIXED_BUILD_PATH}"
-    mkdir -p "${FIXED_BUILD_PATH}"
-    # Use anchored excludes (/) to avoid matching subdirectories like tools/build
-    rsync -a --exclude='/.git' --exclude='/build' --exclude='/out' \
-        "${KERNEL_ROOT_ORIGINAL}/" "${KERNEL_ROOT}/"
-    log_info "Source copied to ${KERNEL_ROOT}"
 
     # Set environment for reproducibility
     export KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP}"
@@ -154,23 +128,13 @@ main() {
     log_info "Invoking build-hcl-kernel.sh..."
     "${KERNEL_ROOT}/Microsoft/build-hcl-kernel.sh" "${ARCH_TYPE}"
 
-    # Copy build artifacts back to original location
-    log_info "Copying build artifacts back to original location..."
-    mkdir -p "${KERNEL_ROOT_ORIGINAL}/out"
-    rsync -a "${KERNEL_ROOT}/out/" "${KERNEL_ROOT_ORIGINAL}/out/"
-
-    # Copy build directory back to original location
-    log_info "Copying build directory back to original location..."
-    mkdir -p "${KERNEL_ROOT_ORIGINAL}/../build"
-    rsync -a "${FIXED_BUILD_PATH}/build/" "${KERNEL_ROOT_ORIGINAL}/../build/"
-
     log_info "Build completed successfully!"
-    log_info "Build artifacts are in: ${KERNEL_ROOT_ORIGINAL}/out"
+    log_info "Build artifacts are in: ${KERNEL_ROOT}/out"
 
     # Print sha256sum of vmlinux for reproducibility verification
     # Check the STRIPPED vmlinux (final post-processed output)
     # build-hcl-kernel.sh creates stripped vmlinux at $BUILD_DIR/vmlinux
-    local VMLINUX_PATH="${KERNEL_ROOT_ORIGINAL}/../build/vmlinux"
+    local VMLINUX_PATH="${KERNEL_ROOT}/../build/vmlinux"
     if [ -f "${VMLINUX_PATH}" ]; then
         echo ""
         log_info "Reproducibility verification:"
