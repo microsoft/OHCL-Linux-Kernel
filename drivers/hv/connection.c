@@ -71,10 +71,10 @@ module_param(max_version, uint, S_IRUGO);
 MODULE_PARM_DESC(max_version,
 		 "Maximal VMBus protocol version which can be negotiated");
 
-/* Array of connection IDs to try in order: standard first, then redirect */
+/* Array of connection IDs to try in order: redirect first, then standard */
 static const u32 connection_ids[] = {
-	VMBUS_MESSAGE_CONNECTION_ID_4,
-	VMBUS_MESSAGE_CONNECTION_ID_REDIRECT
+	VMBUS_MESSAGE_CONNECTION_ID_REDIRECT,
+	VMBUS_MESSAGE_CONNECTION_ID_4
 };
 
 int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version,
@@ -191,8 +191,6 @@ int vmbus_connect(void)
 	__u32 version;
 
 	pr_info("VMBus: Starting VMBus connection process\n");
-	pr_info("VMBus: Available connection IDs: 0x%x (standard), 0x%x (redirect)\n", 
-		connection_ids[0], connection_ids[1]);
 
 	/* Initialize the vmbus connection */
 	vmbus_connection.conn_state = CONNECTING;
@@ -301,16 +299,15 @@ int vmbus_connect(void)
 	 * Negotiate a compatible VMBUS version number with the
 	 * host. We start with the highest number we can support
 	 * and work our way down until we negotiate a compatible
-	 * version. For each version, we try standard connection ID first,
-	 * then VMBus redirect if the standard fails.
+	 * version.
+	 *
+	 * For VTL2: Try redirect connection ID first, then standard if redirect fails.
+	 * For non-VTL2: Only try standard connection ID (single attempt per version).
 	 */
 
-	pr_info("VMBus: Starting connection negotiation with %d versions and %d connection IDs\n",
-		(int)ARRAY_SIZE(vmbus_versions), (int)ARRAY_SIZE(connection_ids));
+	pr_info("VMBus: VTL level: %d\n", ms_hyperv.vtl);
 
 	for (i = 0; ; i++) {
-		int conn_id_idx;
-		
 		if (i == ARRAY_SIZE(vmbus_versions)) {
 			ret = -EDOM;
 			goto cleanup;
@@ -320,40 +317,60 @@ int vmbus_connect(void)
 		if (version > max_version)
 			continue;
 
-		pr_info("VMBus: Trying version 0x%x (%d.%d)\n", version, 
+		pr_info("VMBus: Trying version 0x%x (%d.%d)\n", version,
 			version >> 16, version & 0xFFFF);
 
-		/* Try each connection ID for this version */
-		for (conn_id_idx = 0; conn_id_idx < ARRAY_SIZE(connection_ids); conn_id_idx++) {
-			pr_info("VMBus: Attempting connection_id 0x%x (%s)\n",
-				connection_ids[conn_id_idx],
-				conn_id_idx == 0 ? "standard" : "redirect");
-			
-			ret = vmbus_negotiate_version(msginfo, version, 
-						    connection_ids[conn_id_idx]);
+		/* VTL2 tries both connection IDs, non-VTL2 only tries standard */
+		if (ms_hyperv.vtl == 2) {
+			/* VTL2 path: Try both connection IDs (redirect first) */
+			int conn_id_idx;
+
+			for (conn_id_idx = 0; conn_id_idx < ARRAY_SIZE(connection_ids); conn_id_idx++) {
+				u32 connection_id = connection_ids[conn_id_idx];
+
+				pr_info("VMBus: Attempting connection_id 0x%x (%s)\n",
+					connection_id,
+					conn_id_idx == 0 ? "redirect" : "standard");
+
+				ret = vmbus_negotiate_version(msginfo, version, connection_id);
+				if (ret == -ETIMEDOUT) {
+					pr_err("VMBus: Negotiation timed out for connection_id 0x%x\n",
+						connection_id);
+					goto cleanup;
+				}
+
+				if (vmbus_connection.conn_state == CONNECTED) {
+					pr_info("VMBus: Successfully connected with version 0x%x, connection_id 0x%x\n",
+						version, connection_id);
+					break;
+				}
+
+				pr_info("VMBus: Failed to connect with connection_id 0x%x, trying next\n",
+					connection_id);
+			}
+		} else {
+			/* Non-VTL2 path: Only try standard connection ID */
+			u32 connection_id = VMBUS_MESSAGE_CONNECTION_ID_4;
+
+			pr_info("VMBus: Attempting connection_id 0x%x (standard only for non-VTL2)\n",
+				connection_id);
+
+			ret = vmbus_negotiate_version(msginfo, version, connection_id);
 			if (ret == -ETIMEDOUT) {
-				pr_err("VMBus: Negotiation timed out for connection_id 0x%x\n",
-					connection_ids[conn_id_idx]);
+				pr_err("VMBus: Negotiation timed out\n");
 				goto cleanup;
 			}
 
 			if (vmbus_connection.conn_state == CONNECTED) {
 				pr_info("VMBus: Successfully connected with version 0x%x, connection_id 0x%x\n",
-					version, connection_ids[conn_id_idx]);
-				break;
+					version, connection_id);
 			}
+		}
 
-			pr_info("VMBus: Failed to connect with connection_id 0x%x, trying next\n",
-				connection_ids[conn_id_idx]);
-		}
-		
-		if (vmbus_connection.conn_state == CONNECTED) {
-			pr_info("VMBus: Connection established successfully!\n");
+		if (vmbus_connection.conn_state == CONNECTED)
 			break;
-		}
-		
-		pr_info("VMBus: All connection IDs failed for version 0x%x, trying next version\n", 
-			version);
+
+		pr_info("VMBus: Version 0x%x failed, trying next version\n", version);
 	}
 
 	if (vmbus_connection.conn_state != CONNECTED) {
