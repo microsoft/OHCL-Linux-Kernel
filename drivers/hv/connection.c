@@ -84,9 +84,6 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version,
 	struct vmbus_channel_initiate_contact *msg;
 	unsigned long flags;
 
-	pr_info("VMBus: Starting negotiation - version 0x%x, connection_id 0x%x\n", 
-		version, connection_id);
-
 	init_completion(&msginfo->waitevent);
 
 	msg = (struct vmbus_channel_initiate_contact *)msginfo->msg;
@@ -107,14 +104,10 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version,
 	 * On old hosts, we should always use VMBUS_MESSAGE_CONNECTION_ID (1).
 	 */
 	if (version >= VERSION_WIN10_V5) {
-		pr_info("VMBus: Using modern protocol (v5+) with connection_id 0x%x\n", 
-			connection_id);
 		msg->msg_sint = VMBUS_MESSAGE_SINT;
 		msg->msg_vtl = ms_hyperv.vtl;
 		vmbus_connection.msg_conn_id = connection_id;
 	} else {
-		pr_info("VMBus: Using legacy protocol with connection_id %d\n", 
-			VMBUS_MESSAGE_CONNECTION_ID);
 		msg->interrupt_page = virt_to_phys(vmbus_connection.int_page);
 		vmbus_connection.msg_conn_id = VMBUS_MESSAGE_CONNECTION_ID;
 	}
@@ -145,10 +138,8 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version,
 			     true);
 
 	trace_vmbus_negotiate_version(msg, ret);
-	pr_info("VMBus: Posted negotiation message, ret=%d\n", ret);
 
 	if (ret != 0) {
-		pr_err("VMBus: Failed to post negotiation message, ret=%d\n", ret);
 		spin_lock_irqsave(&vmbus_connection.channelmsg_lock, flags);
 		list_del(&msginfo->msglistentry);
 		spin_unlock_irqrestore(&vmbus_connection.channelmsg_lock,
@@ -165,16 +156,12 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version,
 
 	/* Check if successful */
 	if (msginfo->response.version_response.version_supported) {
-		pr_info("VMBus: Version 0x%x supported with connection_id 0x%x\n", 
-			version, connection_id);
 		vmbus_connection.conn_state = CONNECTED;
 
 		if (version >= VERSION_WIN10_V5)
 			vmbus_connection.msg_conn_id =
 				msginfo->response.version_response.msg_conn_id;
 	} else {
-		pr_info("VMBus: Version 0x%x rejected with connection_id 0x%x\n", 
-			version, connection_id);
 		return -ECONNREFUSED;
 	}
 
@@ -189,8 +176,6 @@ int vmbus_connect(void)
 	struct vmbus_channel_msginfo *msginfo = NULL;
 	int i, ret = 0;
 	__u32 version;
-
-	pr_info("VMBus: Starting VMBus connection process\n");
 
 	/* Initialize the vmbus connection */
 	vmbus_connection.conn_state = CONNECTING;
@@ -305,8 +290,6 @@ int vmbus_connect(void)
 	 * For non-VTL2: Only try standard connection ID (single attempt per version).
 	 */
 
-	pr_info("VMBus: VTL level: %d\n", ms_hyperv.vtl);
-
 	for (i = 0; ; i++) {
 		if (i == ARRAY_SIZE(vmbus_versions)) {
 			ret = -EDOM;
@@ -317,9 +300,6 @@ int vmbus_connect(void)
 		if (version > max_version)
 			continue;
 
-		pr_info("VMBus: Trying version 0x%x (%d.%d)\n", version,
-			version >> 16, version & 0xFFFF);
-
 		/* VTL2 tries both connection IDs, non-VTL2 only tries standard */
 		if (ms_hyperv.vtl == 2) {
 			/* VTL2 path: Try both connection IDs (redirect first) */
@@ -328,59 +308,25 @@ int vmbus_connect(void)
 			for (conn_id_idx = 0; conn_id_idx < ARRAY_SIZE(connection_ids); conn_id_idx++) {
 				u32 connection_id = connection_ids[conn_id_idx];
 
-				pr_info("VMBus: Attempting connection_id 0x%x (%s)\n",
-					connection_id,
-					conn_id_idx == 0 ? "redirect" : "standard");
-
 				ret = vmbus_negotiate_version(msginfo, version, connection_id);
-				if (ret == -ETIMEDOUT) {
-					pr_err("VMBus: Negotiation timed out for connection_id 0x%x\n",
-						connection_id);
+				if (ret == -ETIMEDOUT)
 					goto cleanup;
-				}
 
-				if (vmbus_connection.conn_state == CONNECTED) {
-					pr_info("VMBus: Successfully connected with version 0x%x, connection_id 0x%x\n",
-						version, connection_id);
+				if (vmbus_connection.conn_state == CONNECTED)
 					break;
-				}
-
-				pr_info("VMBus: Failed to connect with connection_id 0x%x, trying next\n",
-					connection_id);
 			}
 		} else {
 			/* Non-VTL2 path: Only try standard connection ID */
 			u32 connection_id = VMBUS_MESSAGE_CONNECTION_ID_4;
 
-			pr_info("VMBus: Attempting connection_id 0x%x (standard only for non-VTL2)\n",
-				connection_id);
-
 			ret = vmbus_negotiate_version(msginfo, version, connection_id);
-			if (ret == -ETIMEDOUT) {
-				pr_err("VMBus: Negotiation timed out\n");
+			if (ret == -ETIMEDOUT)
 				goto cleanup;
-			}
-
-			if (vmbus_connection.conn_state == CONNECTED) {
-				pr_info("VMBus: Successfully connected with version 0x%x, connection_id 0x%x\n",
-					version, connection_id);
-			}
 		}
 
 		if (vmbus_connection.conn_state == CONNECTED)
 			break;
-
-		pr_info("VMBus: Version 0x%x failed, trying next version\n", version);
 	}
-
-	if (vmbus_connection.conn_state != CONNECTED) {
-		pr_err("VMBus: Failed to establish connection with any version/connection_id combination\n");
-		ret = -EDOM;
-		goto cleanup;
-	}
-
-	pr_info("VMBus: Final connection established - version: 0x%x, connection_id: 0x%x\n",
-		version, vmbus_connection.msg_conn_id);
 
 	if (hv_is_isolation_supported() && version < VERSION_WIN10_V5_2) {
 		pr_err("Invalid VMBus version %d.%d (expected >= %d.%d) from the host supporting isolation\n",
