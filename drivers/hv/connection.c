@@ -71,10 +71,10 @@ module_param(max_version, uint, S_IRUGO);
 MODULE_PARM_DESC(max_version,
 		 "Maximal VMBus protocol version which can be negotiated");
 
-/* Array of connection IDs to try in order: redirect first, then standard */
+/* Array of connection IDs to try in order: standard first, then redirect */
 static const u32 connection_ids[] = {
-	VMBUS_MESSAGE_CONNECTION_ID_REDIRECT,
-	VMBUS_MESSAGE_CONNECTION_ID_4
+	VMBUS_MESSAGE_CONNECTION_ID_4,
+	VMBUS_MESSAGE_CONNECTION_ID_REDIRECT
 };
 
 int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version,
