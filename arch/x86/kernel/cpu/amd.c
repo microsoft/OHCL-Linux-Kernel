@@ -24,6 +24,7 @@
 #include <asm/resctrl.h>
 #include <asm/msr.h>
 #include <asm/sev.h>
+#include <asm/mshyperv.h>
 
 #ifdef CONFIG_X86_64
 # include <asm/mmconfig.h>
@@ -1364,6 +1365,13 @@ static __init int print_s5_reset_status_mmio(void)
 	void __iomem *addr;
 	u32 value;
 	int i;
+
+	/*
+	 * The below ioread32() causes a triple fault for SNP due to a hypevisor
+	 * bug. Work it around for now.
+	 */
+	if (!ms_hyperv.paravisor_present && hv_is_isolation_supported())
+		return 0;
 
 	if (!cpu_feature_enabled(X86_FEATURE_ZEN))
 		return 0;
