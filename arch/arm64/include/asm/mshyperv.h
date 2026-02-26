@@ -79,7 +79,6 @@ struct mshv_vtl_cpu_context {
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
-void hv_vtl_return(struct hv_vtl_cpu_context *vtl0, union hv_input_vtl target_vtl, u32 flags, u64 vtl_return_offset);
 
 static inline void hv_vtl_idle(void)
 {
@@ -97,9 +96,11 @@ static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
 #ifdef CONFIG_HYPERV_VTL_MODE
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
+void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0);
 #else
 static inline void __init hv_vtl_init_platform(void) {}
 static inline int __init hv_vtl_early_init(void) { return 0; }
+static inline void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0) {}
 #endif
 
 #include <asm-generic/mshyperv.h>
