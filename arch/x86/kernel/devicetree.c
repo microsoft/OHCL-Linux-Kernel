@@ -17,8 +17,8 @@
 #include <linux/pci.h>
 #include <linux/of_pci.h>
 #include <linux/initrd.h>
-#include <linux/smp.h>
 
+#include <asm/acpi.h>
 #include <asm/irqdomain.h>
 #include <asm/hpet.h>
 #include <asm/apic.h>
