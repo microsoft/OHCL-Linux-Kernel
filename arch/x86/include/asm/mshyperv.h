@@ -314,6 +314,7 @@ static inline int __init hv_vtl_early_init(void) { return 0; }
 static inline void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
 static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
 static inline void mshv_vtl_return_hypercall(void) {}
+static inline void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0) {}
 static inline void __mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
 #endif
 

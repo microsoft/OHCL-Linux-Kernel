@@ -1297,7 +1297,9 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 	struct mshv_vtl_run *this_run = mshv_vtl_this_run();
 	struct mshv_vtl_cpu_context *cpu_ctx = &mshv_vtl_this_run()->cpu_context;
 	u32 flags = READ_ONCE(this_run->flags);
+#if defined(CONFIG_SEV_GUEST)
 	union hv_input_vtl target_vtl = READ_ONCE(this_run->target_vtl);
+#endif
 	enum TDX_HALT_TIMER armed;
 
 	trace_mshv_vtl_enter_vtl0(cpu_ctx);
