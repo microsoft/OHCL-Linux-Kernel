@@ -6,6 +6,9 @@
  *   Saurabh Sengar <ssengar@microsoft.com>
  */
 
+#include <linux/acpi.h>
+
+#include <asm/acpi.h>
 #include <asm/apic.h>
 #include <asm/boot.h>
 #include <asm/debugreg.h>
@@ -34,18 +37,6 @@ static struct real_mode_header hv_vtl_real_mode_header;
 static bool __init hv_vtl_msi_ext_dest_id(void)
 {
 	return true;
-}
-
-static inline bool within_page(u64 addr, u64 start)
-{
-	return addr >= start && addr < (start + PAGE_SIZE);
-}
-
-static bool hv_vtl_is_private_mmio_tdx(u64 addr)
-{
-	u64 mb_addr = acpi_get_mp_wakeup_mailbox_paddr();
-
-	return mb_addr && within_page(addr, mb_addr);
 }
 
 /*
@@ -78,10 +69,23 @@ static void  __noreturn hv_vtl_restart(char __maybe_unused *cmd)
 	hv_vtl_emergency_restart();
 }
 
+static inline bool within_page(u64 addr, u64 start)
+{
+	return addr >= start && addr < (start + PAGE_SIZE);
+}
+
+static bool hv_vtl_is_private_mmio_tdx(u64 addr)
+{
+	u64 mb_addr = acpi_get_mp_wakeup_mailbox_paddr();
+
+	return mb_addr && within_page(addr, mb_addr);
+}
+
 void __init hv_vtl_init_platform(void)
 {
 	pr_info("Linux runs in Hyper-V Virtual Trust Level\n");
 
+	x86_init.resources.probe_roms = x86_init_noop;
 	/* There is no paravisor present if we are here. */
 	if (hv_isolation_type_tdx()) {
 		x86_init.resources.realmode_limit = SZ_4G;
@@ -92,8 +96,6 @@ void __init hv_vtl_init_platform(void)
 		x86_platform.realmode_init = x86_init_noop;
 		real_mode_header = &hv_vtl_real_mode_header;
 	}
-
-	x86_init.resources.probe_roms = x86_init_noop;
 	x86_init.irqs.pre_vector_init = x86_init_noop;
 	x86_init.timers.timer_init = x86_init_noop;
 	x86_init.resources.probe_roms = x86_init_noop;
@@ -278,8 +280,8 @@ int __init hv_vtl_early_init(void)
 	 * Otherwise, use an enlightened path since SIPI is not
 	 * available for VTL2.
 	 */
-	if (!((hv_isolation_type_snp() || hv_isolation_type_tdx())
-	    && !hyperv_paravisor_present))
+	if (!((hv_isolation_type_snp() || hv_isolation_type_tdx()) &&
+	      !hyperv_paravisor_present))
 		apic_update_callback(wakeup_secondary_cpu_64, hv_vtl_wakeup_secondary_cpu);
 
 	return 0;

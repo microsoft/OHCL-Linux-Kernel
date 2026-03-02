@@ -20,7 +20,6 @@ description: |
   1: https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#multiprocessor-wakeup-structure
   2: https://www.intel.com/content/www/us/en/content-details/733585/intel-tdx-virtual-firmware-design-guide.html
 
-
 maintainers:
   - Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
 
