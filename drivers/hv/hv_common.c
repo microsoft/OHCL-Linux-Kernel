@@ -586,7 +586,7 @@ int hv_common_cpu_init(unsigned int cpu)
 		 * case of CPU offlining and the VM will hang.
 		 */
 		if (!*hvp) {
-			*hvp = kvmalloc(PAGE_SIZE, GFP_KERNEL | __GFP_ZERO);
+			*hvp = kvmalloc(HV_HYP_PAGE_SIZE, GFP_KERNEL | __GFP_ZERO);
 
 			/*
 			 * Hyper-V should never specify a VM that is a Confidential
@@ -596,20 +596,14 @@ int hv_common_cpu_init(unsigned int cpu)
 			 */
 			if (*hvp && !ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
 				WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1));
-				memset(*hvp, 0, PAGE_SIZE);
+				memset(*hvp, 0, HV_HYP_PAGE_SIZE);
 			}
 		}
 
 		if (*hvp)
 			msr.pfn = virt_to_hvpfn(*hvp);
-
 	}
 	if (!WARN_ON(!(*hvp))) {
-		if (!ms_hyperv.paravisor_present &&
-		    (hv_isolation_type_snp() || hv_isolation_type_tdx())) {
-			WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1) != 0);
-			memset(*hvp, 0, PAGE_SIZE);
-		}
 		msr.enable = 1;
 		hv_set_msr(HV_SYN_REG_VP_ASSIST_PAGE, msr.as_uint64);
 	}
