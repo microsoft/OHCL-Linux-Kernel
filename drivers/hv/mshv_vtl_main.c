@@ -583,7 +583,7 @@ static void mshv_vtl_vmbus_isr(void)
 	}
 
 	/* Handle proxied interrupts from the host. */
-	if (hv_isolation_type_tdx())
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
 		mshv_vtl_scan_proxy_interrupts(per_cpu);
 
 	event_flags = (union hv_synic_event_flags *)per_cpu->synic_event_page +
@@ -677,9 +677,7 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 	if (!per_cpu->run)
 		return -ENOMEM;
 
-	if (mshv_vsm_capabilities.intercept_page_available) {
-		mshv_vtl_configure_reg_page(per_cpu);
-	} else if (hv_isolation_type_tdx()) {
+	if (hv_isolation_type_tdx()) {
 #if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
 		struct page *tdx_apic_page;
 
@@ -709,6 +707,8 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		if (ret < 0)
 			return ret;
 #endif
+	} else if (mshv_vsm_capabilities.intercept_page_available) {
+		mshv_vtl_configure_reg_page(per_cpu);
 	}
 
 	mshv_vtl_synic_enable_regs(cpu);
@@ -911,46 +911,6 @@ void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 {
 	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 
-#if defined(CONFIG_X86_64)
-	if (hv_isolation_type_tdx()) {
-		/* Read and clear tdx specific flags set by usermode. */
-		u64 tdx_flags = READ_ONCE(mshv_vtl_this_run()->tdx_context.vp_state.flags);
-		mshv_vtl_this_run()->tdx_context.vp_state.flags = 0;
-		
-		/*
-		 * Clear RAX to an exit (PENDING_INTERRUPT) that the usermode
-		 * VMM will do nothing, if we are halting.
-		 */
-		mshv_vtl_this_run()->tdx_context.exit_info.rax = 0x112000000000;
-
-		/* Handle any flags set by usermode. */
-		if (unlikely(tdx_flags)) {
-			/* Handle any cache invalidation requests from usermode. */
-			if (tdx_flags & MSHV_VTL_TDX_VP_STATE_FLAG_WBINVD)
-				mshv_tdx_request_cache_flush(false);
-			else if (tdx_flags & MSHV_VTL_TDX_VP_STATE_FLAG_WBNOINVD)
-				mshv_tdx_request_cache_flush(true);
-		}
-		
-		if (unlikely(mshv_vtl_this_run()->flags & MSHV_VTL_RUN_FLAG_HALTED)) {
-			tdx_safe_halt();
-		} else {
-			/* Only supports VTL0 */
-			mshv_vtl_return_tdx();
-		}
-		return;
-	} else if (hv_isolation_type_snp()) {
-		if (unlikely(mshv_vtl_this_run()->flags & MSHV_VTL_RUN_FLAG_HALTED)) {
-			native_safe_halt();
-		} else {
-			u8 target_vtl = 0;
-
-			snp_mshv_vtl_return(target_vtl);
-		}
-		return;
-	}
-#endif	
-	
 	/*
 	 * Process signal event direct set in the run page, if any.
 	 */
@@ -1081,8 +1041,6 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 
 	trace_mshv_vtl_enter_vtl0(cpu_ctx);
 
-	mshv_vtl_return(cpu_ctx);
-
 	/* A VTL2 TDX kernel doesn't allocate hv_vp_assist_page at the moment */
 	hvp = hv_vp_assist_page ? hv_vp_assist_page[smp_processor_id()] : NULL;
 
@@ -1103,11 +1061,49 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 		       min_t(u32, offset, sizeof(hvp->vtl_ret_actions)));
 	}
 
-	mshv_vtl_return(cpu_ctx);
+#if defined(CONFIG_X86_64)
+	if (hv_isolation_type_tdx()) {
+		/* Read and clear tdx specific flags set by usermode. */
+		u64 tdx_flags = READ_ONCE(mshv_vtl_this_run()->tdx_context.vp_state.flags);
+		mshv_vtl_this_run()->tdx_context.vp_state.flags = 0;
+		
+		/*
+		 * Clear RAX to an exit (PENDING_INTERRUPT) that the usermode
+		 * VMM will do nothing, if we are halting.
+		 */
+		mshv_vtl_this_run()->tdx_context.exit_info.rax = 0x112000000000;
 
+		/* Handle any flags set by usermode. */
+		if (unlikely(tdx_flags)) {
+			/* Handle any cache invalidation requests from usermode. */
+			if (tdx_flags & MSHV_VTL_TDX_VP_STATE_FLAG_WBINVD)
+				mshv_tdx_request_cache_flush(false);
+			else if (tdx_flags & MSHV_VTL_TDX_VP_STATE_FLAG_WBNOINVD)
+				mshv_tdx_request_cache_flush(true);
+		}
+
+		if (unlikely(mshv_vtl_this_run()->flags & MSHV_VTL_RUN_FLAG_HALTED)) {
+			tdx_safe_halt();
+		} else {
+			/* Only supports VTL0 */
+			mshv_vtl_return_tdx();
+		}
+		return;
+	} if (hv_isolation_type_snp()) {
+		#if defined(CONFIG_SEV_GUEST)
+		                if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED))
+		                        native_safe_halt();
+		                else
+		                        snp_mshv_vtl_return(target_vtl.use_target_vtl ? target_vtl.target_vtl : 0);
+		                return;
+		#endif
+	} else {
+		mshv_vtl_return(cpu_ctx);
+	}
+#endif
 	if (!hvp)
 		return;
-
+	
 	trace_mshv_vtl_exit_vtl0(hvp->vtl_entry_reason, cpu_ctx);
 }
 
@@ -1521,21 +1517,20 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 
 		if (__xfer_to_guest_mode_work_pending()) {
 			local_irq_save(irq_flags);
-			ti_work = READ_ONCE(current_thread_info()->flags);
-			cancel = READ_ONCE(mshv_vtl_this_run()->cancel);
-			cancel |= mshv_pull_proxy_irr(mshv_vtl_this_run());
-			if (unlikely((ti_work & VTL0_WORK) || cancel)) {
-				local_irq_restore(irq_flags);
-				preempt_enable();
-				ret = xfer_to_guest_mode_handle_work();
-				if (ret)
-					return ret;
-				preempt_disable();
+	                ti_work = READ_ONCE(current_thread_info()->flags);
+	                cancel = READ_ONCE(mshv_vtl_this_run()->cancel);
+	                cancel |= mshv_pull_proxy_irr(mshv_vtl_this_run());
+	                if (unlikely((ti_work & VTL0_WORK) || cancel)) {
+	                        local_irq_restore(irq_flags);
+	                        preempt_enable();
+	                        ret = xfer_to_guest_mode_handle_work();
+	                        if (ret)
+	                                return ret;
+	                        preempt_disable();
 			}
-
-			local_irq_save(irq_flags);
 		}
 
+		local_irq_save(irq_flags);
 		if (READ_ONCE(mshv_vtl_this_run()->cancel)) {
 			local_irq_restore(irq_flags);
 			preempt_enable();
@@ -1811,7 +1806,7 @@ static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
 
 static void __noreturn mshv_sev_es_terminate(unsigned int set, unsigned int reason)
 {
-	native_wrmsrl(MSR_AMD64_SEV_ES_GHCB,
+	native_wrmsrq(MSR_AMD64_SEV_ES_GHCB,
 		      GHCB_SEV_TERM_REASON(set, reason) | GHCB_MSR_TERM_REQ);
 	VMGEXIT();
 

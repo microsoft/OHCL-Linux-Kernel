@@ -5,6 +5,9 @@
 #include <linux/kernel.h>
 #include <linux/mshv.h>
 #include <linux/types.h>
+#include <asm/mshyperv.h>
+#include <asm/fpu/types.h>
+#include <hyperv/hvgdk_mini.h>
 
 #ifdef CONFIG_X86_64
 
