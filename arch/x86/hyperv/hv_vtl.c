@@ -82,6 +82,14 @@ void __init hv_vtl_init_platform(void)
 	 */
 	pr_info("Linux runs in Hyper-V Virtual Trust Level %d\n", ms_hyperv.vtl);
 
+	/*
+	 * Disable TSC_ADJUST so that the periodic TSC sync check timer
+	 * (start_sync_check_timer) and related TSC adjustment logic are
+	 * skipped. The TSC exposed via Hyper-V will be consistent across
+	 * processors.
+	 */
+	setup_clear_cpu_cap(X86_FEATURE_TSC_ADJUST);
+
 	/* There is no paravisor present if we are here. */
 	if (hv_isolation_type_tdx()) {
 		x86_init.resources.realmode_limit = SZ_4G;
