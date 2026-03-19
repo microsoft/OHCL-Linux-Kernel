@@ -141,7 +141,12 @@ struct rmp_state {
 	u32 asid;
 } __packed;
 
-#define RMPADJUST_VMSA_PAGE_BIT		BIT(16)
+/* Target VMPL takes the first byte */
+#define RMPADJUST_ENABLE_READ			BIT(8)
+#define RMPADJUST_ENABLE_WRITE			BIT(9)
+#define RMPADJUST_USER_EXECUTE			BIT(10)
+#define RMPADJUST_KERNEL_EXECUTE		BIT(11)
+#define RMPADJUST_VMSA_PAGE_BIT			BIT(16)
 
 /* SNP Guest message request */
 struct snp_req_data {
