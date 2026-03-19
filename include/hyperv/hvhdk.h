@@ -742,6 +742,15 @@ union hv_x64_memory_access_info {
 	} __packed;
 };
 
+union hv_x64_exception_info {
+	__u8 as_uint8;
+	struct {
+		__u8 error_code_valid:1;
+		__u8 software_exception:1;
+		__u8 reserved:6;
+	} __packed;
+};
+
 struct hv_x64_memory_intercept_message {
 	struct hv_x64_intercept_message_header header;
 	u32 cache_type; /* enum hv_cache_type */
@@ -752,6 +761,35 @@ struct hv_x64_memory_intercept_message {
 	u64 guest_virtual_address;
 	u64 guest_physical_address;
 	u8 instruction_bytes[16];
+} __packed;
+
+struct hv_x64_exception_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	__u16 exception_vector;
+	union hv_x64_exception_info exception_info;
+	__u8 instruction_byte_count;
+	__u32 error_code;
+	__u64 exception_parameter;
+	__u64 reserved;
+	__u8 instruction_bytes[16];
+	struct hv_x64_segment_register ds_segment;
+	struct hv_x64_segment_register ss_segment;
+	__u64 rax;
+	__u64 rcx;
+	__u64 rdx;
+	__u64 rbx;
+	__u64 rsp;
+	__u64 rbp;
+	__u64 rsi;
+	__u64 rdi;
+	__u64 r8;
+	__u64 r9;
+	__u64 r10;
+	__u64 r11;
+	__u64 r12;
+	__u64 r13;
+	__u64 r14;
+	__u64 r15;
 } __packed;
 
 /*
