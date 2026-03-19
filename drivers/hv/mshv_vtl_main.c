@@ -1390,7 +1390,6 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 		       min_t(u32, offset, sizeof(hvp->vtl_ret_actions)));
 	}
 
-#if defined(CONFIG_X86_64)
 	if (hv_isolation_type_tdx()) {
 #if defined(CONFIG_INTEL_TDX_GUEST)
 		/* Read and clear tdx specific flags set by usermode. */
@@ -1434,7 +1433,7 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 	} else {
 		mshv_vtl_return(cpu_ctx);
 	}
-#endif
+
 	if (hvp)
 		trace_mshv_vtl_exit_vtl0(hvp->vtl_entry_reason, cpu_ctx);
 }
