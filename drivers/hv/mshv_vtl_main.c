@@ -893,8 +893,12 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	/*
 	 * Determine the highest page order that can be used for the given memory range.
 	 * This works best when the range is aligned; i.e. both the start and the length.
+	 * Clamp to MAX_FOLIO_ORDER to avoid a WARN in memremap_pages() when the range
+	 * alignment exceeds the maximum supported folio order for this kernel config.
 	 */
-	pgmap->vmemmap_shift = count_trailing_zeros(vtl0_mem.start_pfn | vtl0_mem.last_pfn);
+	pgmap->vmemmap_shift = min_t(unsigned long,
+				    count_trailing_zeros(vtl0_mem.start_pfn | vtl0_mem.last_pfn),
+				    MAX_FOLIO_ORDER);
 	dev_dbg(vtl->module_dev,
 		"Add VTL0 memory: start: 0x%llx, end_pfn: 0x%llx, page order: %lu\n",
 		vtl0_mem.start_pfn, vtl0_mem.last_pfn, pgmap->vmemmap_shift);
@@ -903,7 +907,7 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	if (IS_ERR(addr)) {
 		dev_err(vtl->module_dev, "devm_memremap_pages error: %ld\n", PTR_ERR(addr));
 		kfree(pgmap);
-		return -EFAULT;
+		return PTR_ERR(addr);
 	}
 
 	/* Don't free pgmap, since it has to stick around until the memory
