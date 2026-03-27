@@ -899,8 +899,9 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	 * Clamp to MAX_FOLIO_ORDER to avoid a WARN in memremap_pages() when the range
 	 * alignment exceeds the maximum supported folio order for this kernel config.
 	 */
-	pgmap->vmemmap_shift = min(count_trailing_zeros(vtl0_mem.start_pfn | vtl0_mem.last_pfn),
-				   MAX_FOLIO_ORDER);
+	pgmap->vmemmap_shift = min_t(unsigned long,
+				    count_trailing_zeros(vtl0_mem.start_pfn | vtl0_mem.last_pfn),
+				    MAX_FOLIO_ORDER);
 	dev_dbg(vtl->module_dev,
 		"Add VTL0 memory: start: 0x%llx, end_pfn: 0x%llx, page order: %lu\n",
 		vtl0_mem.start_pfn, vtl0_mem.last_pfn, pgmap->vmemmap_shift);
