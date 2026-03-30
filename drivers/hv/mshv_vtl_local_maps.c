@@ -90,6 +90,7 @@
 #include <asm/pgalloc.h>
 #include <asm/pgtable_types.h>
 #include <asm/mshyperv.h>
+#include <asm/pgtable_64_types.h>
 
 #include "mshv_vtl_local_maps.h"
 
@@ -109,11 +110,8 @@ static DEFINE_MUTEX(mshv_local_maps_mutex);
 #define NORMAL_PAGE_SIZE 			(u64)(PAGE_SIZE)
 #define ENTRIES_PER_PGTABLE			(u64)(0x200)
 
-#if CONFIG_PGTABLE_LEVELS < 5
-#define LOCAL_LARGE_VA_START 		0xffff800000000000ULL
-#else
-#define LOCAL_LARGE_VA_START 		0xff00000000000000ULL
-#endif
+#define LOCAL_LARGE_VA_START 		(pgtable_l5_enabled() ?	\
+					 0xff00000000000000ULL : 0xffff800000000000ULL)
 
 #define LOCAL_LARGE_VA_END 			(u64)(LOCAL_LARGE_VA_START + MAX_HYPERV_CPUS*LARGE_PAGE_SIZE)
 #define LOCAL_NORMAL_VA_START 		(u64)(LOCAL_LARGE_VA_END)
