@@ -1870,31 +1870,21 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 	reenter = reenter_mode(mode);
 
 	for (;;) {
-		const unsigned long VTL0_WORK= _TIF_SIGPENDING | _TIF_NEED_RESCHED |
-					_TIF_NOTIFY_RESUME | _TIF_NOTIFY_SIGNAL;
 		unsigned long irq_flags;
 		struct hv_vp_assist_page *hvp;
-		unsigned long ti_work;
-		u32 cancel;
 		int ret;
 
 		if (__xfer_to_guest_mode_work_pending()) {
-			local_irq_save(irq_flags);
-	                ti_work = READ_ONCE(current_thread_info()->flags);
-	                cancel = READ_ONCE(mshv_vtl_this_run()->cancel);
-	                cancel |= mshv_pull_proxy_irr(mshv_vtl_this_run());
-	                if (unlikely((ti_work & VTL0_WORK) || cancel)) {
-	                        local_irq_restore(irq_flags);
-	                        preempt_enable();
-	                        ret = xfer_to_guest_mode_handle_work();
-	                        if (ret)
-	                                return ret;
-	                        preempt_disable();
-			}
+			preempt_enable();
+			ret = xfer_to_guest_mode_handle_work();
+			if (ret)
+				return ret;
+			preempt_disable();
 		}
 
 		local_irq_save(irq_flags);
-		if (READ_ONCE(mshv_vtl_this_run()->cancel)) {
+		if (READ_ONCE(mshv_vtl_this_run()->cancel) ||
+		    mshv_pull_proxy_irr(mshv_vtl_this_run())) {
 			local_irq_restore(irq_flags);
 			preempt_enable();
 			return -EINTR;
