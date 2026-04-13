@@ -30,6 +30,7 @@
 #include <linux/set_memory.h>
 #include <linux/vmalloc.h>
 #include <linux/io.h>
+#include <linux/hyperv.h>
 #include <hyperv/hvhdk.h>
 #include <hyperv/hvgdk.h>
 #include <asm/mshyperv.h>
@@ -408,12 +409,12 @@ int __init hv_common_init(void)
 	 */
 	if (hv_isolation_type_tdx()) {
 		hv_vp_assist_page = NULL;
+#ifdef CONFIG_X86_64
+		ms_hyperv.hints &= ~HV_X64_ENLIGHTENED_VMCS_RECOMMENDED;
+#endif
 	} else {
 		hv_vp_assist_page = kzalloc_objs(*hv_vp_assist_page, nr_cpu_ids);
 		if (!hv_vp_assist_page) {
-#ifdef CONFIG_X86_64
-			ms_hyperv.hints &= ~HV_X64_ENLIGHTENED_VMCS_RECOMMENDED;
-#endif
 			hv_common_free();
 			return -ENOMEM;
 		}
@@ -566,7 +567,7 @@ int hv_common_cpu_init(unsigned int cpu)
 						sizeof(u8), flags);
 		/* No need to unwind any of the above on failure here */
 		if (unlikely(!*synic_eventring_tail))
-			ret = -ENOMEM;
+			return -ENOMEM;
 	}
 
 	if (!hv_vp_assist_page)
@@ -578,20 +579,20 @@ int hv_common_cpu_init(unsigned int cpu)
 		 * For root partition we get the hypervisor provided VP assist
 		 * page, instead of allocating a new page.
 		 */
-		msr.as_uint64 = hv_get_msr(HV_SYN_REG_VP_ASSIST_PAGE);
+		msr.as_uint64 = hv_get_msr(HV_MSR_VP_ASSIST_PAGE);
 		*hvp = memremap(msr.pfn << HV_VP_ASSIST_PAGE_ADDRESS_SHIFT,
-				PAGE_SIZE, MEMREMAP_WB);
+				HV_HYP_PAGE_SIZE, MEMREMAP_WB);
 	} else {
 		/*
 		 * The VP assist page is an "overlay" page (see Hyper-V TLFS's
 		 * Section 5.2.1 "GPA Overlay Pages"). Here it must be zeroed
-		 * out to make sure we always write the EOI MSR in
+		 * out to make sure that on x86/x64, we always write the EOI MSR in
 		 * hv_apic_eoi_write() *after* the EOI optimization is disabled
 		 * in hv_cpu_die(), otherwise a CPU may not be stopped in the
 		 * case of CPU offlining and the VM will hang.
 		 */
 		if (!*hvp) {
-			*hvp = __vmalloc(PAGE_SIZE, GFP_KERNEL | __GFP_ZERO);
+			*hvp = __vmalloc(HV_HYP_PAGE_SIZE, flags | __GFP_ZERO);
 
 			/*
 			 * Hyper-V should never specify a VM that is a Confidential
@@ -599,18 +600,20 @@ int hv_common_cpu_init(unsigned int cpu)
 			 * is blocked to run in Confidential VM. So only decrypt assist
 			 * page in non-root partition here.
 			 */
-			if (*hvp && !ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
+			if (*hvp &&
+			    !ms_hyperv.paravisor_present &&
+			    hv_isolation_type_snp()) {
 				WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1));
-				memset(*hvp, 0, PAGE_SIZE);
+				memset(*hvp, 0, HV_HYP_PAGE_SIZE);
 			}
 		}
 
 		if (*hvp)
-			msr.pfn = vmalloc_to_pfn(*hvp);
+			msr.pfn = page_to_hvpfn(vmalloc_to_page(*hvp));
 	}
 	if (!WARN_ON(!(*hvp))) {
 		msr.enable = 1;
-		hv_set_msr(HV_SYN_REG_VP_ASSIST_PAGE, msr.as_uint64);
+		hv_set_msr(HV_MSR_VP_ASSIST_PAGE, msr.as_uint64);
 	}
 
 	return ret;
@@ -649,10 +652,10 @@ int hv_common_cpu_die(unsigned int cpu)
 			 */
 			memunmap(hv_vp_assist_page[cpu]);
 			hv_vp_assist_page[cpu] = NULL;
-			msr.as_uint64 = hv_get_msr(HV_SYN_REG_VP_ASSIST_PAGE);
+			msr.as_uint64 = hv_get_msr(HV_MSR_VP_ASSIST_PAGE);
 			msr.enable = 0;
 		}
-		hv_set_msr(HV_SYN_REG_VP_ASSIST_PAGE, msr.as_uint64);
+		hv_set_msr(HV_MSR_VP_ASSIST_PAGE, msr.as_uint64);
 	}
 
 	return 0;

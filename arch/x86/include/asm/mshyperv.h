@@ -155,16 +155,6 @@ static inline u64 hv_do_fast_hypercall16(u16 code, u64 input1, u64 input2)
 	return _hv_do_fast_hypercall16(control, input1, input2);
 }
 
-extern struct hv_vp_assist_page **hv_vp_assist_page;
-
-static inline struct hv_vp_assist_page *hv_get_vp_assist_page(unsigned int cpu)
-{
-	if (!hv_vp_assist_page)
-		return NULL;
-
-	return hv_vp_assist_page[cpu];
-}
-
 void __init hyperv_init(void);
 void hyperv_setup_mmu_ops(void);
 void set_hv_tscchange_cb(void (*cb)(void));
@@ -254,10 +244,6 @@ static inline void hyperv_setup_mmu_ops(void) {}
 static inline void set_hv_tscchange_cb(void (*cb)(void)) {}
 static inline void clear_hv_tscchange_cb(void) {}
 static inline void hyperv_stop_tsc_emulation(void) {};
-static inline struct hv_vp_assist_page *hv_get_vp_assist_page(unsigned int cpu)
-{
-	return NULL;
-}
 static inline int hyperv_flush_guest_mapping(u64 as) { return -1; }
 static inline int hyperv_flush_guest_mapping_range(u64 as,
 		hyperv_fill_flush_list_func fill_func, void *data)
