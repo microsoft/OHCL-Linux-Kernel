@@ -22,4 +22,7 @@ struct mshv_vtl_run {
 	char vtl_ret_actions[MSHV_MAX_RUN_MSG_SIZE];
 };
 
+static_assert(sizeof(struct mshv_vtl_cpu_context) <= 1024,
+	      "struct mshv_vtl_cpu_context exceeds reserved space in struct mshv_vtl_run");
+
 #endif /* _MSHV_VTL_H */

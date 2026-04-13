@@ -395,8 +395,10 @@ static inline int hv_deposit_memory(u64 partition_id, u64 status)
 
 #if IS_ENABLED(CONFIG_HYPERV_VTL_MODE)
 u8 __init get_vtl(void);
+void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 #else
 static inline u8 get_vtl(void) { return 0; }
+static inline void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
 #endif
 
 #endif

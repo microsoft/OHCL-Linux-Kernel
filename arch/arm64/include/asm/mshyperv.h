@@ -63,8 +63,8 @@ static inline u64 hv_get_non_nested_msr(unsigned int reg)
 
 struct mshv_vtl_cpu_context {
 /*
- * NOTE: x18 is managed by the hypervisor. It won't be reloaded from this array.
- * It is included here for convenience in the common case.
+ * x18 is managed by the hypervisor. It won't be reloaded from this array.
+ * It is included here for convenience in array indexing.
  */
 	__u64 x[31];
 	__u64 rsvd;
@@ -81,7 +81,6 @@ static inline int hv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u
 	return 1;
 }
 
-void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 #endif
 
 #include <asm-generic/mshyperv.h>

@@ -37,7 +37,7 @@ void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
 	 * - Q0-Q31: Saved/restored (128-bit NEON/floating-point registers, shared)
 	 * - SP: Not in structure, hypervisor-managed per-VTL
 	 *
-	 * Note: X29 (FP) and X30 (LR) are in the structure and must be saved/restored
+	 * X29 (FP) and X30 (LR) are in the structure and must be saved/restored
 	 * as part of VTL0's complete execution state.
 	 */
 	asm __volatile__ (
