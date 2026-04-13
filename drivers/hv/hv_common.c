@@ -758,13 +758,18 @@ bool __weak hv_isolation_type_tdx(void)
 }
 EXPORT_SYMBOL_GPL(hv_isolation_type_tdx);
 
-void __weak hv_setup_vmbus_handler(void (*handler)(void))
+void (*vmbus_handler)(void);
+EXPORT_SYMBOL_GPL(vmbus_handler);
+
+void hv_setup_vmbus_handler(void (*handler)(void))
 {
+	vmbus_handler = handler;
 }
 EXPORT_SYMBOL_GPL(hv_setup_vmbus_handler);
 
-void __weak hv_remove_vmbus_handler(void)
+void hv_remove_vmbus_handler(void)
 {
+	vmbus_handler = NULL;
 }
 EXPORT_SYMBOL_GPL(hv_remove_vmbus_handler);
 

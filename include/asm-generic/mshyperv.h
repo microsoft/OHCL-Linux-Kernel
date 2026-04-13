@@ -179,6 +179,7 @@ static inline u64 hv_generate_guest_id(u64 kernel_version)
 
 int hv_get_hypervisor_version(union hv_hypervisor_version_info *info);
 
+extern void (*vmbus_handler)(void);
 void hv_setup_vmbus_handler(void (*handler)(void));
 void hv_remove_vmbus_handler(void);
 void hv_setup_stimer0_handler(void (*handler)(void));

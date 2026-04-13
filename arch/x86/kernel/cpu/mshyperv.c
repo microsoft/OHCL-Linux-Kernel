@@ -145,7 +145,6 @@ void hv_set_msr(unsigned int reg, u64 value)
 EXPORT_SYMBOL_GPL(hv_set_msr);
 
 static void (*mshv_handler)(void);
-static void (*vmbus_handler)(void);
 static void (*hv_stimer0_handler)(void);
 static void (*hv_kexec_handler)(void);
 static void (*hv_crash_handler)(struct pt_regs *regs);
@@ -170,17 +169,6 @@ DEFINE_IDTENTRY_SYSVEC(sysvec_hyperv_callback)
 void hv_setup_mshv_handler(void (*handler)(void))
 {
 	mshv_handler = handler;
-}
-
-void hv_setup_vmbus_handler(void (*handler)(void))
-{
-	vmbus_handler = handler;
-}
-
-void hv_remove_vmbus_handler(void)
-{
-	/* We have no way to deallocate the interrupt gate */
-	vmbus_handler = NULL;
 }
 
 /*

@@ -1415,7 +1415,8 @@ EXPORT_SYMBOL_FOR_MODULES(vmbus_isr, "mshv_vtl");
 
 static irqreturn_t vmbus_percpu_isr(int irq, void *dev_id)
 {
-	vmbus_isr();
+	if (vmbus_handler)
+		vmbus_handler();
 	return IRQ_HANDLED;
 }
 
@@ -1517,8 +1518,10 @@ static int vmbus_bus_init(void)
 		vmbus_irq_initialized = true;
 	}
 
+	hv_setup_vmbus_handler(vmbus_isr);
+
 	if (vmbus_irq == -1) {
-		hv_setup_vmbus_handler(vmbus_isr);
+		/* x86: sysvec handler uses vmbus_handler directly */
 	} else {
 		ret = request_percpu_irq(vmbus_irq, vmbus_percpu_isr,
 				"Hyper-V VMbus", &vmbus_evt);
@@ -1553,9 +1556,8 @@ static int vmbus_bus_init(void)
 	return 0;
 
 err_connect:
-	if (vmbus_irq == -1)
-		hv_remove_vmbus_handler();
-	else
+	hv_remove_vmbus_handler();
+	if (vmbus_irq != -1)
 		free_percpu_irq(vmbus_irq, &vmbus_evt);
 err_setup:
 	if (IS_ENABLED(CONFIG_PREEMPT_RT) && vmbus_irq_initialized) {
@@ -3026,9 +3028,8 @@ static void __exit vmbus_exit(void)
 	vmbus_connection.conn_state = DISCONNECTED;
 	hv_stimer_global_cleanup();
 	vmbus_disconnect();
-	if (vmbus_irq == -1)
-		hv_remove_vmbus_handler();
-	else
+	hv_remove_vmbus_handler();
+	if (vmbus_irq != -1)
 		free_percpu_irq(vmbus_irq, &vmbus_evt);
 	if (IS_ENABLED(CONFIG_PREEMPT_RT) && vmbus_irq_initialized) {
 		smpboot_unregister_percpu_thread(&vmbus_irq_threads);
