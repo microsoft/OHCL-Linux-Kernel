@@ -12,15 +12,11 @@
 #include <asm/cpu_ops.h>
 #include <asm/neon.h>
 #include <linux/export.h>
-#include <linux/stringify.h>
-#include "mshv-asm-offsets.h"
-
-/* String helper for asm offset references */
-#define CTX_OFF(name) "#" __stringify(name)
 
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
 {
 	struct user_fpsimd_state fpsimd_state;
+	u64 base_ptr = (u64)vtl0->x;
 
 	/*
 	 * Obtain the CPU FPSIMD registers for VTL context switch.
@@ -49,48 +45,48 @@ void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
 		"str %0, [sp, #-16]!\n\t"     /* Push base pointer onto stack */
 		"mov x16, %0\n\t"             /* Load base pointer into x16 */
 		/* Volatile registers (Windows ARM64 ABI: x0-x15) */
-		"ldp x0, x1, [x16, " CTX_OFF(MSHV_VTL_CTX_X0) "]\n\t"
-		"ldp x2, x3, [x16, " CTX_OFF(MSHV_VTL_CTX_X2) "]\n\t"
-		"ldp x4, x5, [x16, " CTX_OFF(MSHV_VTL_CTX_X4) "]\n\t"
-		"ldp x6, x7, [x16, " CTX_OFF(MSHV_VTL_CTX_X6) "]\n\t"
-		"ldp x8, x9, [x16, " CTX_OFF(MSHV_VTL_CTX_X8) "]\n\t"
-		"ldp x10, x11, [x16, " CTX_OFF(MSHV_VTL_CTX_X10) "]\n\t"
-		"ldp x12, x13, [x16, " CTX_OFF(MSHV_VTL_CTX_X12) "]\n\t"
-		"ldp x14, x15, [x16, " CTX_OFF(MSHV_VTL_CTX_X14) "]\n\t"
+		"ldp x0, x1, [x16]\n\t"
+		"ldp x2, x3, [x16, #(2*8)]\n\t"
+		"ldp x4, x5, [x16, #(4*8)]\n\t"
+		"ldp x6, x7, [x16, #(6*8)]\n\t"
+		"ldp x8, x9, [x16, #(8*8)]\n\t"
+		"ldp x10, x11, [x16, #(10*8)]\n\t"
+		"ldp x12, x13, [x16, #(12*8)]\n\t"
+		"ldp x14, x15, [x16, #(14*8)]\n\t"
 		/* x16 will be loaded last, after saving base pointer */
-		"ldr x17, [x16, " CTX_OFF(MSHV_VTL_CTX_X17) "]\n\t"
+		"ldr x17, [x16, #(17*8)]\n\t"
 		/* x18 is hypervisor-managed per-VTL - DO NOT LOAD */
 
 		/* General-purpose registers: x19-x30 */
-		"ldp x19, x20, [x16, " CTX_OFF(MSHV_VTL_CTX_X19) "]\n\t"
-		"ldp x21, x22, [x16, " CTX_OFF(MSHV_VTL_CTX_X21) "]\n\t"
-		"ldp x23, x24, [x16, " CTX_OFF(MSHV_VTL_CTX_X23) "]\n\t"
-		"ldp x25, x26, [x16, " CTX_OFF(MSHV_VTL_CTX_X25) "]\n\t"
-		"ldp x27, x28, [x16, " CTX_OFF(MSHV_VTL_CTX_X27) "]\n\t"
+		"ldp x19, x20, [x16, #(19*8)]\n\t"
+		"ldp x21, x22, [x16, #(21*8)]\n\t"
+		"ldp x23, x24, [x16, #(23*8)]\n\t"
+		"ldp x25, x26, [x16, #(25*8)]\n\t"
+		"ldp x27, x28, [x16, #(27*8)]\n\t"
 
 		/* Frame pointer and link register */
-		"ldp x29, x30, [x16, " CTX_OFF(MSHV_VTL_CTX_X29) "]\n\t"
+		"ldp x29, x30, [x16, #(29*8)]\n\t"
 
 		/* Shared NEON/FP registers: Q0-Q31 (128-bit) */
-		"ldp q0, q1, [x16, " CTX_OFF(MSHV_VTL_CTX_Q0) "]\n\t"
-		"ldp q2, q3, [x16, " CTX_OFF(MSHV_VTL_CTX_Q2) "]\n\t"
-		"ldp q4, q5, [x16, " CTX_OFF(MSHV_VTL_CTX_Q4) "]\n\t"
-		"ldp q6, q7, [x16, " CTX_OFF(MSHV_VTL_CTX_Q6) "]\n\t"
-		"ldp q8, q9, [x16, " CTX_OFF(MSHV_VTL_CTX_Q8) "]\n\t"
-		"ldp q10, q11, [x16, " CTX_OFF(MSHV_VTL_CTX_Q10) "]\n\t"
-		"ldp q12, q13, [x16, " CTX_OFF(MSHV_VTL_CTX_Q12) "]\n\t"
-		"ldp q14, q15, [x16, " CTX_OFF(MSHV_VTL_CTX_Q14) "]\n\t"
-		"ldp q16, q17, [x16, " CTX_OFF(MSHV_VTL_CTX_Q16) "]\n\t"
-		"ldp q18, q19, [x16, " CTX_OFF(MSHV_VTL_CTX_Q18) "]\n\t"
-		"ldp q20, q21, [x16, " CTX_OFF(MSHV_VTL_CTX_Q20) "]\n\t"
-		"ldp q22, q23, [x16, " CTX_OFF(MSHV_VTL_CTX_Q22) "]\n\t"
-		"ldp q24, q25, [x16, " CTX_OFF(MSHV_VTL_CTX_Q24) "]\n\t"
-		"ldp q26, q27, [x16, " CTX_OFF(MSHV_VTL_CTX_Q26) "]\n\t"
-		"ldp q28, q29, [x16, " CTX_OFF(MSHV_VTL_CTX_Q28) "]\n\t"
-		"ldp q30, q31, [x16, " CTX_OFF(MSHV_VTL_CTX_Q30) "]\n\t"
+		"ldp q0, q1, [x16, #(32*8)]\n\t"
+		"ldp q2, q3, [x16, #(32*8 + 2*16)]\n\t"
+		"ldp q4, q5, [x16, #(32*8 + 4*16)]\n\t"
+		"ldp q6, q7, [x16, #(32*8 + 6*16)]\n\t"
+		"ldp q8, q9, [x16, #(32*8 + 8*16)]\n\t"
+		"ldp q10, q11, [x16, #(32*8 + 10*16)]\n\t"
+		"ldp q12, q13, [x16, #(32*8 + 12*16)]\n\t"
+		"ldp q14, q15, [x16, #(32*8 + 14*16)]\n\t"
+		"ldp q16, q17, [x16, #(32*8 + 16*16)]\n\t"
+		"ldp q18, q19, [x16, #(32*8 + 18*16)]\n\t"
+		"ldp q20, q21, [x16, #(32*8 + 20*16)]\n\t"
+		"ldp q22, q23, [x16, #(32*8 + 22*16)]\n\t"
+		"ldp q24, q25, [x16, #(32*8 + 24*16)]\n\t"
+		"ldp q26, q27, [x16, #(32*8 + 26*16)]\n\t"
+		"ldp q28, q29, [x16, #(32*8 + 28*16)]\n\t"
+		"ldp q30, q31, [x16, #(32*8 + 30*16)]\n\t"
 
 		/* Now load x16 itself */
-		"ldr x16, [x16, " CTX_OFF(MSHV_VTL_CTX_X16) "]\n\t"
+		"ldr x16, [x16, #(16*8)]\n\t"
 
 		/* Return to the lower VTL */
 		"hvc #3\n\t"
@@ -100,49 +96,49 @@ void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
 		"ldr x16, [sp, #16]\n\t"        /* Reload base pointer (skip saved x16,x17) */
 
 		/* Volatile registers */
-		"stp x0, x1, [x16, " CTX_OFF(MSHV_VTL_CTX_X0) "]\n\t"
-		"stp x2, x3, [x16, " CTX_OFF(MSHV_VTL_CTX_X2) "]\n\t"
-		"stp x4, x5, [x16, " CTX_OFF(MSHV_VTL_CTX_X4) "]\n\t"
-		"stp x6, x7, [x16, " CTX_OFF(MSHV_VTL_CTX_X6) "]\n\t"
-		"stp x8, x9, [x16, " CTX_OFF(MSHV_VTL_CTX_X8) "]\n\t"
-		"stp x10, x11, [x16, " CTX_OFF(MSHV_VTL_CTX_X10) "]\n\t"
-		"stp x12, x13, [x16, " CTX_OFF(MSHV_VTL_CTX_X12) "]\n\t"
-		"stp x14, x15, [x16, " CTX_OFF(MSHV_VTL_CTX_X14) "]\n\t"
+		"stp x0, x1, [x16]\n\t"
+		"stp x2, x3, [x16, #(2*8)]\n\t"
+		"stp x4, x5, [x16, #(4*8)]\n\t"
+		"stp x6, x7, [x16, #(6*8)]\n\t"
+		"stp x8, x9, [x16, #(8*8)]\n\t"
+		"stp x10, x11, [x16, #(10*8)]\n\t"
+		"stp x12, x13, [x16, #(12*8)]\n\t"
+		"stp x14, x15, [x16, #(14*8)]\n\t"
 		"ldp x0, x1, [sp], #16\n\t"      /* Recover saved x16, x17 */
-		"stp x0, x1, [x16, " CTX_OFF(MSHV_VTL_CTX_X16) "]\n\t"
+		"stp x0, x1, [x16, #(16*8)]\n\t"
 		/* x18 is hypervisor-managed - DO NOT SAVE */
 
 		/* General-purpose registers: x19-x30 */
-		"stp x19, x20, [x16, " CTX_OFF(MSHV_VTL_CTX_X19) "]\n\t"
-		"stp x21, x22, [x16, " CTX_OFF(MSHV_VTL_CTX_X21) "]\n\t"
-		"stp x23, x24, [x16, " CTX_OFF(MSHV_VTL_CTX_X23) "]\n\t"
-		"stp x25, x26, [x16, " CTX_OFF(MSHV_VTL_CTX_X25) "]\n\t"
-		"stp x27, x28, [x16, " CTX_OFF(MSHV_VTL_CTX_X27) "]\n\t"
-		"stp x29, x30, [x16, " CTX_OFF(MSHV_VTL_CTX_X29) "]\n\t"  /* Frame pointer and link register */
+		"stp x19, x20, [x16, #(19*8)]\n\t"
+		"stp x21, x22, [x16, #(21*8)]\n\t"
+		"stp x23, x24, [x16, #(23*8)]\n\t"
+		"stp x25, x26, [x16, #(25*8)]\n\t"
+		"stp x27, x28, [x16, #(27*8)]\n\t"
+		"stp x29, x30, [x16, #(29*8)]\n\t"  /* Frame pointer and link register */
 
 		/* Shared NEON/FP registers: Q0-Q31 (128-bit) */
-		"stp q0, q1, [x16, " CTX_OFF(MSHV_VTL_CTX_Q0) "]\n\t"
-		"stp q2, q3, [x16, " CTX_OFF(MSHV_VTL_CTX_Q2) "]\n\t"
-		"stp q4, q5, [x16, " CTX_OFF(MSHV_VTL_CTX_Q4) "]\n\t"
-		"stp q6, q7, [x16, " CTX_OFF(MSHV_VTL_CTX_Q6) "]\n\t"
-		"stp q8, q9, [x16, " CTX_OFF(MSHV_VTL_CTX_Q8) "]\n\t"
-		"stp q10, q11, [x16, " CTX_OFF(MSHV_VTL_CTX_Q10) "]\n\t"
-		"stp q12, q13, [x16, " CTX_OFF(MSHV_VTL_CTX_Q12) "]\n\t"
-		"stp q14, q15, [x16, " CTX_OFF(MSHV_VTL_CTX_Q14) "]\n\t"
-		"stp q16, q17, [x16, " CTX_OFF(MSHV_VTL_CTX_Q16) "]\n\t"
-		"stp q18, q19, [x16, " CTX_OFF(MSHV_VTL_CTX_Q18) "]\n\t"
-		"stp q20, q21, [x16, " CTX_OFF(MSHV_VTL_CTX_Q20) "]\n\t"
-		"stp q22, q23, [x16, " CTX_OFF(MSHV_VTL_CTX_Q22) "]\n\t"
-		"stp q24, q25, [x16, " CTX_OFF(MSHV_VTL_CTX_Q24) "]\n\t"
-		"stp q26, q27, [x16, " CTX_OFF(MSHV_VTL_CTX_Q26) "]\n\t"
-		"stp q28, q29, [x16, " CTX_OFF(MSHV_VTL_CTX_Q28) "]\n\t"
-		"stp q30, q31, [x16, " CTX_OFF(MSHV_VTL_CTX_Q30) "]\n\t"
+		"stp q0, q1, [x16, #(32*8)]\n\t"
+		"stp q2, q3, [x16, #(32*8 + 2*16)]\n\t"
+		"stp q4, q5, [x16, #(32*8 + 4*16)]\n\t"
+		"stp q6, q7, [x16, #(32*8 + 6*16)]\n\t"
+		"stp q8, q9, [x16, #(32*8 + 8*16)]\n\t"
+		"stp q10, q11, [x16, #(32*8 + 10*16)]\n\t"
+		"stp q12, q13, [x16, #(32*8 + 12*16)]\n\t"
+		"stp q14, q15, [x16, #(32*8 + 14*16)]\n\t"
+		"stp q16, q17, [x16, #(32*8 + 16*16)]\n\t"
+		"stp q18, q19, [x16, #(32*8 + 18*16)]\n\t"
+		"stp q20, q21, [x16, #(32*8 + 20*16)]\n\t"
+		"stp q22, q23, [x16, #(32*8 + 22*16)]\n\t"
+		"stp q24, q25, [x16, #(32*8 + 24*16)]\n\t"
+		"stp q26, q27, [x16, #(32*8 + 26*16)]\n\t"
+		"stp q28, q29, [x16, #(32*8 + 28*16)]\n\t"
+		"stp q30, q31, [x16, #(32*8 + 30*16)]\n\t"
 
 		/* Clean up stack - pop base pointer */
 		"add sp, sp, #16\n\t"
 
 		: /* No outputs */
-		: /* Input */ "r"(vtl0)
+		: /* Input */ "r"(base_ptr)
 		: /* Clobber list - x16 used as base, x18 is hypervisor-managed (not touched) */
 		"memory", "cc",
 		"x0", "x1", "x2", "x3", "x4", "x5",
