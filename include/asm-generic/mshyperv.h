@@ -420,11 +420,28 @@ static inline int hv_call_set_vp_registers(u32 vp_index, u64 partition_id,
 #endif /* CONFIG_MSHV_ROOT || CONFIG_MSHV_VTL */
 
 #if IS_ENABLED(CONFIG_HYPERV_VTL_MODE)
+struct mshv_vtl_per_cpu {
+	struct mshv_vtl_run *run;
+	struct page *reg_page;
+};
+
+/* SYNIC_OVERLAY_PAGE_MSR - internal, identical to hv_synic_simp */
+union hv_synic_overlay_page_msr {
+	u64 as_uint64;
+	struct {
+		u64 enabled: 1;
+		u64 reserved: 11;
+		u64 pfn: 52;
+	} __packed;
+};
+
 u8 __init get_vtl(void);
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
+bool hv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu);
 #else
 static inline u8 get_vtl(void) { return 0; }
 static inline void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
+static inline bool hv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu) { return false; }
 #endif
 
 #endif

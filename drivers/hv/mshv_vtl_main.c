@@ -78,21 +78,6 @@ struct mshv_vtl {
 	u64 id;
 };
 
-struct mshv_vtl_per_cpu {
-	struct mshv_vtl_run *run;
-	struct page *reg_page;
-};
-
-/* SYNIC_OVERLAY_PAGE_MSR - internal, identical to hv_synic_simp */
-union hv_synic_overlay_page_msr {
-	u64 as_uint64;
-	struct {
-		u64 enabled: 1;
-		u64 reserved: 11;
-		u64 pfn: 52;
-	} __packed;
-};
-
 static struct mutex mshv_vtl_poll_file_lock;
 static union hv_register_vsm_page_offsets mshv_vsm_page_offsets;
 static union hv_register_vsm_capabilities mshv_vsm_capabilities;
@@ -201,34 +186,6 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
-static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
-{
-	struct hv_register_assoc reg_assoc = {};
-	union hv_synic_overlay_page_msr overlay = {};
-	struct page *reg_page;
-
-	reg_page = alloc_page(GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL);
-	if (!reg_page) {
-		WARN(1, "failed to allocate register page\n");
-		return;
-	}
-
-	overlay.enabled = 1;
-	overlay.pfn = page_to_hvpfn(reg_page);
-	reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
-	reg_assoc.value.reg64 = overlay.as_uint64;
-
-	if (hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				     1, input_vtl_zero, &reg_assoc)) {
-		WARN(1, "failed to setup register page\n");
-		__free_page(reg_page);
-		return;
-	}
-
-	per_cpu->reg_page = reg_page;
-	mshv_has_reg_page = true;
-}
-
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 {
 	union hv_synic_sint sint;
@@ -329,8 +286,10 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 	if (!per_cpu->run)
 		return -ENOMEM;
 
-	if (mshv_vsm_capabilities.intercept_page_available)
-		mshv_vtl_configure_reg_page(per_cpu);
+	if (mshv_vsm_capabilities.intercept_page_available) {
+		if (hv_vtl_configure_reg_page(per_cpu))
+			mshv_has_reg_page = true;
+	}
 
 	mshv_vtl_synic_enable_regs(cpu);
 
