@@ -79,7 +79,6 @@ struct mshv_vtl {
 };
 
 static struct mutex mshv_vtl_poll_file_lock;
-static union hv_register_vsm_page_offsets mshv_vsm_page_offsets;
 static union hv_register_vsm_capabilities mshv_vsm_capabilities;
 
 static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
@@ -203,21 +202,19 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 	/* VTL2 Host VSP SINT is (un)masked when the user mode requests that */
 }
 
-static int mshv_vtl_get_vsm_regs(void)
+static int mshv_vtl_get_vsm_cap_reg(void)
 {
-	struct hv_register_assoc registers[2];
-	int ret, count = 2;
+	struct hv_register_assoc vsm_capability_reg;
+	int ret;
 
-	registers[0].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
-	registers[1].name = HV_REGISTER_VSM_CAPABILITIES;
+	vsm_capability_reg.name = HV_REGISTER_VSM_CAPABILITIES;
 
 	ret = hv_call_get_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				       count, input_vtl_zero, registers);
+				       1, input_vtl_zero, &vsm_capability_reg);
 	if (ret)
 		return ret;
 
-	mshv_vsm_page_offsets.as_uint64 = registers[0].value.reg64;
-	mshv_vsm_capabilities.as_uint64 = registers[1].value.reg64;
+	mshv_vsm_capabilities.as_uint64 = vsm_capability_reg.value.reg64;
 
 	return ret;
 }
@@ -1139,13 +1136,13 @@ static int __init mshv_vtl_init(void)
 	tasklet_init(&msg_dpc, mshv_vtl_sint_on_msg_dpc, 0);
 	init_waitqueue_head(&fd_wait_queue);
 
-	if (mshv_vtl_get_vsm_regs()) {
+	if (mshv_vtl_get_vsm_cap_reg()) {
 		dev_emerg(dev, "Unable to get VSM capabilities !!\n");
 		ret = -ENODEV;
 		goto free_dev;
 	}
 
-	mshv_vtl_return_call_init(mshv_vsm_page_offsets.vtl_return_offset);
+	mshv_vtl_return_call_init();
 	ret = hv_vtl_setup_synic();
 	if (ret)
 		goto free_dev;
