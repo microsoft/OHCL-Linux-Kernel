@@ -153,11 +153,17 @@ void vmbus_free_ring(struct vmbus_channel *channel)
 	hv_ringbuffer_cleanup(&channel->inbound);
 
 	if (channel->ringbuffer_page) {
+		unsigned int pages = channel->ringbuffer_pagecount;
+		int order = get_order(pages << PAGE_SHIFT);
+
+		if (is_hvsock_channel(channel))
+			pr_err("DBG: vmbus_free_ring relid=%d pages=%u order=%d bytes=%lu\n",
+			       channel->offermsg.child_relid, pages,
+			       order, (unsigned long)pages << PAGE_SHIFT);
+
 		/* In a CoCo VM leak the memory if it didn't get re-encrypted */
 		if (!channel->ringbuffer_gpadlhandle.decrypted)
-			__free_pages(channel->ringbuffer_page,
-			     get_order(channel->ringbuffer_pagecount
-				       << PAGE_SHIFT));
+			__free_pages(channel->ringbuffer_page, order);
 		channel->ringbuffer_page = NULL;
 	}
 }
@@ -175,14 +181,25 @@ int vmbus_alloc_ring(struct vmbus_channel *newchannel,
 
 	/* Allocate the ring buffer */
 	order = get_order(send_size + recv_size);
+
+	if (is_hvsock_channel(newchannel))
+		pr_err("DBG: vmbus_alloc_ring relid=%d send=%u recv=%u order=%d alloc_bytes=%lu\n",
+		       newchannel->offermsg.child_relid,
+		       send_size, recv_size, order,
+		       PAGE_SIZE << order);
+
 	page = alloc_pages_node(cpu_to_node(newchannel->target_cpu),
 				GFP_KERNEL|__GFP_ZERO, order);
 
 	if (!page)
 		page = alloc_pages(GFP_KERNEL|__GFP_ZERO, order);
 
-	if (!page)
+	if (!page) {
+		if (is_hvsock_channel(newchannel))
+			pr_err("DBG: vmbus_alloc_ring FAILED relid=%d order=%d\n",
+			       newchannel->offermsg.child_relid, order);
 		return -ENOMEM;
+	}
 
 	newchannel->ringbuffer_page = page;
 	newchannel->ringbuffer_pagecount = (send_size + recv_size) >> PAGE_SHIFT;

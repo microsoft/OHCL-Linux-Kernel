@@ -282,6 +282,9 @@ static void hvs_close_connection(struct vmbus_channel *chan)
 {
 	struct sock *sk = get_per_channel_state(chan);
 
+	pr_err("DBG: hvs_close_connection relid=%d\n",
+	       chan->offermsg.child_relid);
+
 	lock_sock(sk);
 	hvs_do_close_lock_held(vsock_sk(sk), true);
 	release_sock(sk);
@@ -309,13 +312,19 @@ static void hvs_open_connection(struct vmbus_channel *chan)
 	if_type = &chan->offermsg.offer.if_type;
 	if_instance = &chan->offermsg.offer.if_instance;
 	conn_from_host = chan->offermsg.offer.u.pipe.user_def[0];
-	if (!is_valid_srv_id(if_type))
+	if (!is_valid_srv_id(if_type)) {
+		pr_err("DBG: hvs_open_connection SKIP invalid_srv_id relid=%d\n",
+		       chan->offermsg.child_relid);
 		return;
+	}
 
 	hvs_addr_init(&addr, conn_from_host ? if_type : if_instance);
 	sk = vsock_find_bound_socket(&addr);
-	if (!sk)
+	if (!sk) {
+		pr_err("DBG: hvs_open_connection SKIP no_bound_socket relid=%d conn_from_host=%d\n",
+		       chan->offermsg.child_relid, conn_from_host);
 		return;
+	}
 
 	lock_sock(sk);
 	if ((conn_from_host && sk->sk_state != TCP_LISTEN) ||
@@ -383,9 +392,15 @@ static void hvs_open_connection(struct vmbus_channel *chan)
 
 	chan->max_pkt_size = HVS_MAX_PKT_SIZE;
 
+	pr_err("DBG: hvs_open_connection relid=%d conn_from_host=%d sndbuf=%d rcvbuf=%d ring_total=%d\n",
+	       chan->offermsg.child_relid, conn_from_host,
+	       sndbuf, rcvbuf, sndbuf + rcvbuf);
+
 	ret = vmbus_open(chan, sndbuf, rcvbuf, NULL, 0, hvs_channel_cb,
 			 conn_from_host ? new : sk);
 	if (ret != 0) {
+		pr_err("DBG: hvs_open_connection FAILED relid=%d ret=%d\n",
+		       chan->offermsg.child_relid, ret);
 		if (conn_from_host) {
 			hvs_new->chan = NULL;
 			sock_put(new);
@@ -394,6 +409,9 @@ static void hvs_open_connection(struct vmbus_channel *chan)
 		}
 		goto out;
 	}
+
+	pr_err("DBG: hvs_open_connection OK relid=%d\n",
+	       chan->offermsg.child_relid);
 
 	set_per_channel_state(chan, conn_from_host ? new : sk);
 
@@ -545,8 +563,14 @@ static void hvs_destruct(struct vsock_sock *vsk)
 	struct hvsock *hvs = vsk->trans;
 	struct vmbus_channel *chan = hvs->chan;
 
+	pr_err("DBG: hvs_destruct chan=%s relid=%d\n",
+	       chan ? "yes" : "NULL",
+	       chan ? chan->offermsg.child_relid : -1);
+
 	if (chan)
 		vmbus_hvsock_device_unregister(chan);
+
+	pr_err("DBG: hvs_destruct DONE\n");
 
 	kfree(hvs);
 	vsk->trans = NULL;
@@ -870,6 +894,8 @@ static int hvs_probe(struct hv_device *hdev,
 {
 	struct vmbus_channel *chan = hdev->channel;
 
+	pr_err("DBG: hvs_probe relid=%d\n", chan->offermsg.child_relid);
+
 	hvs_open_connection(chan);
 
 	/* Always return success to suppress the unnecessary error message
@@ -884,7 +910,9 @@ static void hvs_remove(struct hv_device *hdev)
 {
 	struct vmbus_channel *chan = hdev->channel;
 
+	pr_err("DBG: hvs_remove relid=%d\n", chan->offermsg.child_relid);
 	vmbus_close(chan);
+	pr_err("DBG: hvs_remove DONE relid=%d\n", chan->offermsg.child_relid);
 }
 
 /* hv_sock connections can not persist across hibernation, and all the hv_sock

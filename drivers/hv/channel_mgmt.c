@@ -1118,6 +1118,9 @@ static void vmbus_onoffer(struct vmbus_channel_message_header *hdr)
 
 	trace_vmbus_onoffer(offer);
 
+	pr_err("DBG: vmbus_onoffer relid=%d is_hvsock=%d\n",
+	       offer->child_relid, is_hvsock_offer(offer));
+
 	if (!vmbus_is_valid_offer(offer)) {
 		pr_err_ratelimited("Invalid offer %d from the host supporting isolation\n",
 				   offer->child_relid);
@@ -1235,6 +1238,8 @@ static void vmbus_onoffer_rescind(struct vmbus_channel_message_header *hdr)
 
 	trace_vmbus_onoffer_rescind(rescind);
 
+	pr_err("DBG: vmbus_onoffer_rescind relid=%d\n", rescind->child_relid);
+
 	/*
 	 * The offer msg and the corresponding rescind msg
 	 * from the host are guranteed to be ordered -
@@ -1269,6 +1274,10 @@ static void vmbus_onoffer_rescind(struct vmbus_channel_message_header *hdr)
 
 	mutex_lock(&vmbus_connection.channel_mutex);
 	channel = relid2channel(rescind->child_relid);
+	pr_err("DBG: vmbus_onoffer_rescind relid=%d channel=%s is_hvsock=%d\n",
+	       rescind->child_relid,
+	       channel ? "found" : "NULL",
+	       channel ? is_hvsock_channel(channel) : -1);
 	if (channel != NULL) {
 		/*
 		 * Guarantee that no other instance of vmbus_onoffer_rescind()
@@ -1363,11 +1372,32 @@ static void vmbus_onoffer_rescind(struct vmbus_channel_message_header *hdr)
 
 void vmbus_hvsock_device_unregister(struct vmbus_channel *channel)
 {
+	unsigned long start = jiffies;
+	unsigned long next_print = start + 20 * HZ;
+
 	BUG_ON(!is_hvsock_channel(channel));
 
+	pr_err("DBG: vmbus_hvsock_device_unregister relid=%d probe_done=%d rescind=%d\n",
+	       channel->offermsg.child_relid,
+	       READ_ONCE(channel->probe_done),
+	       READ_ONCE(channel->rescind));
+
 	/* We always get a rescind msg when a connection is closed. */
-	while (!READ_ONCE(channel->probe_done) || !READ_ONCE(channel->rescind))
+	while (!READ_ONCE(channel->probe_done) || !READ_ONCE(channel->rescind)) {
 		msleep(1);
+		if (time_after(jiffies, next_print)) {
+			pr_err("DBG: vmbus_hvsock_device_unregister STUCK relid=%d waiting %lus probe_done=%d rescind=%d\n",
+			       channel->offermsg.child_relid,
+			       (jiffies - start) / HZ,
+			       READ_ONCE(channel->probe_done),
+			       READ_ONCE(channel->rescind));
+			next_print = jiffies + 20 * HZ;
+		}
+	}
+
+	pr_err("DBG: vmbus_hvsock_device_unregister DONE relid=%d waited %lums\n",
+	       channel->offermsg.child_relid,
+	       jiffies_to_msecs(jiffies - start));
 
 	vmbus_device_unregister(channel->device_obj);
 }
