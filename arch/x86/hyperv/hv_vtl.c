@@ -260,7 +260,7 @@ static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip, unsi
 		return -EINVAL;
 	}
 
-	return hv_vtl_bringup_vcpu(vp_index, apicid, start_eip);
+	return hv_vtl_bringup_vcpu(vp_index, cpu, start_eip);
 }
 
 /*
