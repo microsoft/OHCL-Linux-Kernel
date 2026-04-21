@@ -298,32 +298,17 @@ int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu)
 	struct sev_es_save_area *cur_vmsa;
 	struct desc_ptr gdtr;
 	struct hv_enable_vp_vtl *start_vp_input;
-	int cpu_id = -EINVAL;
 	unsigned long flags;
-	int vp_index = apic_id;
+	int vp_index;
 	u64 ret, retry = 5;
 
 	if (!vmsa)
 		return -ENOMEM;
 
-#ifdef CONFIG_HYPERV_VTL_MODE
-	int i;
-
-	for_each_possible_cpu(i) {
-		if (per_cpu(x86_cpu_to_apicid, i) == apic_id) {
-			cpu_id = i;
-			break;
-		}
-	}
-
-	if (cpu_id == -EINVAL)
-		panic("%s: no cpu found for APIC ID %d\n", __func__, apic_id);
-
 	/* Find the Hyper-V VP index which might be not the same as APIC ID */
 	vp_index = hv_apicid_to_vp_index(apic_id);
 	if (vp_index < 0 || vp_index > ms_hyperv.max_vp_index)
 		return -EINVAL;
-#endif
 
 	native_store_gdt(&gdtr);
 
@@ -403,13 +388,13 @@ int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu)
 		vmsa = NULL;
 	}
 
-	cur_vmsa = per_cpu(hv_sev_vmsa, cpu_id);
+	cur_vmsa = per_cpu(hv_sev_vmsa, cpu);
 	/* Free up any previous VMSA page */
 	if (cur_vmsa)
 		snp_cleanup_vmsa(cur_vmsa);
 
 	/* Record the current VMSA page */
-	per_cpu(hv_sev_vmsa, cpu_id) = vmsa;
+	per_cpu(hv_sev_vmsa, cpu) = vmsa;
 
 	return ret;
 }
