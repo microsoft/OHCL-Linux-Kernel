@@ -307,27 +307,90 @@ int __init hv_vtl_early_init(void)
 
 DEFINE_STATIC_CALL_NULL(__mshv_vtl_return_hypercall, void (*)(void));
 
+static u64 vtl_return_addr;
+
 void mshv_tdx_request_cache_flush(bool wbnoinvd);
 noinline void mshv_vtl_return_tdx(void);
 
 void mshv_vtl_return_call_init(u64 vtl_return_offset)
 {
+	vtl_return_addr = (u64)((u8 *)hv_hypercall_pg + vtl_return_offset);
 	static_call_update(__mshv_vtl_return_hypercall,
-			   (void *)((u8 *)hv_hypercall_pg + vtl_return_offset));
+			   (void *)vtl_return_addr);
 }
 EXPORT_SYMBOL(mshv_vtl_return_call_init);
 
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0)
 {
 	struct hv_vp_assist_page *hvp;
+	u64 hypercall_addr;
+
+	register u64 r8 asm("r8");
+	register u64 r9 asm("r9");
+	register u64 r10 asm("r10");
+	register u64 r11 asm("r11");
+	register u64 r12 asm("r12");
+	register u64 r13 asm("r13");
+	register u64 r14 asm("r14");
+	register u64 r15 asm("r15");
 
 	hvp = hv_vp_assist_page[smp_processor_id()];
 	hvp->vtl_ret_x64rax = vtl0->rax;
 	hvp->vtl_ret_x64rcx = vtl0->rcx;
 
+	hypercall_addr = vtl_return_addr;
+
 	kernel_fpu_begin_mask(0);
 	fxrstor(&vtl0->fx_state);
-	__mshv_vtl_return_call(vtl0);
+	native_write_cr2(vtl0->cr2);
+	r8 = vtl0->r8;
+	r9 = vtl0->r9;
+	r10 = vtl0->r10;
+	r11 = vtl0->r11;
+	r12 = vtl0->r12;
+	r13 = vtl0->r13;
+	r14 = vtl0->r14;
+	r15 = vtl0->r15;
+
+	asm __volatile__ (	\
+	/* Save rbp pointer to the lower VTL, keep the stack 16-byte aligned */
+		"pushq	%%rbp\n"
+		"pushq	%%rcx\n"
+	/* Restore the lower VTL's rbp */
+		"movq	(%%rcx), %%rbp\n"
+	/* Load return kind into rcx (HV_VTL_RETURN_INPUT_NORMAL_RETURN == 0) */
+		"xorl	%%ecx, %%ecx\n"
+	/* Transition to the lower VTL */
+		CALL_NOSPEC
+	/* Save VTL0's rax and rcx temporarily on 16-byte aligned stack */
+		"pushq	%%rax\n"
+		"pushq	%%rcx\n"
+	/* Restore pointer to lower VTL rbp */
+		"movq	16(%%rsp), %%rax\n"
+	/* Save the lower VTL's rbp */
+		"movq	%%rbp, (%%rax)\n"
+	/* Restore saved registers */
+		"movq	8(%%rsp), %%rax\n"
+		"movq	24(%%rsp), %%rbp\n"
+		"addq	$32, %%rsp\n"
+
+		: "=a"(vtl0->rax), "=c"(vtl0->rcx),
+		  "+d"(vtl0->rdx), "+b"(vtl0->rbx), "+S"(vtl0->rsi), "+D"(vtl0->rdi),
+		  "+r"(r8), "+r"(r9), "+r"(r10), "+r"(r11),
+		  "+r"(r12), "+r"(r13), "+r"(r14), "+r"(r15)
+		: THUNK_TARGET(hypercall_addr), "c"(&vtl0->rbp)
+		: "cc", "memory");
+
+	vtl0->r8 = r8;
+	vtl0->r9 = r9;
+	vtl0->r10 = r10;
+	vtl0->r11 = r11;
+	vtl0->r12 = r12;
+	vtl0->r13 = r13;
+	vtl0->r14 = r14;
+	vtl0->r15 = r15;
+	vtl0->cr2 = native_read_cr2();
+
 	fxsave(&vtl0->fx_state);
 	kernel_fpu_end();
 }
