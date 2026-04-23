@@ -752,17 +752,50 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		if (ret < 0)
 			return ret;
 #endif
-	} else if (mshv_vsm_capabilities.intercept_page_available)
+	} else if (mshv_vsm_capabilities.intercept_page_available) {
 		mshv_vtl_configure_reg_page(per_cpu);
+	}
 
 	mshv_vtl_synic_enable_regs(cpu);
-
 	return 0;
+}
+
+static void mshv_vtl_cleanup_stale_state(void *info)
+{
+	union hv_synic_sint sint;
+	struct hv_register_assoc reg_assoc = {};
+	union hv_input_vtl vtl = { .as_uint8 = 0 };
+
+	/*
+	 * After kexec, the previous kernel's VTL interception SINT may still
+	 * be unmasked with a stale vector, causing spurious interrupts that
+	 * can hang CPUs. Mask it before reinstalling handlers.
+	 */
+	sint.as_uint64 = hv_get_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX);
+	if (!sint.masked) {
+		sint.masked = true;
+		hv_set_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
+			   sint.as_uint64);
+	}
+
+	/*
+	 * Disable any stale register page from the previous kernel.
+	 * If left enabled, the hypervisor may write intercept data to
+	 * old (now invalid) memory, and cpuhp work IPIs to CPUs with
+	 * stale register pages can hang.
+	 */
+	reg_assoc.name = HV_REGISTER_REG_PAGE;
+	reg_assoc.value.reg64 = 0;
+	hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+				 1, vtl, &reg_assoc);
 }
 
 static int hv_vtl_setup_synic(void)
 {
 	int ret;
+
+	/* Clean up stale VTL state from a previous kernel (kexec) */
+	on_each_cpu(mshv_vtl_cleanup_stale_state, NULL, 1);
 
 	/* Use our isr to first filter out packets destined for userspace */
 	hv_setup_vmbus_handler(mshv_vtl_vmbus_isr);

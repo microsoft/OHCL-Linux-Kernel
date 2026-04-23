@@ -31,6 +31,11 @@
 extern struct boot_params boot_params;
 static struct real_mode_header hv_vtl_real_mode_header;
 
+/* Forward declaration — defined in drivers/hv/hv_call.c */
+int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
+			     union hv_input_vtl input_vtl,
+			     struct hv_register_assoc *registers);
+
 static bool __init hv_vtl_msi_ext_dest_id(void)
 {
 	return true;
@@ -241,6 +246,38 @@ free_lock:
 	return ret;
 }
 
+/*
+ * After kexec, the previous kernel's VTL register page and SINT0 may still
+ * be configured for each VP. The register page points to old kernel memory
+ * that is now reused by the new kernel. When the hypervisor dispatches a VP
+ * to VTL2, it writes intercept context to the register page address, which
+ * can corrupt new kernel data structures (e.g., task structs), causing
+ * crashes like NULL pointer dereferences in the scheduler.
+ *
+ * This must be called BEFORE starting each secondary VP and early in boot
+ * for the boot CPU to prevent corruption during the window between kernel
+ * memory allocation and the late mshv_vtl_init cleanup.
+ */
+static void hv_vtl_cleanup_stale_vp_state(u32 vp_index)
+{
+	struct hv_register_assoc regs[2] = {};
+	union hv_input_vtl vtl = { .as_uint8 = 0 };
+	union hv_synic_sint sint;
+
+	/* Disable stale register page */
+	regs[0].name = HV_REGISTER_REG_PAGE;
+	regs[0].value.reg64 = 0;
+
+	/* Mask stale SINT0 (VTL interception SINT) */
+	sint.as_uint64 = 0;
+	sint.masked = true;
+	regs[1].name = 0x000A0000; /* HV_REGISTER_SINT0 */
+	regs[1].value.reg64 = sint.as_uint64;
+
+	hv_call_set_vp_registers(vp_index, HV_PARTITION_ID_SELF,
+				 2, vtl, regs);
+}
+
 static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip, unsigned int cpu)
 {
 	int vp_index;
@@ -257,6 +294,9 @@ static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip, unsi
 		return -EINVAL;
 	}
 
+	/* Clean up stale VTL state before starting this VP (kexec safety) */
+	hv_vtl_cleanup_stale_vp_state(vp_index);
+
 	return hv_vtl_bringup_vcpu(vp_index, cpu, start_eip);
 }
 
@@ -264,6 +304,12 @@ int __init hv_vtl_early_init(void)
 {
 	machine_ops.emergency_restart = hv_vtl_emergency_restart;
 	machine_ops.restart = hv_vtl_restart;
+
+	/*
+	 * Clean up stale VTL state for the boot CPU immediately.
+	 * After kexec, the old register page and SINT0 are still active.
+	 */
+	hv_vtl_cleanup_stale_vp_state(HV_VP_INDEX_SELF);
 
 	/*
 	 * `boot_cpu_has` returns the runtime feature support,
