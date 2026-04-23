@@ -11,6 +11,7 @@
 #include <asm/acpi.h>
 #include <asm/apic.h>
 #include <asm/boot.h>
+#include <asm/bootparam.h>
 #include <asm/desc.h>
 #include <asm/fpu/api.h>
 #include <asm/fpu/types.h>
@@ -33,6 +34,13 @@
 #include "../../drivers/hv/mshv_vtl.h"
 
 extern struct boot_params boot_params;
+
+#define X86_BOOT_LOADER_KEXEC 0x0d
+
+static bool hv_vtl_is_kexec_boot(void)
+{
+	return boot_params.hdr.type_of_loader >> 4 == X86_BOOT_LOADER_KEXEC;
+}
 static struct real_mode_header hv_vtl_real_mode_header;
 
 static bool __init hv_vtl_msi_ext_dest_id(void)
@@ -241,6 +249,64 @@ free_lock:
 	return ret;
 }
 
+/*
+ * After kexec, the previous kernel's VTL register page and SINT0 may still
+ * be configured for each VP. The register page points to old kernel memory
+ * that is now reused by the new kernel. When the hypervisor dispatches a VP
+ * to VTL2, it writes intercept context to the register page address, which
+ * can corrupt new kernel data structures (e.g., task structs), causing
+ * crashes like NULL pointer dereferences in the scheduler.
+ *
+ * Clean the boot VP early to prevent corruption before mshv_vtl_init().
+ * Secondary VPs clean their own state after they are online; Hyper-V rejects
+ * attempts to address them remotely during early startup.
+ */
+static void hv_vtl_cleanup_stale_boot_vp_state(void)
+{
+	struct hv_input_set_vp_registers *input;
+	struct hv_register_assoc registers[2] = {};
+	unsigned long flags;
+	unsigned int completed = 0;
+	unsigned int remaining = ARRAY_SIZE(registers);
+	union hv_synic_sint sint;
+	u64 status = HV_STATUS_SUCCESS;
+
+	/* Disable the old mapping before the successor kernel can reuse memory. */
+	registers[0].name = HV_REGISTER_REG_PAGE;
+	registers[0].value.reg64 = 0;
+
+	/* Mask SINT0 until mshv_vtl installs the new kernel's handler. */
+	sint.as_uint64 = 0;
+	sint.masked = true;
+	registers[1].name = HV_REGISTER_SINT0;
+	registers[1].value.reg64 = sint.as_uint64;
+
+	local_irq_save(flags);
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	input->partition_id = HV_PARTITION_ID_SELF;
+	input->vp_index = HV_VP_INDEX_SELF;
+	input->input_vtl.as_uint8 = 0;
+	input->rsvd_z8 = 0;
+	input->rsvd_z16 = 0;
+
+	while (remaining) {
+		memcpy(input->elements, &registers[completed],
+		       remaining * sizeof(*registers));
+		status = hv_do_rep_hypercall(HVCALL_SET_VP_REGISTERS, remaining,
+					     0, input, NULL);
+		if (!hv_result_success(status) || !hv_repcomp(status))
+			break;
+
+		completed += hv_repcomp(status);
+		remaining -= hv_repcomp(status);
+	}
+	local_irq_restore(flags);
+
+	if (!hv_result_success(status) || remaining)
+		pr_warn("Failed to clean stale VTL state for the boot VP: %#llx\n",
+			status);
+}
+
 static int hv_vtl_wakeup_secondary_cpu(u32 apicid, unsigned long start_eip, unsigned int cpu)
 {
 	int vp_index;
@@ -278,6 +344,13 @@ int __init hv_vtl_early_init(void)
 {
 	machine_ops.emergency_restart = hv_vtl_emergency_restart;
 	machine_ops.restart = hv_vtl_restart;
+
+	/*
+	 * Clean up stale VTL state for the boot CPU immediately.
+	 * After kexec, the old register page and SINT0 are still active.
+	 */
+	if (hv_vtl_is_kexec_boot())
+		hv_vtl_cleanup_stale_boot_vp_state();
 
 	/*
 	 * `boot_cpu_has` returns the runtime feature support,
