@@ -1373,7 +1373,7 @@ static __init int print_s5_reset_status_mmio(void)
 	 * The below ioread32() causes a triple fault for SNP due to a hypevisor
 	 * bug. Work it around for now.
 	 */
-	if (!ms_hyperv.paravisor_present && hv_isolation_type_snp())
+	if (!ms_hyperv.paravisor_present && hv_is_isolation_supported())
 		return 0;
 
 	if (!cpu_feature_enabled(X86_FEATURE_ZEN))
