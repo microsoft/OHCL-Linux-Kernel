@@ -334,6 +334,7 @@ int __init hv_common_init(void)
 	 * calling crash enlightment interface before running kdump
 	 * kernel.
 	 */
+#if 0
 	if (ms_hyperv.misc_features & HV_FEATURE_GUEST_CRASH_MSR_AVAILABLE) {
 		u64 hyperv_crash_ctl;
 
@@ -363,6 +364,7 @@ int __init hv_common_init(void)
 		atomic_notifier_chain_register(&panic_notifier_list,
 					       &hyperv_panic_report_block);
 	}
+#endif
 
 	/*
 	 * Allocate the per-CPU state for the hypercall input arg.
