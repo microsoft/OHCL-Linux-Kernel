@@ -365,6 +365,7 @@ int __init hv_common_init(void)
 					       &hyperv_panic_report_block);
 	}
 #endif
+	pr_info("%s %d\n", __func__, __LINE__);
 
 	/*
 	 * Allocate the per-CPU state for the hypercall input arg.
@@ -380,6 +381,7 @@ int __init hv_common_init(void)
 		hyperv_pcpu_output_arg = alloc_percpu(void *);
 		BUG_ON(!hyperv_pcpu_output_arg);
 	}
+	pr_info("%s %d\n", __func__, __LINE__);	
 
 	if (hv_parent_partition()) {
 		hv_synic_eventring_tail = alloc_percpu(u8 *);
@@ -396,6 +398,8 @@ int __init hv_common_init(void)
 	for (i = 0; i < nr_cpu_ids; i++)
 		hv_vp_index[i] = VP_INVAL;
 
+	pr_info("%s %d\n", __func__, __LINE__);
+	
 	/*
 	 * The VP assist page is useless to a TDX guest: the only use we
 	 * would have for it is lazy EOI, which can not be used with TDX.

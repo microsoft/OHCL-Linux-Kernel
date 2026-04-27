@@ -418,6 +418,7 @@ void __init hyperv_init(void)
 			goto free_vp_assist_page;
 	}
 
+	pr_info("%s %d\n", __func__, __LINE__);	
 	cpuhp = cpuhp_setup_state(CPUHP_AP_HYPERV_ONLINE, "x86/hyperv_init:online",
 				  hv_cpu_init, hv_cpu_die);
 	if (cpuhp < 0)
@@ -447,9 +448,13 @@ void __init hyperv_init(void)
 	guest_id = hv_generate_guest_id(LINUX_VERSION_CODE);
 	wrmsrq(HV_X64_MSR_GUEST_OS_ID, guest_id);
 
+	pr_info("%s %d\n", __func__, __LINE__);	
+	
 	/* With the paravisor, the VM must also write the ID via GHCB/GHCI */
 	hv_ivm_msr_write(HV_X64_MSR_GUEST_OS_ID, guest_id);
 
+	pr_info("%s %d\n", __func__, __LINE__);	
+	
 	/* A TDX VM with no paravisor only uses TDX GHCI rather than hv_hypercall_pg */
 	if (hv_isolation_type_tdx() && !ms_hyperv.paravisor_present)
 		goto skip_hypercall_pg_init;
@@ -464,6 +469,8 @@ void __init hyperv_init(void)
 	rdmsrq(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
 	hypercall_msr.enable = 1;
 
+	pr_info("%s %d\n", __func__, __LINE__);	
+	
 	if (hv_root_partition()) {
 		struct page *pg;
 		void *src;
@@ -506,10 +513,14 @@ skip_hypercall_pg_init:
 	old_setup_percpu_clockev = x86_init.timers.setup_percpu_clockev;
 	x86_init.timers.setup_percpu_clockev = hv_stimer_setup_percpu_clockev;
 
+	pr_info("%s %d\n", __func__, __LINE__);	
+	
 	hv_apic_init();
 
 	x86_init.pci.arch_init = hv_pci_init;
 
+	pr_info("%s %d\n", __func__, __LINE__);	
+	
 	register_syscore_ops(&hv_syscore_ops);
 
 	if (ms_hyperv.priv_high & HV_ACCESS_PARTITION_ID)
@@ -527,11 +538,15 @@ skip_hypercall_pg_init:
 	/* Query the VMs extended capability once, so that it can be cached. */
 	hv_query_ext_cap(0);
 
+	pr_info("%s %d\n", __func__, __LINE__);	
+	
 	/* Find the VTL */
 	ms_hyperv.vtl = get_vtl();
 
 	if (ms_hyperv.vtl > 0) /* non default VTL */
 		hv_vtl_early_init();
+
+	pr_info("%s %d\n", __func__, __LINE__);	
 
 	return;
 
