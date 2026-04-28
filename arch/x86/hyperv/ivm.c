@@ -294,8 +294,9 @@ static void snp_cleanup_vmsa(struct sev_es_save_area *vmsa)
 enum es_result hv_set_savic_backing_page(u64 gfn)
 {
 	u64 control = HV_HYPERCALL_REP_COMP_1 | HVCALL_SET_VP_REGISTERS;
-	struct hv_set_vp_registers_input *input
-		= hv_vp_early_input_arg + smp_processor_id() * PAGE_SIZE;
+	struct hv_set_vp_registers_input *input =
+		(struct hv_set_vp_registers_input *)
+		((u8 *)hv_vp_early_input_arg + smp_processor_id() * PAGE_SIZE);
 	union hv_x64_register_sev_gpa_page value;
 	unsigned long flags;
 	int retry = 5;

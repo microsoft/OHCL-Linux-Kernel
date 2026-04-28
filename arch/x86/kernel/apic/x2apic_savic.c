@@ -356,7 +356,6 @@ static void savic_setup(void)
 	enum es_result res;
 	unsigned long gpa;
 	unsigned long gfn;
-	int ret;
 
 	if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
 		return;
@@ -377,9 +376,9 @@ static void savic_setup(void)
 	 * the APIC backing page is mapped in NPT.
 	 */
 	if (hv_isolation_type_snp())
-		ret = hv_set_savic_backing_page(gfn);
+		res = hv_set_savic_backing_page(gfn);
 	else
-		ret = savic_register_gpa(gpa);
+		res = savic_register_gpa(gpa);
 
 	if (res != ES_OK)
 		sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_SAVIC_FAIL);

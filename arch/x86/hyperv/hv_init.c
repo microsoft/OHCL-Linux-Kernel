@@ -392,14 +392,16 @@ void __init hyperv_init(void)
 		return;
 
 	if (cc_platform_has(CC_ATTR_SNP_SECURE_AVIC)) {
-		hv_vp_early_input_arg = kcalloc(num_possible_cpus(),
-					     PAGE_SIZE,
-					     GFP_KERNEL);
+		hv_vp_early_input_arg = (void *)__get_free_pages(
+					     GFP_KERNEL | __GFP_ZERO,
+					     get_order(num_possible_cpus() * PAGE_SIZE));
 		if (hv_vp_early_input_arg) {
 			ret = set_memory_decrypted((u64)hv_vp_early_input_arg,
 					     num_possible_cpus());
 			if (ret) {
-				kfree(hv_vp_early_input_arg);
+				free_pages((unsigned long)hv_vp_early_input_arg,
+					   get_order(num_possible_cpus() * PAGE_SIZE));
+				hv_vp_early_input_arg = NULL;
 				goto common_free;
 			}
 		} else {
@@ -545,9 +547,13 @@ free_vp_assist_page:
 	kfree(hv_vp_assist_page);
 	hv_vp_assist_page = NULL;
 free_vp_early_input_arg:
-	set_memory_encrypted((u64)hv_vp_early_input_arg, num_possible_cpus());
-	kfree(hv_vp_early_input_arg);
-	hv_vp_early_input_arg = NULL;
+	if (hv_vp_early_input_arg) {
+		set_memory_encrypted((u64)hv_vp_early_input_arg,
+				     num_possible_cpus());
+		free_pages((unsigned long)hv_vp_early_input_arg,
+			   get_order(num_possible_cpus() * PAGE_SIZE));
+		hv_vp_early_input_arg = NULL;
+	}
 common_free:
 	hv_common_free();
 }

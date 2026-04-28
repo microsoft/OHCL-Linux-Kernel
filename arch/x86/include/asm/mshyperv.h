@@ -306,9 +306,15 @@ static inline void hv_vtl_idle(void)
  * Registers are only accessible via HVCALL_GET_VP_REGISTERS hvcall and
  * there is not associated MSR address.
  */
+#ifndef HV_X64_REGISTER_VSM_VP_STATUS
 #define		HV_X64_REGISTER_VSM_VP_STATUS   0x000D0003
+#endif
+#ifndef HV_X64_VTL_MASK
 #define		HV_X64_VTL_MASK                 GENMASK(3, 0)
+#endif
+#ifndef HV_X64_REGISTER_SEV_AVIC_GPA
 #define		HV_X64_REGISTER_SEV_AVIC_GPA    0x00090043
+#endif
 
 #ifdef CONFIG_HYPERV_VTL_MODE
 void __init hv_vtl_init_platform(void);
