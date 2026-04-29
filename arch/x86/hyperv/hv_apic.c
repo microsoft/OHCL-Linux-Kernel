@@ -25,6 +25,7 @@
 #include <linux/clockchips.h>
 #include <linux/slab.h>
 #include <linux/cpuhotplug.h>
+#include <linux/cc_platform.h>
 #include <asm/hypervisor.h>
 #include <asm/mshyperv.h>
 #include <asm/apic.h>
@@ -51,6 +52,11 @@ static void hv_apic_icr_write(u32 low, u32 id)
 	reg_val |= low;
 
 	wrmsrq(HV_X64_MSR_ICR, reg_val);
+}
+
+void hv_enable_coco_interrupt(unsigned int cpu, unsigned int vector, bool set)
+{
+	apic_update_vector(cpu, vector, set);
 }
 
 static u32 hv_apic_read(u32 reg)
@@ -293,6 +299,9 @@ static void hv_send_ipi_self(int vector)
 
 void __init hv_apic_init(void)
 {
+	if (cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
+		return;
+
 	if (ms_hyperv.hints & HV_X64_CLUSTER_IPI_RECOMMENDED) {
 		pr_info("Hyper-V: Using IPI hypercalls\n");
 		/*

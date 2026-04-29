@@ -460,6 +460,7 @@ struct mshv_partition_time {
 #define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
 #define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
 #define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
+#define MSHV_VTL_SECURE_AVIC_VTL0_PFN	_IOWR(MSHV_IOCTL, 0x40, __u64)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
