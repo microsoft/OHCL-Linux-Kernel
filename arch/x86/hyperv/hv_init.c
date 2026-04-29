@@ -76,6 +76,7 @@ static inline void hv_set_hypercall_pg(void *ptr)
 EXPORT_SYMBOL_GPL(hv_hypercall_pg);
 #endif
 
+void *hv_vp_early_input_arg;
 union hv_ghcb * __percpu *hv_ghcb_pg;
 
 /* Storage to save the hypercall page temporarily for hibernation */
@@ -119,6 +120,10 @@ static int hv_cpu_init(unsigned int cpu)
 	ret = hv_common_cpu_init(cpu);
 	if (ret)
 		return ret;
+
+	/* Allow Hyper-V stimer vector to be injected from Hypervisor. */
+	if (ms_hyperv.misc_features & HV_STIMER_DIRECT_MODE_AVAILABLE)
+		apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, true);
 
 	return hyperv_init_ghcb();
 }
@@ -226,6 +231,9 @@ static int hv_cpu_die(unsigned int cpu)
 			iounmap(*ghcb_va);
 		*ghcb_va = NULL;
 	}
+
+	if (ms_hyperv.misc_features & HV_STIMER_DIRECT_MODE_AVAILABLE)
+		apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, false);
 
 	hv_common_cpu_die(cpu);
 
@@ -375,12 +383,31 @@ void __init hyperv_init(void)
 	u64 guest_id;
 	union hv_x64_msr_hypercall_contents hypercall_msr;
 	int cpuhp;
+	int ret;
 
 	if (x86_hyper_type != X86_HYPER_MS_HYPERV)
 		return;
 
 	if (hv_common_init())
 		return;
+
+	if (cc_platform_has(CC_ATTR_SNP_SECURE_AVIC)) {
+		hv_vp_early_input_arg = (void *)__get_free_pages(
+					     GFP_KERNEL | __GFP_ZERO,
+					     get_order(num_possible_cpus() * PAGE_SIZE));
+		if (hv_vp_early_input_arg) {
+			ret = set_memory_decrypted((u64)hv_vp_early_input_arg,
+					     num_possible_cpus());
+			if (ret) {
+				free_pages((unsigned long)hv_vp_early_input_arg,
+					   get_order(num_possible_cpus() * PAGE_SIZE));
+				hv_vp_early_input_arg = NULL;
+				goto common_free;
+			}
+		} else {
+			goto common_free;
+		}
+	}
 
 	if (ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
 		/* Negotiate GHCB Version. */
@@ -519,6 +546,16 @@ free_ghcb_page:
 free_vp_assist_page:
 	kfree(hv_vp_assist_page);
 	hv_vp_assist_page = NULL;
+free_vp_early_input_arg:
+	if (hv_vp_early_input_arg) {
+		set_memory_encrypted((u64)hv_vp_early_input_arg,
+				     num_possible_cpus());
+		free_pages((unsigned long)hv_vp_early_input_arg,
+			   get_order(num_possible_cpus() * PAGE_SIZE));
+		hv_vp_early_input_arg = NULL;
+	}
+common_free:
+	hv_common_free();
 }
 
 /*
