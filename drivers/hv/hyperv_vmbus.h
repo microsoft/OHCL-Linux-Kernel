@@ -109,6 +109,12 @@ struct hv_input_post_message {
 enum {
 	VMBUS_MESSAGE_CONNECTION_ID	= 1,
 	VMBUS_MESSAGE_CONNECTION_ID_4	= 4,
+	/*
+	 * Hyper-V message port exposed by the VMBus relay.
+	 * Used only for INITIATE_CONTACT probing before falling back.
+	 * Keep this separate from normal channel/event port IDs.
+	 */
+	VMBUS_MESSAGE_CONNECTION_ID_REDIRECT = 0x800074,
 	VMBUS_MESSAGE_PORT_ID		= 1,
 	VMBUS_EVENT_CONNECTION_ID	= 2,
 	VMBUS_EVENT_PORT_ID		= 2,
