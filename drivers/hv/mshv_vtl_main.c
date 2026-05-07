@@ -3223,6 +3223,35 @@ static bool can_fault(struct vm_fault *vmf, pgoff_t pgoff, unsigned long size, p
 	return valid;
 }
 
+/*
+ * Verify that a PFN is safe to map via /dev/mshv_vtl_low.
+ *
+ * Only two classes of PFNs are permitted:
+ * 1. ZONE_DEVICE pages - these are VTL0 memory ranges explicitly registered
+ *    via MSHV_ADD_VTL0_MEMORY / devm_memremap_pages().
+ * 2. PFNs without struct pages (pfn_valid() == false) - these are MMIO or
+ *    device regions (e.g. framebuffer) where the hypervisor's SLAT enforces
+ *    access control.
+ *
+ * VTL2 kernel RAM (ZONE_NORMAL, ZONE_DMA, etc.) is always rejected to prevent
+ * accidental exposure of VTL2 memory.
+ */
+static bool mshv_vtl_low_pfn_allowed(unsigned long pfn, unsigned int order)
+{
+	unsigned long end_pfn = pfn + (1UL << order) - 1;
+
+	/* If it has a struct page, it must be ZONE_DEVICE (registered VTL0 memory) */
+	if (pfn_valid(pfn) && !is_zone_device_page(pfn_to_page(pfn)))
+		return false;
+
+	/* For huge pages, verify the last PFN in the range too */
+	if (order > 0 && pfn_valid(end_pfn) &&
+	    !is_zone_device_page(pfn_to_page(end_pfn)))
+		return false;
+
+	return true;
+}
+
 static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int order)
 {
 	pgoff_t pgoff;
@@ -3233,18 +3262,26 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 
 	switch (order) {
 	case 0:
+		if (!mshv_vtl_low_pfn_allowed(pgoff, 0))
+			return VM_FAULT_SIGBUS;
 		pfn = __pfn_to_pfn_t(pgoff, PFN_DEV | PFN_MAP);
 		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
 
 	case PMD_ORDER:
-		if (can_fault(vmf, pgoff, PMD_SIZE, &pfn))
+		if (can_fault(vmf, pgoff, PMD_SIZE, &pfn)) {
+			if (!mshv_vtl_low_pfn_allowed(pfn_t_to_pfn(pfn), PMD_ORDER))
+				return VM_FAULT_SIGBUS;
 			ret = vmf_insert_pfn_pmd(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
+		}
 		return ret;
 
 #if defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 	case PUD_ORDER:
-		if (can_fault(vmf, pgoff, PUD_SIZE, &pfn))
+		if (can_fault(vmf, pgoff, PUD_SIZE, &pfn)) {
+			if (!mshv_vtl_low_pfn_allowed(pfn_t_to_pfn(pfn), PUD_ORDER))
+				return VM_FAULT_SIGBUS;
 			ret = vmf_insert_pfn_pud(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
+		}
 		return ret;
 #endif
 
