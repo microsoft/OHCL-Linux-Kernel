@@ -72,16 +72,22 @@ MODULE_PARM_DESC(max_version,
 		 "Maximal VMBus protocol version which can be negotiated");
 
 /*
- * User requested connection id used to connect to the host. Useful for testing
- * or when running a vmbus server on a non-standard connection id.
+ * Connection IDs to try, in order, when running under VTL2. Try the redirect
+ * ID first since a VMBus relay (when present) only listens on the redirect
+ * port; fall back to the standard ID if the host rejects it.
  */
-static uint message_connection_id;
+static const u32 connection_ids[] = {
+	VMBUS_MESSAGE_CONNECTION_ID_REDIRECT,
+	VMBUS_MESSAGE_CONNECTION_ID_4,
+};
 
-module_param(message_connection_id, uint, 0444);
-MODULE_PARM_DESC(message_connection_id,
-		 "The VMBus message connection id used to communicate with the Host");
-
-int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version)
+/*
+ * Send a single CHANNELMSG_INITIATE_CONTACT using the specified message
+ * connection_id. Used by vmbus_negotiate_version() which is responsible for
+ * picking the right ID(s) and retrying on failure.
+ */
+static int vmbus_try_connection_id(struct vmbus_channel_msginfo *msginfo,
+				   u32 version, u32 connection_id)
 {
 	int ret = 0;
 	struct vmbus_channel_initiate_contact *msg;
@@ -97,7 +103,7 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version)
 
 	/*
 	 * VMBus protocol 5.0 (VERSION_WIN10_V5) and higher require that we must
-	 * use VMBUS_MESSAGE_CONNECTION_ID_4 for the Initiate Contact Message,
+	 * use connection_id for the Initiate Contact Message,
 	 * and for subsequent messages, we must use the Message Connection ID
 	 * field in the host-returned Version Response Message. And, with
 	 * VERSION_WIN10_V5 and higher, we don't use msg->interrupt_page, but we
@@ -109,14 +115,11 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version)
 	if (version >= VERSION_WIN10_V5) {
 		msg->msg_sint = VMBUS_MESSAGE_SINT;
 		msg->msg_vtl = ms_hyperv.vtl;
-		vmbus_connection.msg_conn_id = VMBUS_MESSAGE_CONNECTION_ID_4;
+		vmbus_connection.msg_conn_id = connection_id;
 	} else {
 		msg->interrupt_page = virt_to_phys(vmbus_connection.int_page);
 		vmbus_connection.msg_conn_id = VMBUS_MESSAGE_CONNECTION_ID;
 	}
-
-	if (message_connection_id > 0)
-		vmbus_connection.msg_conn_id = message_connection_id;
 
 	/*
 	 * shared_gpa_boundary is zero in non-SNP VMs, so it's safe to always
@@ -169,6 +172,47 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version)
 				msginfo->response.version_response.msg_conn_id;
 	} else {
 		return -ECONNREFUSED;
+	}
+
+	return ret;
+}
+
+/*
+ * Negotiate the given VMBus protocol version with the host. On VTL2 the
+ * INITIATE_CONTACT message may need to go through the VMBus relay's redirect
+ * connection ID; try the redirect ID first and fall back to the standard ID.
+ */
+int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version)
+{
+	const u32 *ids;
+	size_t n_ids, j;
+	int ret = 0;
+
+	/*
+	 * Pick the set of connection IDs to try:
+	 * - Pre-V5 protocols ignore the connection_id argument and always use
+	 *   VMBUS_MESSAGE_CONNECTION_ID, so probing more than once would just
+	 *   resend the same message.
+	 * - VTL2 (with a possible VMBus relay) tries the redirect ID first,
+	 *   then the standard ID.
+	 * - Everything else tries only the standard ID.
+	 */
+	if (version < VERSION_WIN10_V5 || ms_hyperv.vtl < 2) {
+		static const u32 default_id = VMBUS_MESSAGE_CONNECTION_ID_4;
+
+		ids = &default_id;
+		n_ids = 1;
+	} else {
+		ids = connection_ids;
+		n_ids = ARRAY_SIZE(connection_ids);
+	}
+
+	for (j = 0; j < n_ids; j++) {
+		ret = vmbus_try_connection_id(msginfo, version, ids[j]);
+		if (ret == -ETIMEDOUT)
+			return ret;
+		if (vmbus_connection.conn_state == CONNECTED)
+			return 0;
 	}
 
 	return ret;
