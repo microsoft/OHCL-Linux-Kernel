@@ -20,6 +20,7 @@
 #include <linux/eventfd.h>
 #include <linux/poll.h>
 #include <linux/file.h>
+#include <linux/pagemap.h>
 #include <linux/user-return-notifier.h>
 #include <linux/vmalloc.h>
 #include <asm/boot.h>
@@ -1154,6 +1155,9 @@ static int vtl_set_vp_register(struct hv_register_assoc *reg)
 
 #define DECRYPTED_MASK	(1ul << 51)
 
+/* Identity token tagged on every mshv_vtl pgmap; only its address matters. */
+static const u8 mshv_vtl_pgmap_token;
+
 static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 {
 	struct mshv_vtl_ram_disposition vtl0_mem;
@@ -1182,6 +1186,7 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	pgmap->ranges[0].end = PFN_PHYS(vtl0_mem.last_pfn) - 1;
 	pgmap->nr_range = 1;
 	pgmap->type = MEMORY_DEVICE_GENERIC;
+	pgmap->owner = (void *)&mshv_vtl_pgmap_token;
 	if (decrypted)
 		pgmap->flags = PGMAP_DECRYPTED;
 
@@ -3640,6 +3645,18 @@ static struct miscdevice mshv_vtl_hvcall_dev = {
 	.minor = MISC_DYNAMIC_MINOR,
 };
 
+/*
+ * Mirror drivers/dax/device.c: once the fault path publishes folio->mapping
+ * to this inode's address_space, writeback-side helpers (e.g.
+ * folio_mark_dirty() called from bio_set_pages_dirty() after direct I/O into
+ * a GUP'd VTL0 buffer) will dispatch through mapping->a_ops->dirty_folio.
+ * The default empty_aops leaves dirty_folio NULL, so install noop_dirty_folio
+ * to keep that dispatch safe; nothing here participates in real writeback.
+ */
+static const struct address_space_operations mshv_vtl_low_aops = {
+	.dirty_folio	= noop_dirty_folio,
+};
+
 static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 {
 	pid_t pid = task_pid_vnr(current);
@@ -3650,6 +3667,7 @@ static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 
 	if (capable(CAP_SYS_ADMIN)) {
 		filp->private_data = inodep;
+		inodep->i_mapping->a_ops = &mshv_vtl_low_aops;
 	} else {
 		pr_err("%s: VTL low open failed: CAP_SYS_ADMIN required. task group %d, uid %d",
 		       __func__, pid, uid);
@@ -3678,26 +3696,102 @@ static bool can_fault(struct vm_fault *vmf, unsigned long size, unsigned long *p
 	return is_valid;
 }
 
+/*
+ * Resolve a user-supplied PFN to a page owned by an mshv_vtl pgmap, or NULL.
+ * Look up the pgmap via get_dev_pagemap() rather than page_pgmap(): the pgmap
+ * is published in pgmap_array before per-page state is initialized, so a
+ * concurrent MSHV_ADD_VTL0_MEMORY can leave folio->pgmap unset while pfn_valid
+ * and is_zone_device_page already return true. The owner check additionally
+ * rejects foreign MEMORY_DEVICE_GENERIC pgmaps (e.g. DAX).
+ */
+static struct page *mshv_vtl_low_resolve_page(unsigned long pfn)
+{
+	struct dev_pagemap *pgmap;
+	struct page *page;
+
+	pgmap = get_dev_pagemap(pfn);
+	if (!pgmap)
+		return NULL;
+	page = NULL;
+	if (pgmap->type == MEMORY_DEVICE_GENERIC &&
+	    pgmap->owner == &mshv_vtl_pgmap_token)
+		page = pfn_to_page(pfn);
+	/* Safe to drop here: mshv_vtl pgmaps are never released for the life of the module. */
+	put_dev_pagemap(pgmap);
+	return page;
+}
+
+/*
+ * Mirror dax_set_mapping(): rmap walkers locate a file-rmapped folio via
+ * folio->mapping/index. ZONE_DEVICE init only fills ->pgmap, so set the
+ * file-mapping fields here before each insert that adds file rmap.
+ * Idempotent: only the head folio carries mapping/index, and once set the
+ * fields persist for the lifetime of the (never-released) pgmap.
+ */
+static void mshv_vtl_low_set_mapping(struct vm_fault *vmf, struct folio *folio,
+				     unsigned long fault_size)
+{
+	if (folio->mapping)
+		return;
+
+	folio->mapping = vmf->vma->vm_file->f_mapping;
+	folio->index = linear_page_index(vmf->vma,
+					 ALIGN_DOWN(vmf->address, fault_size));
+}
+
+/*
+ * Note on rmap/RSS accounting for huge VTL0 mappings:
+ * vmf_insert_folio_{pmd,pud}() takes a folio reference, adds a file rmap,
+ * and bumps mm RSS, but the matching teardown is skipped at zap/split time
+ * because vma_is_special_huge() is true (VM_MIXEDMAP) while vma_is_dax() is
+ * false (CONFIG_FS_DAX is not set in OHCL). The drift is theoretical for
+ * OpenVMM/OpenHCL: VTL0 memory is mapped once per partition and held for
+ * its lifetime - there is no map/unmap cycling, no partial munmap, and the
+ * driver is not unloaded. Stale refs land on ZONE_DEVICE folios whose
+ * pgmap is intentionally never released, no real bytes are leaked, and the
+ * mm's inflated RSS is discarded with the mm at process exit.
+ */
 static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int order)
 {
 	unsigned long pfn = vmf->pgoff & ~DECRYPTED_MASK;
-	vm_fault_t ret = VM_FAULT_FALLBACK;
+	bool write = vmf->flags & FAULT_FLAG_WRITE;
+	struct page *page;
+	struct folio *folio;
 
 	switch (order) {
 	case 0:
-		/* __pfn_to_pfn_t ? */
+		/* pte_special path; GUP bails before try_grab_folio() so the WARN cannot fire here. */
 		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
 
 	case PMD_ORDER:
-		if (can_fault(vmf, PMD_SIZE, &pfn))
-			ret = vmf_insert_pfn_pmd(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
-		return ret;
+		if (!can_fault(vmf, PMD_SIZE, &pfn))
+			return VM_FAULT_FALLBACK;
+		page = mshv_vtl_low_resolve_page(pfn);
+		if (!page)
+			return VM_FAULT_FALLBACK;
+		folio = page_folio(page);
+		/*
+		 * vmf_insert_folio_pmd() needs an exact-order folio; let core
+		 * retry smaller on mismatch.
+		 */
+		if (folio_order(folio) != PMD_ORDER)
+			return VM_FAULT_FALLBACK;
+		mshv_vtl_low_set_mapping(vmf, folio, PMD_SIZE);
+		return vmf_insert_folio_pmd(vmf, folio, write);
 
 #if defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 	case PUD_ORDER:
-		if (can_fault(vmf, PUD_SIZE, &pfn))
-			ret = vmf_insert_pfn_pud(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
-		return ret;
+		if (!can_fault(vmf, PUD_SIZE, &pfn))
+			return VM_FAULT_FALLBACK;
+		page = mshv_vtl_low_resolve_page(pfn);
+		if (!page)
+			return VM_FAULT_FALLBACK;
+		folio = page_folio(page);
+		/* Same exact-order requirement as the PMD case above. */
+		if (folio_order(folio) != PUD_ORDER)
+			return VM_FAULT_FALLBACK;
+		mshv_vtl_low_set_mapping(vmf, folio, PUD_SIZE);
+		return vmf_insert_folio_pud(vmf, folio, write);
 #endif
 
 	default:
@@ -3717,8 +3811,18 @@ static const struct vm_operations_struct mshv_vtl_low_vm_ops = {
 
 static int mshv_vtl_low_mmap(struct file *filp, struct vm_area_struct *vma)
 {
+	/*
+	 * Reject MAP_PRIVATE: the fault path installs PTEs via
+	 * vmf_insert_{page,folio}_{,pmd,pud}() and bypasses core-mm COW, so
+	 * MAP_PRIVATE writes would land on the underlying VTL0/device page
+	 * instead of a private copy. Mirror device-dax (drivers/dax/device.c).
+	 */
+	if ((vma->vm_flags & VM_MAYSHARE) != VM_MAYSHARE)
+		return -EINVAL;
+
 	vma->vm_ops = &mshv_vtl_low_vm_ops;
-	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP);
+	/* VM_MIXEDMAP for the 4K pte_special path; VM_DONTEXPAND pins size to the pgmap. */
+	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP | VM_DONTEXPAND);
 
 	if (vma->vm_pgoff & DECRYPTED_MASK)
 		vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
