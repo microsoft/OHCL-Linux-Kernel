@@ -12,70 +12,111 @@ on:
 
 jobs:
   build_linux:
-    name: Build Linux kernel
+    name: Build Linux kernel (reproducible)
     runs-on: ubuntu-latest
     strategy:
       matrix:
         arch: ['x64', 'cvm-x64', 'arm64']
+    env:
+      # Stable build identity used to derive SOURCE_DATE_EPOCH and metadata.
+      KBUILD_BUILD_USER: builder
+      KBUILD_BUILD_HOST: nixos
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          # Need the HEAD commit's timestamp for SOURCE_DATE_EPOCH; depth=1 is sufficient.
+          fetch-depth: 1
 
-      - name: Install dependencies
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Map ci arch to build args
+        id: args
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev
-          [ "${{ matrix.arch }}" == "arm64" ] && sudo apt-get install -y gcc-aarch64-linux-gnu || true
+          case "${{ matrix.arch }}" in
+            x64)
+              echo "build_arch=amd64"   >> "$GITHUB_OUTPUT"
+              echo "config=Microsoft/hcl-x64.config"   >> "$GITHUB_OUTPUT"
+              echo "is_cvm=0"            >> "$GITHUB_OUTPUT"
+              ;;
+            cvm-x64)
+              echo "build_arch=amd64"   >> "$GITHUB_OUTPUT"
+              echo "config=Microsoft/hcl-x64.config"   >> "$GITHUB_OUTPUT"
+              echo "is_cvm=1"            >> "$GITHUB_OUTPUT"
+              ;;
+            arm64)
+              echo "build_arch=arm64"   >> "$GITHUB_OUTPUT"
+              echo "config=Microsoft/hcl-arm64.config" >> "$GITHUB_OUTPUT"
+              echo "is_cvm=0"            >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
-      - name: Build kernel
+      - name: Merge CVM config fragment
+        if: steps.args.outputs.is_cvm == '1'
         run: |
-          if [ "${{ matrix.arch }}" == "x64" ] || [ "${{ matrix.arch }}" == "cvm-x64" ]; then
-            export makeargs="ARCH=x86_64 KCONFIG_CONFIG=Microsoft/hcl-x64.config INSTALL_MOD_PATH=$PWD/out/modules"
-            export targets="olddefconfig vmlinux modules modules_install"
-          elif [ "${{ matrix.arch }}" == "arm64" ]; then
-            export makeargs="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- KCONFIG_CONFIG=Microsoft/hcl-arm64.config INSTALL_MOD_PATH=$PWD/out/modules"
-            export targets="olddefconfig vmlinux Image modules modules_install"
-          fi
+          # Run the merge inside the Nix dev shell so flex/bison/gcc are present
+          # and so that scripts/kconfig builds against the same toolchain that
+          # will be used for the actual kernel compile.
+            nix develop -i \
+              -k HOME -k USER -k TERM \
+            --command bash -ec './Microsoft/merge-cvm-config.sh'
 
-          [ "${{ matrix.arch }}" == "cvm-x64" ] && ./Microsoft/merge-cvm-config.sh
-          make $makeargs -j$(nproc) $targets
-
-      - name: Prepare for packaging
+      - name: Build kernel reproducibly
+        env:
+          # SOURCE_DATE_EPOCH is derived from the HEAD commit by the pipeline
+          # script when not pre-set; exporting it here makes it visible in logs.
+          GIT_SHA: ${{ github.sha }}
         run: |
-          export artifacts_dir="release_artifacts/${{ matrix.arch }}"
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-            export objcopy="aarch64-linux-gnu-objcopy"
-          else
-            export objcopy="objcopy"
-          fi
+          # The pipeline script copies the source into /tmp/ohcl-kernel-build/src
+          # to normalise embedded paths. Place the build dir OUTSIDE the source
+          # so it survives that rsync (which excludes ./build, ./out, ./compare).
+          BUILD_DIR="${RUNNER_TEMP:-/tmp}/build-output-${{ matrix.arch }}"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
 
-          mkdir -p $artifacts_dir
-          cp vmlinux $artifacts_dir
-          $objcopy --only-keep-debug --compress-debug-sections $artifacts_dir/vmlinux $artifacts_dir/vmlinux.dbg
-          $objcopy --strip-all --add-gnu-debuglink=$artifacts_dir/vmlinux.dbg $artifacts_dir/vmlinux
-          [ "${{ matrix.arch }}" == "arm64" ] && cp arch/arm64/boot/Image $artifacts_dir/Image || true
+          export SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> "$GITHUB_ENV"
 
-          if [ "${{ matrix.arch }}" == "cvm-x64" ]; then
-            cp Microsoft/hcl-x64.config $artifacts_dir/kernel_config
-          else
-            cp Microsoft/hcl-${{ matrix.arch }}.config $artifacts_dir/kernel_config
-          fi
+          ./Microsoft/build-hcl-kernel-pipeline.sh \
+            --source-dir "$PWD" \
+            --build-dir "$BUILD_DIR" \
+            --config "${{ steps.args.outputs.config }}" \
+            --arch "${{ steps.args.outputs.build_arch }}" \
+            --reproducible
 
-          echo "{" > $artifacts_dir/kernel_build_metadata.json
-          echo "  \"git_branch\": \"${{ github.ref_name }}\"," >> $artifacts_dir/kernel_build_metadata.json
-          echo "  \"git_revision\": \"${{ github.sha }}\"," >> $artifacts_dir/kernel_build_metadata.json
-          echo "  \"build_id\": \"${{ github.run_id }}\"," >> $artifacts_dir/kernel_build_metadata.json
-          echo "  \"build_name\": \"$(date +"%Y%m%d")\"" >> $artifacts_dir/kernel_build_metadata.json
-          echo "}" >> $artifacts_dir/kernel_build_metadata.json
+      - name: Package artifacts
+        run: |
+          # Packaging runs inside the Nix shell so the cross objcopy is on PATH
+          # for arm64 module stripping.
+            nix develop -i \
+              -k HOME -k USER -k TERM \
+              -k BUILD_DIR \
+            --command bash -ec '
+              bash ./Microsoft/package-ci-artifacts.sh \
+                "$BUILD_DIR" \
+                "${{ matrix.arch }}" \
+                "$PWD" \
+                "$PWD/release_artifacts" \
+                "${{ github.ref_name }}" \
+                "${{ github.sha }}" \
+                "${{ github.run_id }}"
+            '
 
-          mv out/modules/lib/modules/*/ $artifacts_dir/modules
-          rm $artifacts_dir/modules/build
-          mkdir $artifacts_dir/modules/debug-files/
-          find $artifacts_dir/modules -name '*.ko' | while read -r mod; do
-            export outmod="$artifacts_dir/modules/debug-files/$(basename $mod)"
-            $objcopy --only-keep-debug --compress-debug-sections "$mod" "$outmod.dbg"
-            $objcopy --strip-unneeded --add-gnu-debuglink "$outmod.dbg" "$mod"
-          done
+      - name: Print reproducibility hashes
+        run: |
+          ART="release_artifacts/${{ matrix.arch }}"
+          echo "## Reproducibility hashes (${{ matrix.arch }})" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ( cd "$ART" && sha256sum vmlinux vmlinux.dbg kernel_config \
+              $( [ -f Image ] && echo Image ) ) | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
