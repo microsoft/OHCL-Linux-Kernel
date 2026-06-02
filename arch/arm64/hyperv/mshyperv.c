@@ -15,6 +15,9 @@
 #include <linux/errno.h>
 #include <linux/version.h>
 #include <linux/cpuhotplug.h>
+#include <linux/libfdt.h>
+#include <linux/of.h>
+#include <linux/of_fdt.h>
 #include <asm/mshyperv.h>
 
 static bool hyperv_initialized;
@@ -70,6 +73,19 @@ static bool __init hyperv_detect_via_smccc(void)
 	return arm_smccc_hypervisor_has_uuid(&hyperv_uuid);
 }
 
+static bool __init hyperv_detect_via_fdt(void)
+{
+#if IS_ENABLED(CONFIG_OF)
+	const unsigned long hyp_node = of_get_flat_dt_subnode_by_name(
+			of_get_flat_dt_root(), "hypervisor");
+
+	return (hyp_node != -FDT_ERR_NOTFOUND) &&
+			of_flat_dt_is_compatible(hyp_node, "microsoft,hyperv");
+#else
+	return false;
+#endif
+}
+
 static int __init hyperv_init(void)
 {
 	struct hv_get_vp_registers_output	result;
@@ -82,7 +98,9 @@ static int __init hyperv_init(void)
 	 *
 	 * In such cases, do nothing and return success.
 	 */
-	if (!hyperv_detect_via_acpi() && !hyperv_detect_via_smccc())
+	if (!hyperv_detect_via_acpi() &&
+	    !hyperv_detect_via_smccc() &&
+	    !hyperv_detect_via_fdt())
 		return 0;
 
 	/* Setup the guest ID */
