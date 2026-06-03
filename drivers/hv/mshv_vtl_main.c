@@ -1155,6 +1155,12 @@ static int vtl_set_vp_register(struct hv_register_assoc *reg)
 
 #define DECRYPTED_MASK	(1ul << 51)
 
+/*
+ * /dev/mshv_vtl_low address_space, captured on first open.
+ * Used by add_vtl0_mem() to zap stale 4K PTEs.
+ */
+static struct address_space *mshv_vtl_low_mapping;
+
 /* Identity token tagged on every mshv_vtl pgmap; only its address matters. */
 static const u8 mshv_vtl_pgmap_token;
 
@@ -1208,6 +1214,20 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 		dev_err(vtl->module_dev, "devm_memremap_pages error: %ld\n", PTR_ERR(addr));
 		kfree(pgmap);
 		return PTR_ERR(addr);
+	}
+
+	/*
+	 * Zap stale pte_special PTEs the 4K fallback installed before this
+	 * range had a pgmap, so the next access re-faults into the folio path.
+	 * Both encrypted (pfn) and decrypted (pfn | DECRYPTED_MASK) aliases.
+	 */
+	if (READ_ONCE(mshv_vtl_low_mapping)) {
+		pgoff_t start = vtl0_mem.start_pfn;
+		pgoff_t nr = vtl0_mem.last_pfn - vtl0_mem.start_pfn;
+
+		unmap_mapping_pages(mshv_vtl_low_mapping, start, nr, true);
+		unmap_mapping_pages(mshv_vtl_low_mapping,
+				    start | DECRYPTED_MASK, nr, true);
 	}
 
 	/* Don't free pgmap, since it has to stick around until the memory
@@ -3667,6 +3687,9 @@ static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 
 	if (capable(CAP_SYS_ADMIN)) {
 		filp->private_data = inodep;
+		/* All opens share one inode; first one publishes the address_space. */
+		if (!READ_ONCE(mshv_vtl_low_mapping))
+			cmpxchg(&mshv_vtl_low_mapping, NULL, inodep->i_mapping);
 		inodep->i_mapping->a_ops = &mshv_vtl_low_aops;
 	} else {
 		pr_err("%s: VTL low open failed: CAP_SYS_ADMIN required. task group %d, uid %d",
@@ -3760,8 +3783,19 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 
 	switch (order) {
 	case 0:
-		/* pte_special path; GUP bails before try_grab_folio() so the WARN cannot fire here. */
-		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
+		page = mshv_vtl_low_resolve_page(pfn);
+		if (!page) {
+			/*
+			 * No pgmap yet: install pte_special so CPU access succeeds.
+			 * The unmap_mapping_range() in add_vtl0_mem() invalidates this
+			 * PTE on registration so a later GUP-bound access re-faults
+			 * into the folio path below.
+			 */
+			return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
+		}
+		/* Inserter operates on the compound-head folio per PTE; refcounts stay balanced. */
+		mshv_vtl_low_set_mapping(vmf, page_folio(page), PAGE_SIZE);
+		return vmf_insert_page_mkwrite(vmf, page, write);
 
 	case PMD_ORDER:
 		if (!can_fault(vmf, PMD_SIZE, &pfn))
@@ -3821,7 +3855,7 @@ static int mshv_vtl_low_mmap(struct file *filp, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	vma->vm_ops = &mshv_vtl_low_vm_ops;
-	/* VM_MIXEDMAP for the 4K pte_special path; VM_DONTEXPAND pins size to the pgmap. */
+	/* VM_MIXEDMAP for pte_special 4K fallback; VM_DONTEXPAND pins size to pgmap. */
 	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP | VM_DONTEXPAND);
 
 	if (vma->vm_pgoff & DECRYPTED_MASK)
