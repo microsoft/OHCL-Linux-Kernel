@@ -12,11 +12,13 @@ on:
 
 jobs:
   build_linux:
-    name: Build Linux kernel (reproducible)
+    name: Build Linux kernel (reproducible, run ${{ matrix.repro_run }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         arch: ['x64', 'cvm-x64', 'arm64']
+        repro_run: [1, 2]
     env:
       # Stable build identity used to derive SOURCE_DATE_EPOCH and metadata.
       KBUILD_BUILD_USER: builder
@@ -75,7 +77,7 @@ jobs:
           # The pipeline script copies the source into /tmp/ohcl-kernel-build/src
           # to normalise embedded paths. Place the build dir OUTSIDE the source
           # so it survives that rsync (which excludes ./build, ./out, ./compare).
-          BUILD_DIR="${RUNNER_TEMP:-/tmp}/build-output-${{ matrix.arch }}"
+          BUILD_DIR="${RUNNER_TEMP:-/tmp}/build-output-${{ matrix.arch }}-run${{ matrix.repro_run }}"
           rm -rf "$BUILD_DIR"
           mkdir -p "$BUILD_DIR"
           echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
@@ -112,7 +114,7 @@ jobs:
       - name: Print reproducibility hashes
         run: |
           ART="release_artifacts/${{ matrix.arch }}"
-          echo "## Reproducibility hashes (${{ matrix.arch }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Reproducibility hashes (${{ matrix.arch }} / run ${{ matrix.repro_run }})" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           ( cd "$ART" && sha256sum vmlinux vmlinux.dbg kernel_config \
               $( [ -f Image ] && echo Image ) ) | tee -a "$GITHUB_STEP_SUMMARY"
@@ -121,8 +123,108 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.arch }}-build
+          name: ${{ matrix.arch }}-build-run${{ matrix.repro_run }}
           path: release_artifacts/${{ matrix.arch }}/
+
+  compare_repro:
+    name: Compare reproducibility hashes
+    needs: build_linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download x64 run 1 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: x64-build-run1
+          path: compare/x64/run1/
+
+      - name: Download x64 run 2 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: x64-build-run2
+          path: compare/x64/run2/
+
+      - name: Download cvm-x64 run 1 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cvm-x64-build-run1
+          path: compare/cvm-x64/run1/
+
+      - name: Download cvm-x64 run 2 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cvm-x64-build-run2
+          path: compare/cvm-x64/run2/
+
+      - name: Download arm64 run 1 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: arm64-build-run1
+          path: compare/arm64/run1/
+
+      - name: Download arm64 run 2 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: arm64-build-run2
+          path: compare/arm64/run2/
+
+      - name: Compare hashes
+        run: |
+          set -euo pipefail
+          status=0
+
+          echo "## Reproducibility comparison" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "| Arch | File | Run1 SHA256 | Run2 SHA256 | Result |" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- | --- |" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          for arch in x64 cvm-x64 arm64; do
+            run1="compare/$arch/run1"
+            run2="compare/$arch/run2"
+            sha1="/tmp/${arch}.run1.tsv"
+            sha2="/tmp/${arch}.run2.tsv"
+            merged="/tmp/${arch}.merged.tsv"
+
+            ( cd "$run1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum ) \
+              | awk '{print $2 "\t" $1}' > "$sha1"
+            ( cd "$run2" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum ) \
+              | awk '{print $2 "\t" $1}' > "$sha2"
+
+            awk -F '\t' '
+              NR == FNR { run1[$1] = $2; next }
+              { run2[$1] = $2 }
+              END {
+                for (f in run1) seen[f] = 1
+                for (f in run2) seen[f] = 1
+                for (f in seen) {
+                  h1 = (f in run1) ? run1[f] : "MISSING"
+                  h2 = (f in run2) ? run2[f] : "MISSING"
+                  r = (h1 == h2) ? "match" : "mismatch"
+                  printf "%s\t%s\t%s\t%s\n", f, h1, h2, r
+                }
+              }
+            ' "$sha1" "$sha2" | sort > "$merged"
+
+            while IFS=$'\t' read -r file h1 h2 result; do
+              echo "| $arch | $file | $h1 | $h2 | $result |" | tee -a "$GITHUB_STEP_SUMMARY"
+              if [[ "$result" == "mismatch" ]]; then
+                status=1
+              fi
+            done < "$merged"
+
+            if [[ "$status" -ne 0 ]]; then
+              echo "::error::Reproducibility mismatch detected for $arch"
+              echo "--- $arch mismatches ---"
+              awk -F '\t' '$4 == "mismatch" {print $1 " run1=" $2 " run2=" $3}' "$merged" | sed -n '1,200p'
+            fi
+          done
+
+          echo "" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -eq 0 ]]; then
+            echo "All reproducibility hashes matched across both runs." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "One or more reproducibility comparisons mismatched." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
   build_perf:
     name: Build Perf
@@ -163,7 +265,7 @@ jobs:
 
   create_release:
     name: Create GitHub Release
-    needs: [build_linux, build_perf]
+    needs: [compare_repro, build_perf]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
@@ -172,17 +274,17 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: x64-build
+          name: x64-build-run1
           path: release_artifacts/x64/
 
       - uses: actions/download-artifact@v4
         with:
-          name: cvm-x64-build
+          name: cvm-x64-build-run1
           path: release_artifacts/cvm-x64/
 
       - uses: actions/download-artifact@v4
         with:
-          name: arm64-build
+          name: arm64-build-run1
           path: release_artifacts/arm64/
 
       - uses: actions/download-artifact@v4
