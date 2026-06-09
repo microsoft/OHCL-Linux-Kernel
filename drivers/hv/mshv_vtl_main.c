@@ -1164,9 +1164,26 @@ static struct address_space *mshv_vtl_low_mapping;
 /* Identity token tagged on every mshv_vtl pgmap; only its address matters. */
 static const u8 mshv_vtl_pgmap_token;
 
+/*
+ * List of pgmap-backed VTL0 ranges, published only after devm_memremap_pages()
+ * returns. memremap_pages() makes a pgmap visible to get_dev_pagemap() before
+ * arch_add_memory() populates the vmemmap, so a concurrent fault could resolve
+ * a pfn whose struct page is still backed by an empty vmemmap PMD and oops on
+ * dereference. The driver-owned list is the gate; entries are never removed.
+ */
+static LIST_HEAD(mshv_vtl_low_ranges);
+static DEFINE_SPINLOCK(mshv_vtl_low_ranges_lock);
+
+struct mshv_vtl_low_range {
+	struct list_head list;
+	unsigned long start_pfn;
+	unsigned long end_pfn;	/* exclusive */
+};
+
 static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 {
 	struct mshv_vtl_ram_disposition vtl0_mem;
+	struct mshv_vtl_low_range *range;
 	struct dev_pagemap *pgmap;
 	void *addr;
 	bool decrypted;
@@ -1209,12 +1226,26 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 		"Add VTL0 memory: start: 0x%llx, end_pfn: 0x%llx, page order: %lu\n",
 		vtl0_mem.start_pfn, vtl0_mem.last_pfn, pgmap->vmemmap_shift);
 
+	range = kzalloc(sizeof(*range), GFP_KERNEL);
+	if (!range) {
+		kfree(pgmap);
+		return -ENOMEM;
+	}
+
 	addr = devm_memremap_pages(mem_dev, pgmap);
 	if (IS_ERR(addr)) {
 		dev_err(vtl->module_dev, "devm_memremap_pages error: %ld\n", PTR_ERR(addr));
+		kfree(range);
 		kfree(pgmap);
 		return PTR_ERR(addr);
 	}
+
+	/* Publish only now: vmemmap is populated and struct pages are initialized. */
+	range->start_pfn = vtl0_mem.start_pfn;
+	range->end_pfn = vtl0_mem.last_pfn;
+	spin_lock(&mshv_vtl_low_ranges_lock);
+	list_add_rcu(&range->list, &mshv_vtl_low_ranges);
+	spin_unlock(&mshv_vtl_low_ranges_lock);
 
 	/*
 	 * Zap stale pte_special PTEs the 4K fallback installed before this
@@ -3720,27 +3751,27 @@ static bool can_fault(struct vm_fault *vmf, unsigned long size, unsigned long *p
 }
 
 /*
- * Resolve a user-supplied PFN to a page owned by an mshv_vtl pgmap, or NULL.
- * Look up the pgmap via get_dev_pagemap() rather than page_pgmap(): the pgmap
- * is published in pgmap_array before per-page state is initialized, so a
- * concurrent MSHV_ADD_VTL0_MEMORY can leave folio->pgmap unset while pfn_valid
- * and is_zone_device_page already return true. The owner check additionally
- * rejects foreign MEMORY_DEVICE_GENERIC pgmaps (e.g. DAX).
+ * Resolve a PFN to a page owned by an mshv_vtl pgmap, or NULL. The range list
+ * is only published after devm_memremap_pages() returns, so a hit here means
+ * the vmemmap is populated and the struct page is safe to dereference.
  */
 static struct page *mshv_vtl_low_resolve_page(unsigned long pfn)
 {
-	struct dev_pagemap *pgmap;
-	struct page *page;
+	struct mshv_vtl_low_range *r;
+	struct page *page = NULL;
 
-	pgmap = get_dev_pagemap(pfn);
-	if (!pgmap)
-		return NULL;
-	page = NULL;
-	if (pgmap->type == MEMORY_DEVICE_GENERIC &&
-	    pgmap->owner == &mshv_vtl_pgmap_token)
-		page = pfn_to_page(pfn);
-	/* Safe to drop here: mshv_vtl pgmaps are never released for the life of the module. */
-	put_dev_pagemap(pgmap);
+	rcu_read_lock();
+	list_for_each_entry_rcu(r, &mshv_vtl_low_ranges, list) {
+		if (pfn >= r->start_pfn && pfn < r->end_pfn) {
+			struct page *p = pfn_to_page(pfn);
+			struct dev_pagemap *pgmap = page_pgmap(p);
+
+			if (pgmap && pgmap->owner == &mshv_vtl_pgmap_token)
+				page = p;
+			break;
+		}
+	}
+	rcu_read_unlock();
 	return page;
 }
 
@@ -4062,6 +4093,9 @@ free_dev:
 
 static void __exit mshv_vtl_exit(void)
 {
+	struct mshv_vtl_low_range *r, *tmp;
+	LIST_HEAD(stale);
+
 	ms_hyperv_free_redirected_intr();
 	mshv_free_apicid_to_cpuid_mapping();
 	misc_deregister(&mshv_vtl_sint_dev);
@@ -4074,6 +4108,21 @@ static void __exit mshv_vtl_exit(void)
 	misc_deregister(&mshv_vtl_sint_dev);
 	hv_vtl_remove_synic();
 	misc_deregister(&mshv_dev);
+
+	/*
+	 * /dev/mshv_vtl_low is deregistered above, so no new faults can enter
+	 * mshv_vtl_low_resolve_page(). Unlink each range under the spinlock,
+	 * wait for any in-flight RCU reader, then free.
+	 */
+	spin_lock(&mshv_vtl_low_ranges_lock);
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_ranges, list) {
+		list_del_rcu(&r->list);
+		list_add(&r->list, &stale);
+	}
+	spin_unlock(&mshv_vtl_low_ranges_lock);
+	synchronize_rcu();
+	list_for_each_entry_safe(r, tmp, &stale, list)
+		kfree(r);
 }
 
 module_init(mshv_vtl_init);
