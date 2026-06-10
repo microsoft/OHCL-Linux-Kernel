@@ -4098,8 +4098,6 @@ static void __exit mshv_vtl_exit(void)
 
 	ms_hyperv_free_redirected_intr();
 	mshv_free_apicid_to_cpuid_mapping();
-	misc_deregister(&mshv_vtl_sint_dev);
-	misc_deregister(&mshv_vtl_low);
 	device_del(mem_dev);
 	kfree(mem_dev);
 	mshv_vtl_sidecar_exit();
