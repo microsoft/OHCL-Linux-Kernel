@@ -35,6 +35,7 @@
 #include <linux/kgdb.h>
 #include <linux/kvm_host.h>
 #include <linux/nmi.h>
+#include <linux/timekeeping.h>
 
 #include <asm/alternative.h>
 #include <asm/atomic.h>
@@ -128,24 +129,39 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	secondary_data.task = idle;
 	update_cpu_boot_status(CPU_MMU_OFF);
 
+	/*
+	 * Debug: log CPU-on issuance with MPIDR and timestamp so host-side
+	 * VP-dispatch latency can be correlated with PSCI CPU_ON.
+	 */
+	pr_err("CPU%u (MPIDR 0x%llx): issuing boot_secondary, ktime=%lld ns\n",
+	       cpu, (u64)cpu_logical_map(cpu), ktime_get_boottime_ns());
+
 	/* Now bring the CPU into our world */
 	ret = boot_secondary(cpu, idle);
+
+	pr_err("CPU%u (MPIDR 0x%llx): boot_secondary returned %d, ktime=%lld ns\n",
+	       cpu, (u64)cpu_logical_map(cpu), ret, ktime_get_boottime_ns());
+
 	if (ret) {
-		if (ret != -EPERM)
-			pr_err("CPU%u: failed to boot: %d\n", cpu, ret);
+		pr_err("CPU%u (MPIDR 0x%llx): failed to boot: %d\n",
+		       cpu, (u64)cpu_logical_map(cpu), ret);
 		return ret;
 	}
 
 	/*
 	 * CPU was successfully started, wait for it to come online or
 	 * time out.
+	 *
+	 * VTL2 ARM64: bumped from 5s to 10s to absorb occasional host-side
+	 * VP-dispatch stalls observed during early SMP bringup.
 	 */
 	wait_for_completion_timeout(&cpu_running,
-				    msecs_to_jiffies(5000));
+				    msecs_to_jiffies(10000));
 	if (cpu_online(cpu))
 		return 0;
 
-	pr_crit("CPU%u: failed to come online\n", cpu);
+	pr_crit("CPU%u (MPIDR 0x%llx): failed to come online\n",
+		cpu, (u64)cpu_logical_map(cpu));
 	secondary_data.task = NULL;
 	status = READ_ONCE(secondary_data.status);
 	if (status == CPU_MMU_OFF)
@@ -153,8 +169,8 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 
 	switch (status & CPU_BOOT_STATUS_MASK) {
 	default:
-		pr_err("CPU%u: failed in unknown state : 0x%lx\n",
-		       cpu, status);
+		pr_err("CPU%u (MPIDR 0x%llx): failed in unknown state : 0x%lx\n",
+		       cpu, (u64)cpu_logical_map(cpu), status);
 		cpus_stuck_in_kernel++;
 		break;
 	case CPU_KILL_ME:
@@ -206,6 +222,14 @@ asmlinkage notrace void secondary_start_kernel(void)
 	struct mm_struct *mm = &init_mm;
 	const struct cpu_operations *ops;
 	unsigned int cpu = smp_processor_id();
+
+	/*
+	 * Debug: earliest C-level entry point on the AP. Pairs with the
+	 * "issuing boot_secondary" / "boot_secondary returned" prints in
+	 * __cpu_up() to bracket host-side VP dispatch latency.
+	 */
+	pr_err("CPU%u (MPIDR 0x%llx): secondary_start_kernel entered, ktime=%lld ns\n",
+	       cpu, mpidr, ktime_get_boottime_ns());
 
 	/*
 	 * All kernel threads share the same mm context; grab a
