@@ -17,6 +17,12 @@
 /* Length of TDREPORT used in TDG.MR.REPORT TDCALL */
 #define TDX_REPORT_LEN                  1024
 
+/* TDKEYREQ struct length */
+#define TDX_TDKEYREQ_LEN                128
+
+/* Length of the derived key */
+#define TDX_KEY_LEN                     32
+
 /**
  * struct tdx_report_req - Request struct for TDX_CMD_GET_REPORT0 IOCTL.
  *
@@ -30,6 +36,19 @@ struct tdx_report_req {
 	__u8 tdreport[TDX_REPORT_LEN];
 };
 
+/**
+ * struct tdx_key_get_req - Request struct for TDX_CMD_KEY_GET IOCTL.
+ *
+ * @tdkeyreq: TDKEYREQ struct.
+ * @outkey: Derived key output
+ * @err_code: TDG.MR.KEY.GET TDCALL return error code.
+ */
+struct tdx_key_get_req {
+	__u8 tdkeyreq[TDX_TDKEYREQ_LEN];
+	__u8 outkey[TDX_KEY_LEN];
+	__u64 err_code;
+};
+
 /*
  * TDX_CMD_GET_REPORT0 - Get TDREPORT0 (a.k.a. TDREPORT subtype 0) using
  *                       TDCALL[TDG.MR.REPORT]
@@ -38,5 +57,13 @@ struct tdx_report_req {
  * standard errno on other general error cases.
  */
 #define TDX_CMD_GET_REPORT0              _IOWR('T', 1, struct tdx_report_req)
+
+/*
+ * TDX_CMD_KEY_GET - Request to derive a persistent key for the TD,
+ *                   customized to the TD's measurements and policy.
+ *
+ * Returns 0 on success, and standard errno on other failures.
+ */
+#define TDX_CMD_KEY_GET                  _IOWR('T', 5, struct tdx_key_get_req)
 
 #endif /* _UAPI_LINUX_TDX_GUEST_H_ */
