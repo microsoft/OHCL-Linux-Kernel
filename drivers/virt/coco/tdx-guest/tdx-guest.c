@@ -208,6 +208,54 @@ static long tdx_get_report0(struct tdx_report_req __user *req)
 			     USER_SOCKPTR(req->tdreport));
 }
 
+static long tdx_key_get(struct tdx_key_get_req __user *req)
+{
+	u8 *indata = NULL, *outdata = NULL;
+	long ret = 0;
+	u64 err;
+
+	/*
+	 * TDG.MR.KEY.GET expects the TDKEYREQUEST input buffer to be 128B
+	 * aligned and the key output buffer to be 32B aligned. kmalloc()
+	 * guarantees alignment to the allocation size for power-of-two sizes,
+	 * and TDX_TDKEYREQ_LEN (128) and TDX_KEY_LEN (32) are both powers of
+	 * two, so the returned buffers meet the required alignment.
+	 */
+	indata = kmalloc(sizeof(req->tdkeyreq), GFP_KERNEL);
+	if (!indata)
+		return -ENOMEM;
+
+	outdata = kzalloc(sizeof(req->outkey), GFP_KERNEL);
+	if (!outdata) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	if (copy_from_user(indata, req->tdkeyreq, sizeof(req->tdkeyreq))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	/* Get derived key using "TDG.MR.KEY.GET" TDCALL */
+	err = tdx_mcall_key_get(indata, outdata);
+	if (err) {
+		ret = -EIO;
+		if (copy_to_user(&req->err_code, &err, sizeof(u64)))
+			ret = -EFAULT;
+		goto out;
+	}
+
+	/* On success, write back the derived key and clear err_code (0) */
+	if (copy_to_user(&req->err_code, &err, sizeof(u64)) ||
+	    copy_to_user(&req->outkey, outdata, sizeof(req->outkey)))
+		ret = -EFAULT;
+
+out:
+	kfree_sensitive(indata);
+	kfree_sensitive(outdata);
+	return ret;
+}
+
 static void free_quote_buf(void *buf)
 {
 	size_t len = PAGE_ALIGN(GET_QUOTE_BUF_SIZE);
@@ -361,6 +409,8 @@ static long tdx_guest_ioctl(struct file *file, unsigned int cmd,
 	switch (cmd) {
 	case TDX_CMD_GET_REPORT0:
 		return tdx_get_report0((struct tdx_report_req __user *)arg);
+	case TDX_CMD_KEY_GET:
+		return tdx_key_get((struct tdx_key_get_req __user *)arg);
 	default:
 		return -ENOTTY;
 	}
