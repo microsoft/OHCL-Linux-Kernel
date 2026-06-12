@@ -19,6 +19,7 @@
 #define TDG_MEM_PAGE_ACCEPT		6
 #define TDG_VM_RD			7
 #define TDG_VM_WR			8
+#define TDG_MR_KEY_GET			29
 
 /* TDX attributes */
 #define TDX_ATTR_DEBUG_BIT		0
