@@ -106,6 +106,23 @@ int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 
 	local_irq_restore(flags);
 
+	if (!hv_result_success(status)) {
+		/*
+		 * DEBUG: capture raw HV_STATUS and the first register being
+		 * set so callers (e.g. mshv_vtl_configure_reg_page) can see
+		 * exactly what the hypervisor rejected. registers may have been
+		 * advanced past completed entries; report the next one to fail.
+		 */
+		pr_warn_ratelimited("hv_call_set_vp_registers: vp=%u vtl=%#x count=%u "
+				    "first_name=%#x first_val=%#llx status=%#llx (%s) errno=%d\n",
+				    vp_index, input_vtl.as_uint8, count,
+				    count ? registers[0].name : 0,
+				    count ? (unsigned long long)registers[0].value.reg64 : 0ULL,
+				    (unsigned long long)hv_result(status),
+				    hv_result_to_string(status),
+				    hv_result_to_errno(status));
+	}
+
 	return hv_result_to_errno(status);
 }
 EXPORT_SYMBOL_GPL(hv_call_set_vp_registers);

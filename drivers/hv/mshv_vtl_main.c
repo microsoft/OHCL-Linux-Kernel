@@ -682,47 +682,40 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 	reg_assoc.name = HV_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_uint64;
 
+	/*
+	 * DEBUG: dump exactly what we're about to ask the hypervisor to do.
+	 * Useful when the SetVpRegisters below fails so we can correlate the
+	 * hypervisor-side status with the inputs we sent.
+	 */
+	pr_warn("mshv_vtl_configure_reg_page: cpu=%d vp=%d vtl_input=%#x "
+		"reg_name=%#x overlay.enabled=%u overlay.pfn=%#llx "
+		"reg64=%#llx page_pa=%#llx vsm_caps=%#llx intercept_page_available=%u\n",
+		smp_processor_id(), HV_VP_INDEX_SELF, input_vtl_zero.as_uint8,
+		reg_assoc.name, (unsigned int)overlay.enabled,
+		(unsigned long long)overlay.pfn,
+		(unsigned long long)reg_assoc.value.reg64,
+		(unsigned long long)page_to_phys(reg_page),
+		(unsigned long long)mshv_vsm_capabilities.as_uint64,
+		(unsigned int)mshv_vsm_capabilities.intercept_page_available);
+
 	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 				       1, input_vtl_zero, &reg_assoc);
 	if (ret) {
 		__free_page(reg_page);
 
-		if (ret == -EINVAL || ret == -EACCES) {
-			/*
-			 * EINVAL is returned when the hypervisor predates register page support.
-			 * EACCES is returned when the register page is not available for use.
-			 *
-			 * TODO: replace `ret == -EINVAL` with
-			 *       `ret == HV_STATUS_INVALID_PARAMETER'.
-			 *
-			 * The older hypervisors might not support the register page.
-			 * This feature is a performance optimization enabling the user
-			 * mode not to use hypercalls for setting general purpose registers.
-			 * The register page not being present or not being used isn't a bug.
-			 *
-			 * If the register page is not supported, the hypervisor returns
-			 * `HV_STATUS_INVALID_PARAMETER`. That cannot be detected here as the
-			 * `hv_call_set_vp_registers` above calls `hv_status_to_errno` whereby
-			 * the original `HV_STATUS` is lost having been converted to `errno`.
-			 *
-			 * The best approximation is `ret == -EINVAL`. It is imprecise because of
-			 * `HV_STATUS` to `errno` conversion, and due to that this is a necessary
-			 * condition but not a sufficient one.
-			 *
-			 * The situation could be rectified by refactoring the code of
-			 * `hv_call_set_vp_registers`by pulling out the hypercall-related part
-			 * into some `hv_call_set_vp_registers_raw` function. Then here we could
-			 * call `hv_call_set_vp_registers_raw` to be able to be precise when detecting
-			 * whether the register page is available or not.
-			 */
-			pr_info("not using the register page");
-		} else {
-			pr_emerg("error when setting up the register page: %d\n", ret);
-			BUG();
-		}
+		/*
+		 * DEBUG: keep booting (do NOT BUG()) so we can collect the raw
+		 * HV_STATUS logged by hv_call_set_vp_registers() above. The
+		 * register page is an optional perf optimization; the
+		 * hypercall-based path keeps working when it isn't enabled.
+		 */
+		pr_emerg("mshv_vtl_configure_reg_page: SetVpRegisters failed: errno=%d (see hv_call_set_vp_registers log above for raw HV_STATUS)\n",
+			 ret);
 	} else {
 		per_cpu->reg_page = reg_page;
 		mshv_has_reg_page = true;
+		pr_info("mshv_vtl_configure_reg_page: cpu=%d enabled register page at pfn=%#llx\n",
+			smp_processor_id(), (unsigned long long)overlay.pfn);
 	}
 }
 
