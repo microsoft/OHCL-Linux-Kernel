@@ -359,6 +359,23 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 	reg_assoc.name = HV_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_u64;
 
+	/*
+	 * DEBUG: dump exactly what we're about to ask the hypervisor to do.
+	 * Useful when the SetVpRegisters below fails so we can correlate the
+	 * hypervisor-side status (logged by hv_call_set_vp_registers) with
+	 * the inputs we sent.
+	 */
+	pr_warn("mshv_vtl_configure_reg_page: cpu=%d vp=%d vtl_input=%#x "
+		"reg_name=%#x overlay.enabled=%u overlay.pfn=%#llx "
+		"reg64=%#llx page_pa=%#llx vsm_caps=%#llx intercept_page_available=%u\n",
+		smp_processor_id(), HV_VP_INDEX_SELF, vtl.as_uint8,
+		reg_assoc.name, (unsigned int)overlay.enabled,
+		(unsigned long long)overlay.pfn,
+		(unsigned long long)reg_assoc.value.reg64,
+		(unsigned long long)page_to_phys(reg_page),
+		(unsigned long long)mshv_vsm_capabilities.as_uint64,
+		(unsigned int)mshv_vsm_capabilities.intercept_page_available);
+
 	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 				     1, vtl, &reg_assoc);
 	if (ret) {

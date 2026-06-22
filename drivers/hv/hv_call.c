@@ -99,6 +99,25 @@ int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 
 	local_irq_restore(flags);
 
+	if (!hv_result_success(status)) {
+		/*
+		 * DEBUG: log the raw HV_STATUS so callers (e.g.
+		 * mshv_vtl_configure_reg_page) can identify which hypervisor
+		 * status was returned -- hv_status_to_errno() collapses many
+		 * distinct codes into the same errno. Use pr_warn (not
+		 * ratelimited) so the line reliably lands in the kernel log
+		 * buffer for inspection on the failing host.
+		 */
+		pr_warn("hv_call_set_vp_registers: vp=%u vtl=%#x count=%u "
+			"first_name=%#x first_val=%#llx status=%#llx (%s) errno=%d\n",
+			vp_index, input_vtl.as_uint8, count,
+			count ? registers[0].name : 0,
+			count ? (unsigned long long)registers[0].value.reg64 : 0ULL,
+			(unsigned long long)hv_result(status),
+			hv_status_to_string(status),
+			hv_status_to_errno(status));
+	}
+
 	return hv_status_to_errno(status);
 }
 
