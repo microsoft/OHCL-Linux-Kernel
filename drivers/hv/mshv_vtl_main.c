@@ -652,6 +652,33 @@ static bool __mshv_pull_proxy_irr(struct mshv_vtl_run *run, struct page *apic_pa
 	return false;
 }
 
+static void mshv_vtl_offload_resume(struct mshv_vtl_run *run)
+{
+	run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+	run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+	if (!(run->offload_flags & MSHV_VTL_OFFLOAD_FLAG_HALT_OTHER))
+		run->flags &= ~MSHV_VTL_RUN_FLAG_HALTED;
+}
+
+#if defined(CONFIG_SEV_GUEST)
+static void mshv_snp_clear_halt_if_irr_pending(struct mshv_vtl_run *run, struct page *apic_page)
+{
+	u32 *apic_page_irr;
+
+	if (!apic_page || !(READ_ONCE(run->flags) & MSHV_VTL_RUN_FLAG_HALTED))
+		return;
+
+	apic_page_irr = (u32 *)((char *)page_address(apic_page) + APIC_IRR);
+
+	for (int i = 7; i >= 0; i--) {
+		if (READ_ONCE(apic_page_irr[i * 4])) {
+			mshv_vtl_offload_resume(run);
+			return;
+		}
+	}
+}
+#endif
+
 #else
 
 static int mshv_create_apicid_to_cpuid_mapping(struct device *dev) { return 0; }
@@ -1932,13 +1959,8 @@ static void mshv_tdx_update_rvi_halt(struct mshv_vtl_run *run)
 		}
 	}
 
-	if (enter_state->rvi) {
-		u8 *offload_flags = &run->offload_flags;
-		(*offload_flags) &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
-		(*offload_flags) &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
-		if (!(*offload_flags & MSHV_VTL_OFFLOAD_FLAG_HALT_OTHER))
-			run->flags &= ~MSHV_VTL_RUN_FLAG_HALTED;
-	}
+	if (enter_state->rvi)
+		mshv_vtl_offload_resume(run);
 }
 
 static bool mshv_tdx_is_hlt(const struct tdx_vp_context *context)
@@ -2014,10 +2036,12 @@ static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *run)
 	} else if (mshv_tdx_is_hlt(context)) {
 		ret_to_user = false;
 		mshv_tdx_handle_hlt_idle(context);
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
 		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
 	} else if (mshv_tdx_is_idle(context)) {
 		ret_to_user = false;
 		mshv_tdx_handle_hlt_idle(context);
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
 		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
 	}
 
@@ -2092,7 +2116,6 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 	const bool intr_inject = MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT & run->offload_flags;
 	const bool x2apic = MSHV_VTL_OFFLOAD_FLAG_X2APIC & run->offload_flags;
 	struct sev_es_save_area *vmsa;
-	u8 *offload_flags;
 
 	if (!intr_inject)
 		return false;
@@ -2106,12 +2129,23 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 		break;
 	case SVM_EXIT_HLT:
 		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
 		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
 		goto handled;
 	case SVM_EXIT_IDLE_HLT:
 		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
 		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
 		goto handled;
+	case SVM_EXIT_INTR:
+		/*
+		 * mshv_snp_clear_exit_code() uses SVM_EXIT_INTR as a benign
+		 * sentinel. If VTL2 was woken from native_safe_halt(), VTL0 did
+		 * not run and the VMSA still contains that sentinel.
+		 */
+		if (run->flags & MSHV_VTL_RUN_FLAG_HALTED)
+			return true;
+		break;
 	case SVM_EXIT_MSR:
 		if (vmsa->rcx == HV_X64_MSR_GUEST_IDLE && !(vmsa->guest_exit_info_1 & 1)) {
 			/* The guest indicates it's idle by reading this synthetic MSR. */
@@ -2119,6 +2153,7 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 			vmsa->rdx = 0;
 			vmsa->rip = vmsa->guest_nrip;
 
+			run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
 			run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
 			run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
 
@@ -2129,11 +2164,7 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 		break;
 	}
 
-	offload_flags = &run->offload_flags;
-	(*offload_flags) &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
-	(*offload_flags) &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
-	if (!(*offload_flags & MSHV_VTL_OFFLOAD_FLAG_HALT_OTHER))
-		run->flags &= ~MSHV_VTL_RUN_FLAG_HALTED;
+	mshv_vtl_offload_resume(run);
 
 	return false;
 
@@ -2223,7 +2254,10 @@ static bool mshv_pull_proxy_irr(struct mshv_vtl_run *run)
 #endif
 	} else if (hv_isolation_type_snp()) {
 #ifdef CONFIG_SEV_GUEST
-		ret = __mshv_pull_proxy_irr(run, snp_this_savic_page());
+		struct page *savic_page = snp_this_savic_page();
+
+		ret = __mshv_pull_proxy_irr(run, savic_page);
+		mshv_snp_clear_halt_if_irr_pending(run, savic_page);
 #endif
 	}
 
