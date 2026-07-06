@@ -139,10 +139,10 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SRC_DIR=`realpath ${SCRIPT_DIR}/..`
 
-# For reproducible builds, add flags to normalize debug paths
+# For reproducible builds, prevent the + suffix in the version string.
+# The path-normalization flags (KCFLAGS/KAFLAGS -ffile-prefix-map) are supplied
+# by the caller (Microsoft/nix-build.sh) through the environment.
 if [ -n "$REPRODUCIBLE_BUILD" ]; then
-	makeargs+=("KCFLAGS=-fdebug-prefix-map=$SRC_DIR=.")
-	# Prevent + suffix from being added to version string
 	makeargs+=("LOCALVERSION=")
 fi
 
