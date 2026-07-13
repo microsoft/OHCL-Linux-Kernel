@@ -120,6 +120,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 {
 	int ret;
 	long status;
+	unsigned long timeout, left;
 
 	/*
 	 * We need to tell the secondary core where to find its stack and the
@@ -140,8 +141,11 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	 * CPU was successfully started, wait for it to come online or
 	 * time out.
 	 */
-	wait_for_completion_timeout(&cpu_running,
-				    msecs_to_jiffies(5000));
+	timeout = msecs_to_jiffies(10000);
+	left = wait_for_completion_timeout(&cpu_running, timeout);
+	if (timeout - left > msecs_to_jiffies(5000))
+		pr_err("DBG: CPU%u: took %u ms to come online\n",
+		       cpu, jiffies_to_msecs(timeout - left));
 	if (cpu_online(cpu))
 		return 0;
 
@@ -445,6 +449,7 @@ static void __init hyp_mode_check(void)
 
 void __init smp_cpus_done(unsigned int max_cpus)
 {
+	pr_err("DBG: Naman's debug VM gbfix-retry1\n");
 	pr_info("SMP: Total of %d processors activated.\n", num_online_cpus());
 	hyp_mode_check();
 	setup_system_features();
