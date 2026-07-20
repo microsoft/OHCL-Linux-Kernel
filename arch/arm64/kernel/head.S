@@ -353,6 +353,22 @@ SYM_FUNC_END(secondary_holding_pen)
 	 * be used where CPUs are brought online dynamically by the kernel.
 	 */
 SYM_FUNC_START(secondary_entry)
+	/*
+	 * Record that this CPU reached head.S, before init_kernel_el()
+	 * sets SCTLR_ELx.EE. A single-byte store to the reader's low
+	 * byte (__cpu_up() zeroed the word) is endian-agnostic, so a
+	 * big-endian kernel still reads 0x10. Flush it like
+	 * update_early_cpu_boot_status.
+	 */
+	adr_l	x2, __early_cpu_boot_status
+	mov	w1, #CPU_BOOT_ASM_ENTERED
+#ifdef CONFIG_CPU_BIG_ENDIAN
+	strb	w1, [x2, #7]	// low byte at top address
+#else
+	strb	w1, [x2]
+#endif
+	dmb	sy
+	dc	ivac, x2
 	mov	x0, xzr
 	bl	init_kernel_el			// w0=cpu_boot_mode
 	b	secondary_startup
@@ -386,7 +402,6 @@ SYM_FUNC_START_LOCAL(__secondary_switched)
 	mov	x0, x20
 	bl	finalise_el2
 
-	str_l	xzr, __early_cpu_boot_status, x3
 	adr_l	x5, vectors
 	msr	vbar_el1, x5
 	isb
@@ -395,6 +410,13 @@ SYM_FUNC_START_LOCAL(__secondary_switched)
 	ldr	x2, [x0, #CPU_BOOT_TASK]
 	cbz	x2, __secondary_too_slow
 
+	/*
+	 * Don't clear the marker here; nothing on the secondary clears
+	 * it. Once the CPU sets CPU_BOOT_SUCCESS in
+	 * secondary_data.status, __cpu_up() stops reading
+	 * __early_cpu_boot_status (and resets it before the next
+	 * release), so a stall before that still reports 0x10.
+	 */
 	init_cpu_task x2, x1, x3
 
 #ifdef CONFIG_ARM64_PTR_AUTH

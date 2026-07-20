@@ -20,6 +20,16 @@
 /* Fatal system error detected by secondary CPU, crash the system */
 #define CPU_PANIC_KERNEL		(3)
 
+/*
+ * Best-effort marker written early in secondary_entry (PSCI/hotplug
+ * path) so __cpu_up() can tell whether a stuck CPU ever ran head.S.
+ * Not authoritative: spin-table secondaries use secondary_holding_pen
+ * and never write it, and the word has no CPU identity. Value must sit
+ * in the low byte, stay out of {0,1,2,3}, and set no CPU_STUCK_REASON_*
+ * bits.
+ */
+#define CPU_BOOT_ASM_ENTERED		(0x10)
+
 #define CPU_STUCK_REASON_52_BIT_VA	(UL(1) << CPU_STUCK_REASON_SHIFT)
 #define CPU_STUCK_REASON_NO_GRAN	(UL(2) << CPU_STUCK_REASON_SHIFT)
 

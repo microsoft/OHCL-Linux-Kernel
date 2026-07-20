@@ -120,6 +120,17 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	secondary_data.task = idle;
 	update_cpu_boot_status(CPU_MMU_OFF);
 
+	/*
+	 * Reset the marker before releasing this secondary: head.S
+	 * never clears it, so without this a CPU that never reaches
+	 * head.S would inherit a stale 0x10 from a previous CPU. Flush
+	 * it so the MMU-off secondary sees the reset.
+	 */
+	WRITE_ONCE(__early_cpu_boot_status, 0);
+	dcache_clean_inval_poc((unsigned long)&__early_cpu_boot_status,
+			       (unsigned long)&__early_cpu_boot_status +
+			       sizeof(__early_cpu_boot_status));
+
 	/* Now bring the CPU into our world */
 	ret = boot_secondary(cpu, idle);
 	if (ret) {
@@ -145,7 +156,17 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 
 	switch (status & CPU_BOOT_STATUS_MASK) {
 	default:
+		/*
+		 * 0x0 usually means the CPU never ran head.S, but
+		 * treat it as a hint: spin-table secondaries never
+		 * write the marker and the word has no CPU identity.
+		 */
 		pr_err("CPU%u: failed in unknown state : 0x%lx\n",
+		       cpu, status);
+		cpus_stuck_in_kernel++;
+		break;
+	case CPU_BOOT_ASM_ENTERED:
+		pr_err("CPU%u: entered head.S but not online : 0x%lx\n",
 		       cpu, status);
 		cpus_stuck_in_kernel++;
 		break;
