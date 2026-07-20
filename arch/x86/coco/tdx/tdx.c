@@ -179,6 +179,26 @@ int tdx_mcall_extend_rtmr(u8 index, u8 *data)
 EXPORT_SYMBOL_GPL(tdx_mcall_extend_rtmr);
 
 /**
+ * tdx_mcall_key_get() - Wrapper to derive a persistent key for the TD,
+ *			 customized to the TD's measurements and policy
+ *			 using TDG.MR.KEY.GET TDCALL.
+ * @indata: Address of the input buffer with TDKEYREQUEST data.
+ * @outdata: Address of the output buffer with the requested key data.
+ *
+ * Return 0 on success or error code on other TDCALL failures.
+ */
+u64 tdx_mcall_key_get(u8 *indata, u8 *outdata)
+{
+	struct tdx_module_args args = {
+		.rcx = virt_to_phys(indata),
+		.rdx = virt_to_phys(outdata),
+	};
+
+	return __tdcall(TDG_MR_KEY_GET, &args);
+}
+EXPORT_SYMBOL_GPL(tdx_mcall_key_get);
+
+/**
  * tdx_hcall_get_quote() - Wrapper to request TD Quote using GetQuote
  *                         hypercall.
  * @buf: Address of the directly mapped shared kernel buffer which
