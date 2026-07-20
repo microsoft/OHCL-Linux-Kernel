@@ -1,0 +1,12 @@
+What:		/sys/devices/virtual/misc/mshv_vtl_low/vtl0_transitions/cpu<N>
+Date:		July 2026
+Contact:	linux-hyperv@vger.kernel.org
+Description:
+		Root-readable cumulative count of completed VTL2-to-VTL0
+		transitions on CPU <N>. The value is a decimal counter followed
+		by a newline.
+
+		The counter is best-effort diagnostic telemetry and may change
+		while it is being read. Files are created for possible CPUs, so
+		offline CPUs remain represented and retain their last value.
+Users:		VTL diagnostic and performance tooling

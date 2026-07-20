@@ -3936,10 +3936,88 @@ static const struct file_operations mshv_vtl_low_file_ops = {
 	.mmap		= mshv_vtl_low_mmap,
 };
 
+struct mshv_vtl_transition_attr {
+	struct device_attribute dev_attr;
+	unsigned int cpu;
+	char name[16];
+};
+
+static struct mshv_vtl_transition_attr *mshv_vtl_transition_attrs;
+static struct attribute **mshv_vtl_transition_attr_list;
+
+static ssize_t vtl0_transition_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct mshv_vtl_transition_attr *cpu_attr =
+		container_of(attr, struct mshv_vtl_transition_attr, dev_attr);
+	unsigned long long count;
+
+	/* Best-effort telemetry may change while being read. */
+	count = data_race(per_cpu(num_vtl0_transitions, cpu_attr->cpu));
+
+	return sysfs_emit(buf, "%llu\n", count);
+}
+
+static struct attribute_group mshv_vtl_transition_group = {
+	.name = "vtl0_transitions",
+};
+
+static const struct attribute_group *mshv_vtl_low_groups[] = {
+	&mshv_vtl_transition_group,
+	NULL,
+};
+
+static int mshv_vtl_transition_attrs_init(void)
+{
+	struct mshv_vtl_transition_attr *cpu_attr;
+	size_t attr_ptr_size = sizeof(*mshv_vtl_transition_attr_list);
+	int cpu, index = 0;
+	int nr_attrs = num_possible_cpus();
+
+	mshv_vtl_transition_attrs = kcalloc(nr_attrs,
+					    sizeof(*mshv_vtl_transition_attrs),
+					    GFP_KERNEL);
+	if (!mshv_vtl_transition_attrs)
+		return -ENOMEM;
+
+	mshv_vtl_transition_attr_list =
+		kcalloc(nr_attrs + 1, attr_ptr_size, GFP_KERNEL);
+	if (!mshv_vtl_transition_attr_list) {
+		kfree(mshv_vtl_transition_attrs);
+		mshv_vtl_transition_attrs = NULL;
+		return -ENOMEM;
+	}
+
+	for_each_possible_cpu(cpu) {
+		cpu_attr = &mshv_vtl_transition_attrs[index];
+		cpu_attr->cpu = cpu;
+		snprintf(cpu_attr->name, sizeof(cpu_attr->name), "cpu%d", cpu);
+		sysfs_attr_init(&cpu_attr->dev_attr.attr);
+		cpu_attr->dev_attr.attr.name = cpu_attr->name;
+		cpu_attr->dev_attr.attr.mode = 0400;
+		cpu_attr->dev_attr.show = vtl0_transition_show;
+		mshv_vtl_transition_attr_list[index++] = &cpu_attr->dev_attr.attr;
+	}
+
+	mshv_vtl_transition_group.attrs = mshv_vtl_transition_attr_list;
+
+	return 0;
+}
+
+static void mshv_vtl_transition_attrs_exit(void)
+{
+	mshv_vtl_transition_group.attrs = NULL;
+	kfree(mshv_vtl_transition_attr_list);
+	mshv_vtl_transition_attr_list = NULL;
+	kfree(mshv_vtl_transition_attrs);
+	mshv_vtl_transition_attrs = NULL;
+}
+
 static struct miscdevice mshv_vtl_low = {
 	.name = "mshv_vtl_low",
 	.nodename = "mshv_vtl_low",
 	.fops = &mshv_vtl_low_file_ops,
+	.groups = mshv_vtl_low_groups,
 	.mode = 0600,
 	.minor = MISC_DYNAMIC_MINOR,
 };
@@ -4044,9 +4122,13 @@ static int __init mshv_vtl_init(void)
 	 * mshv_vtl_low device is used to map VTL0 address space to a user-mode process in VTL2.
 	 * It implements mmap() to allow a user-mode process in VTL2 to map to the address of VTL0.
 	 */
-	ret = misc_register(&mshv_vtl_low);
+	ret = mshv_vtl_transition_attrs_init();
 	if (ret)
 		goto free_hvcall;
+
+	ret = misc_register(&mshv_vtl_low);
+	if (ret)
+		goto free_transition_attrs;
 
 	/*
 	 * "mshv vtl mem dev" device is later used to setup VTL0 memory.
@@ -4092,6 +4174,8 @@ free_sidecar:
 	mshv_vtl_sidecar_exit();
 free_low:
 	misc_deregister(&mshv_vtl_low);
+free_transition_attrs:
+	mshv_vtl_transition_attrs_exit();
 free_hvcall:
 	misc_deregister(&mshv_vtl_hvcall_dev);
 free_sint:
@@ -4115,6 +4199,7 @@ static void __exit mshv_vtl_exit(void)
 	kfree(mem_dev);
 	mshv_vtl_sidecar_exit();
 	misc_deregister(&mshv_vtl_low);
+	mshv_vtl_transition_attrs_exit();
 	misc_deregister(&mshv_vtl_hvcall_dev);
 	misc_deregister(&mshv_vtl_sint_dev);
 	hv_vtl_remove_synic();
