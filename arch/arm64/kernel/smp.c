@@ -141,10 +141,15 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 
 	/*
 	 * CPU was successfully started, wait for it to come online or
-	 * time out.
+	 * time out. Warn if it has not appeared after 5s, but keep
+	 * waiting for up to 10s in total before giving up.
 	 */
-	wait_for_completion_timeout(&cpu_running,
-				    msecs_to_jiffies(5000));
+	if (!wait_for_completion_timeout(&cpu_running,
+					 msecs_to_jiffies(5000))) {
+		pr_err("CPU%u: not online after 5s, waiting longer\n", cpu);
+		wait_for_completion_timeout(&cpu_running,
+					    msecs_to_jiffies(5000));
+	}
 	if (cpu_online(cpu))
 		return 0;
 
