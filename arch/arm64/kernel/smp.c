@@ -464,6 +464,40 @@ static void __init hyp_mode_check(void)
 void __init smp_cpus_done(unsigned int max_cpus)
 {
 	pr_info("SMP: Total of %d processors activated.\n", num_online_cpus());
+
+	/*
+	 * If any possible CPU did not come online, dump the logical id,
+	 * hwid and online state of every CPU so a bad MPIDR (a duplicate or
+	 * a DT/ACPI typo) can be spotted by comparing the failed CPU against
+	 * its siblings. Several CPUs are packed per line so the dump stays
+	 * readable on large systems (hundreds of vCPUs) instead of scrolling
+	 * one line per CPU. The entry point handed to firmware is identical
+	 * for every CPU, so print it once. Per-CPU boot status was already
+	 * reported by __cpu_up() at failure time.
+	 */
+	if (num_online_cpus() < num_possible_cpus()) {
+		phys_addr_t pa_entry = __pa_symbol(secondary_entry);
+		unsigned int cpu;
+		char line[128];
+		int len = 0;
+
+		pr_err("SMP: %u of %u CPUs did not come online; kernel entry point %pa\n",
+		       num_possible_cpus() - num_online_cpus(),
+		       num_possible_cpus(), &pa_entry);
+		for_each_possible_cpu(cpu) {
+			len += scnprintf(line + len, sizeof(line) - len,
+					 " CPU%u/0x%llx/%s", cpu,
+					 (u64)cpu_logical_map(cpu),
+					 cpu_online(cpu) ? "on" : "OFF");
+			if (len > sizeof(line) - 40) {
+				pr_err("SMP: CPU/hwid/state:%s\n", line);
+				len = 0;
+			}
+		}
+		if (len)
+			pr_err("SMP: CPU/hwid/state:%s\n", line);
+	}
+
 	hyp_mode_check();
 	setup_system_features();
 	setup_user_features();
