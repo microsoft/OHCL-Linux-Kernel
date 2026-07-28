@@ -845,10 +845,6 @@ int iopt_get_phys(struct io_pagetable *iopt, unsigned long iova, u64 *paddr,
 
 	pages = area->pages;
 	mutex_lock(&pages->mutex);
-	if (iopt_dmabuf_revoked(pages)) {
-		rc = -EINVAL;
-		goto unlock_pages;
-	}
 
 	if (!area->storage_domain ||
 	    area->storage_domain->owner != &iommufd_noiommu_ops) {
