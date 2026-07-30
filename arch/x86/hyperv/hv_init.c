@@ -546,7 +546,6 @@ free_ghcb_page:
 free_vp_assist_page:
 	kfree(hv_vp_assist_page);
 	hv_vp_assist_page = NULL;
-free_vp_early_input_arg:
 	if (hv_vp_early_input_arg) {
 		set_memory_encrypted((u64)hv_vp_early_input_arg,
 				     num_possible_cpus());
