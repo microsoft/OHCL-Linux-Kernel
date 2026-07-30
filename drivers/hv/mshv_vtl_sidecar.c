@@ -61,6 +61,8 @@ DEFINE_PER_CPU(struct sidecar_dev *, sidecar_interrupt_dev);
 #define VP_STATE_ASYNC 2
 #define VP_STATE_ASYNC_STOPPING 3
 #define VP_STATE_ASYNC_STOPPED 4
+/* Claimed for an async run, but the AP has not been handed the command yet. */
+#define VP_STATE_ASYNC_STARTING 5
 #define VP_STATE_REMOVED 0xff
 
 static void mshv_vtl_sidecar_isr(void)
@@ -161,54 +163,73 @@ static int sidecar_remove(unsigned int cpu)
 
 }
 
-static void sidecar_scan_vps(struct sidecar_dev *dev)
+/* Returns the number of VPs with a completion waiting to be reported. */
+static u32 sidecar_scan_vps_locked(struct sidecar_dev *dev)
 {
+	bool stopped = false;
 	u32 count;
 	u32 i;
 	u8 *slot;
 	u8 state;
 
+	lockdep_assert_held(&dev->scan_mutex);
+
 	if (!READ_ONCE(dev->needs_vp_scan))
-		return;
+		return dev->num_vps_stopped;
 	xchg(&dev->needs_vp_scan, 0);
 
-	mutex_lock(&dev->scan_mutex);
 	count = dev->cpu_count;
 	for (i = 0; i < count; i++) {
+		/*
+		 * Load vp_state first: ASYNC is published only after
+		 * cpu_status is RUN, so a later IDLE is a real completion.
+		 */
+		state = smp_load_acquire(&dev->vp_state[i]);
+		if (state != VP_STATE_ASYNC_STOPPING && state != VP_STATE_ASYNC)
+			continue;
 		slot = &dev->control->cpu_status[i];
 		if (READ_ONCE(*slot) != CPU_STATUS_IDLE)
 			continue;
-		state = READ_ONCE(dev->vp_state[i]);
-		if (state != VP_STATE_ASYNC_STOPPING && state != VP_STATE_ASYNC)
-			continue;
 
 		WRITE_ONCE(dev->vp_state[i], VP_STATE_ASYNC_STOPPED);
-		xadd(&dev->num_vps_stopped, 1);
+		WRITE_ONCE(dev->num_vps_stopped, dev->num_vps_stopped + 1);
+		stopped = true;
 	}
-	mutex_unlock(&dev->scan_mutex);
+
+	/*
+	 * The scan consumed needs_vp_scan, so a reader woken by the attention
+	 * that set it may already have found both it and the count clear.
+	 */
+	if (stopped)
+		wake_up_poll(&dev->wait, EPOLLIN);
+
+	return dev->num_vps_stopped;
 }
 
 static int sidecar_scan_next_stopped(struct sidecar_dev *dev)
 {
 	u32 count;
 	u32 i;
-	u8 state;
+	int ret = -1;
 
-	sidecar_scan_vps(dev);
-	if (READ_ONCE(dev->num_vps_stopped) == 0)
-		return -1;
+	mutex_lock(&dev->scan_mutex);
+	if (!sidecar_scan_vps_locked(dev))
+		goto out;
 
 	count = dev->cpu_count;
 	for (i = 0; i < count; i++) {
-		state = dev->vp_state[i];
-		if (state == VP_STATE_ASYNC_STOPPED) {
-			xadd(&dev->num_vps_stopped, -1);
-			WRITE_ONCE(dev->vp_state[i], VP_STATE_AVAIL);
-			return dev->base_cpu + i;
-		}
+		if (READ_ONCE(dev->vp_state[i]) != VP_STATE_ASYNC_STOPPED)
+			continue;
+
+		WRITE_ONCE(dev->vp_state[i], VP_STATE_AVAIL);
+		WRITE_ONCE(dev->num_vps_stopped, dev->num_vps_stopped - 1);
+		ret = dev->base_cpu + i;
+		break;
 	}
 
-	return -1;
+out:
+	mutex_unlock(&dev->scan_mutex);
+	return ret;
 }
 
 static __poll_t sidecar_poll(struct file *filp, poll_table *wait)
@@ -218,9 +239,11 @@ static __poll_t sidecar_poll(struct file *filp, poll_table *wait)
 
 	dev = filp->private_data;
 	poll_wait(filp, &dev->wait, wait);
-	sidecar_scan_vps(dev);
-	if (READ_ONCE(dev->num_vps_stopped) > 0)
+
+	mutex_lock(&dev->scan_mutex);
+	if (sidecar_scan_vps_locked(dev))
 		mask |= EPOLLIN | EPOLLRDNORM;
+	mutex_unlock(&dev->scan_mutex);
 
 	return mask;
 }
@@ -279,13 +302,28 @@ release:
 
 static int sidecar_ioctl_start(struct sidecar_dev *dev, u32 cpu)
 {
+	u32 cpu_index = cpu - dev->base_cpu;
 	int ret;
 
-	ret = sidecar_claim(dev, cpu, VP_STATE_ASYNC);
+	/* The scan ignores this state, hiding the claim/start window from it. */
+	ret = sidecar_claim(dev, cpu, VP_STATE_ASYNC_STARTING);
 	if (ret)
 		return ret;
 
 	sidecar_start(dev, cpu);
+
+	/* Fully ordered: publishes the start and orders the load below. */
+	xchg(&dev->vp_state[cpu_index], VP_STATE_ASYNC);
+
+	/*
+	 * The AP may have completed while the state was ASYNC_STARTING; a scan
+	 * in that window skipped it and consumed its attention.
+	 */
+	if (READ_ONCE(dev->control->cpu_status[cpu_index]) != CPU_STATUS_RUN) {
+		WRITE_ONCE(dev->needs_vp_scan, 1);
+		wake_up_poll(&dev->wait, EPOLLIN);
+	}
+
 	return 0;
 }
 
@@ -304,6 +342,7 @@ static int sidecar_ioctl_stop(struct sidecar_dev *dev, u32 cpu)
 	switch (state) {
 	case VP_STATE_AVAIL:
 	case VP_STATE_SYNC:
+	case VP_STATE_ASYNC_STARTING:
 	case VP_STATE_REMOVED:
 		return -EINVAL;
 	case VP_STATE_ASYNC:
