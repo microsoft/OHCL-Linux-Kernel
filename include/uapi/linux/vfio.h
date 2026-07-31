@@ -1478,6 +1478,21 @@ struct vfio_device_feature_bus_master {
 };
 #define VFIO_DEVICE_FEATURE_BUS_MASTER 10
 
+/**
+ * VFIO_DEVICE_FEATURE_KEEP_ALIVE
+ *
+ * Upon VFIO_DEVICE_FEATURE_SET, mark the device to be preserved across a
+ * servicing reload of the owning userspace: the kernel does not reset the
+ * device or clear its bus-master enable when the device fd is closed and
+ * later reopened, so in-flight DMA is not disrupted. The feature carries no
+ * data payload; VFIO_DEVICE_FEATURE_PROBE reports availability.
+ *
+ * This works on any VFIO device fd (both the legacy group-obtained fd and the
+ * modern cdev per-device fd), and is the device-scoped, feature-framework
+ * replacement for the legacy VFIO_GROUP_KEEP_ALIVE group ioctl.
+ */
+#define VFIO_DEVICE_FEATURE_KEEP_ALIVE 11
+
 /* -------- API for Type1 VFIO IOMMU -------- */
 
 /**

@@ -1225,12 +1225,30 @@ vfio_ioctl_device_feature_logging_report(struct vfio_device *device,
 	return ret;
 }
 
+static int vfio_ioctl_device_feature_keep_alive(struct vfio_device *device,
+						u32 flags, void __user *arg,
+						size_t argsz)
+{
+	int ret;
+
+	ret = vfio_check_feature(flags, argsz, VFIO_DEVICE_FEATURE_SET, 0);
+	if (ret != 1)
+		return ret;
+
+	/*
+	 * Preserve the device across a servicing reload of the owning
+	 * userspace: do not reset it or clear its bus-master enable when the
+	 * device fd is closed and later reopened.
+	 */
+	device->keep_alive = 1;
+	return 0;
+}
+
 static int vfio_ioctl_device_feature(struct vfio_device *device,
 				     struct vfio_device_feature __user *arg)
 {
 	size_t minsz = offsetofend(struct vfio_device_feature, flags);
 	struct vfio_device_feature feature;
-
 	if (copy_from_user(&feature, arg, minsz))
 		return -EFAULT;
 
@@ -1272,6 +1290,10 @@ static int vfio_ioctl_device_feature(struct vfio_device *device,
 			feature.argsz - minsz);
 	case VFIO_DEVICE_FEATURE_MIG_DATA_SIZE:
 		return vfio_ioctl_device_feature_migration_data_size(
+			device, feature.flags, arg->data,
+			feature.argsz - minsz);
+	case VFIO_DEVICE_FEATURE_KEEP_ALIVE:
+		return vfio_ioctl_device_feature_keep_alive(
 			device, feature.flags, arg->data,
 			feature.argsz - minsz);
 	default:
