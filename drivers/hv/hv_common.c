@@ -302,9 +302,13 @@ u8 __init get_vtl(void)
 	ret = hv_do_hypercall(control, input, output);
 	if (hv_result_success(ret)) {
 		ret = output->values[0].reg8 & HV_VTL_MASK;
+	} else if (hv_result(ret) == HV_STATUS_INVALID_HYPERCALL_CODE) {
+		pr_warn("Hyper-V: GetVpRegisters is unavailable, assuming VTL0\n");
+		ret = 0;
 	} else {
-		pr_err("Failed to get VTL(error: %lld) exiting...\n", ret);
-		BUG();
+		local_irq_restore(flags);
+		panic("Hyper-V: failed to get VTL: %#x = %s\n",
+		      hv_result(ret), hv_result_to_string(ret));
 	}
 
 	local_irq_restore(flags);
