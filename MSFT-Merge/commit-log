@@ -103,6 +103,9 @@ fd75aff0c566   2026-06-10		Drivers: hv: mshv_vtl: remove duplicate misc_deregist
 f52d415b1164   2026-06-22		Drivers: hv: hv_common: use meaningful errnos for hypercall statuses [Hardik Garg <hargar@microsoft.com>]
 ece6b7929a15   2026-06-29		x86/hyperv: Fix compilation warning by removing unused label [Naman Jain <namjain@linux.microsoft.com>]
 ad9d7efe49c1   2026-06-26		drivers: hv: better management of HLT/IDLE states Tracking of current VTL0 state via offload_flags need to be kept up to date in order to properly handle VTL2 idle behavior. [Brian Perkins <brian.perkins@microsoft.com>]
+afac98b21653   2026-07-17		drivers: hv: clear halt when injecting SNP interrupts [Hardik Garg <hargar@microsoft.com>]
+17e5bc6b912c   2026-06-12		x86/tdx: Add TDG.MR.KEY.GET ABI support [Kuppuswamy Sathyanarayanan <sathyanarayanan.kuppuswamy@linux.intel.com>]
+f5c38dc6c1ce   2026-07-30		drivers/hv/mshv_vtl: fix fabricated sidecar VP run completions [John Starks <jostarks@microsoft.com>]
 
 
 Patch series in progress
