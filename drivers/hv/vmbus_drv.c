@@ -2456,11 +2456,19 @@ static int vmbus_device_add(struct platform_device *pdev)
 	struct of_range range;
 	struct of_range_parser parser;
 	struct device_node *np = pdev->dev.of_node;
+	unsigned int conn_id;
 	int ret;
 
 	pr_info("VMBus is present in DeviceTree\n");
 
 	vmbus_root_device = &pdev->dev;
+
+	/* Read connection ID from device tree */
+	ret = of_property_read_u32(np, "microsoft,message-connection-id", &conn_id);
+	if (!ret) {
+		pr_info("VMBus message connection ID: %u\n", conn_id);
+		vmbus_connection.msg_conn_id = conn_id;
+	}
 
 	ret = of_range_parser_init(&parser, np);
 	if (ret)
