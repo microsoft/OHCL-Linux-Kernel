@@ -108,6 +108,7 @@ struct hv_input_post_message {
 enum {
 	VMBUS_MESSAGE_CONNECTION_ID	= 1,
 	VMBUS_MESSAGE_CONNECTION_ID_4	= 4,
+	VMBUS_MESSAGE_CONNECTION_ID_REDIRECT = 0x800074,
 	VMBUS_MESSAGE_PORT_ID		= 1,
 	VMBUS_EVENT_CONNECTION_ID	= 2,
 	VMBUS_EVENT_PORT_ID		= 2,
@@ -305,7 +306,8 @@ struct vmbus_msginfo {
 
 extern struct vmbus_connection vmbus_connection;
 
-int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version);
+int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version,
+			   u32 connection_id);
 
 static inline void vmbus_send_interrupt(u32 relid)
 {
