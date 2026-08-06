@@ -71,17 +71,14 @@ module_param(max_version, uint, S_IRUGO);
 MODULE_PARM_DESC(max_version,
 		 "Maximal VMBus protocol version which can be negotiated");
 
-/*
- * User requested connection id used to connect to the host. Useful for testing
- * or when running a vmbus server on a non-standard connection id.
- */
-static uint message_connection_id;
+/* Array of connection IDs to try in order: standard first, then redirect */
+static const u32 connection_ids[] = {
+	VMBUS_MESSAGE_CONNECTION_ID_4,
+	VMBUS_MESSAGE_CONNECTION_ID_REDIRECT
+};
 
-module_param(message_connection_id, uint, 0444);
-MODULE_PARM_DESC(message_connection_id,
-		 "The VMBus message connection id used to communicate with the Host");
-
-int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version)
+int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version,
+			   u32 connection_id)
 {
 	int ret = 0;
 	struct vmbus_channel_initiate_contact *msg;
@@ -97,7 +94,7 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version)
 
 	/*
 	 * VMBus protocol 5.0 (VERSION_WIN10_V5) and higher require that we must
-	 * use VMBUS_MESSAGE_CONNECTION_ID_4 for the Initiate Contact Message,
+	 * use connection_id for the Initiate Contact Message,
 	 * and for subsequent messages, we must use the Message Connection ID
 	 * field in the host-returned Version Response Message. And, with
 	 * VERSION_WIN10_V5 and higher, we don't use msg->interrupt_page, but we
@@ -109,14 +106,11 @@ int vmbus_negotiate_version(struct vmbus_channel_msginfo *msginfo, u32 version)
 	if (version >= VERSION_WIN10_V5) {
 		msg->msg_sint = VMBUS_MESSAGE_SINT;
 		msg->msg_vtl = ms_hyperv.vtl;
-		vmbus_connection.msg_conn_id = VMBUS_MESSAGE_CONNECTION_ID_4;
+		vmbus_connection.msg_conn_id = connection_id;
 	} else {
 		msg->interrupt_page = virt_to_phys(vmbus_connection.int_page);
 		vmbus_connection.msg_conn_id = VMBUS_MESSAGE_CONNECTION_ID;
 	}
-
-	if (message_connection_id > 0)
-		vmbus_connection.msg_conn_id = message_connection_id;
 
 	/*
 	 * shared_gpa_boundary is zero in non-SNP VMs, so it's safe to always
@@ -291,6 +285,9 @@ int vmbus_connect(void)
 	 * host. We start with the highest number we can support
 	 * and work our way down until we negotiate a compatible
 	 * version.
+	 *
+	 * For VTL2: Try redirect connection ID first, then standard if redirect fails.
+	 * For non-VTL2: Only try standard connection ID (single attempt per version).
 	 */
 
 	for (i = 0; ; i++) {
@@ -303,9 +300,29 @@ int vmbus_connect(void)
 		if (version > max_version)
 			continue;
 
-		ret = vmbus_negotiate_version(msginfo, version);
-		if (ret == -ETIMEDOUT)
-			goto cleanup;
+		/* VTL2 tries both connection IDs, non-VTL2 only tries standard */
+		if (ms_hyperv.vtl == 2) {
+			/* VTL2 path: Try both connection IDs (redirect first) */
+			int conn_id_idx;
+
+			for (conn_id_idx = 0; conn_id_idx < ARRAY_SIZE(connection_ids); conn_id_idx++) {
+				u32 connection_id = connection_ids[conn_id_idx];
+
+				ret = vmbus_negotiate_version(msginfo, version, connection_id);
+				if (ret == -ETIMEDOUT)
+					goto cleanup;
+
+				if (vmbus_connection.conn_state == CONNECTED)
+					break;
+			}
+		} else {
+			/* Non-VTL2 path: Only try standard connection ID */
+			u32 connection_id = VMBUS_MESSAGE_CONNECTION_ID_4;
+
+			ret = vmbus_negotiate_version(msginfo, version, connection_id);
+			if (ret == -ETIMEDOUT)
+				goto cleanup;
+		}
 
 		if (vmbus_connection.conn_state == CONNECTED)
 			break;
