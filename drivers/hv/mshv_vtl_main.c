@@ -1117,7 +1117,8 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 				struct mshv_vtl_hvcall __user *hvcall_user)
 {
 	struct mshv_vtl_hvcall hvcall;
-	void *in, *out;
+	void *in, *out, *percpu_in, *percpu_out;
+	unsigned long flags;
 	int ret;
 
 	if (copy_from_user(&hvcall, hvcall_user, sizeof(struct mshv_vtl_hvcall)))
@@ -1139,22 +1140,31 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 		return -EPERM;
 	}
 
-	/*
-	 * This may create a problem for Confidential VM (CVM) usecase where we need to use
-	 * Hyper-V driver allocated per-cpu input and output pages (hyperv_pcpu_input_arg and
-	 * hyperv_pcpu_output_arg) for making a hypervisor call.
-	 *
-	 * TODO: Take care of this when CVM support is added.
-	 */
 	in = (void *)__get_free_page(GFP_KERNEL);
 	out = (void *)__get_free_page(GFP_KERNEL);
+	if (!in || !out) {
+		ret = -ENOMEM;
+		goto free_pages;
+	}
 
 	if (copy_from_user(in, (void __user *)hvcall.input_ptr, hvcall.input_size)) {
 		ret = -EFAULT;
 		goto free_pages;
 	}
 
-	hvcall.status = hv_do_hypercall(hvcall.control, in, out);
+	local_irq_save(flags);
+
+	percpu_in = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	percpu_out = *this_cpu_ptr(hyperv_pcpu_output_arg);
+	memset(percpu_in, 0, HV_HYP_PAGE_SIZE);
+	memcpy(percpu_in, in, hvcall.input_size);
+	memset(percpu_out, 0, HV_HYP_PAGE_SIZE);
+
+	hvcall.status = hv_do_hypercall(hvcall.control, percpu_in, percpu_out);
+
+	memcpy(out, percpu_out, hvcall.output_size);
+
+	local_irq_restore(flags);
 
 	if (copy_to_user((void __user *)hvcall.output_ptr, out, hvcall.output_size)) {
 		ret = -EFAULT;
@@ -1162,8 +1172,10 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 	}
 	ret = put_user(hvcall.status, &hvcall_user->status);
 free_pages:
-	free_page((unsigned long)in);
-	free_page((unsigned long)out);
+	if (in)
+		free_page((unsigned long)in);
+	if (out)
+		free_page((unsigned long)out);
 
 	return ret;
 }
