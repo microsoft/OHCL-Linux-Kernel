@@ -120,11 +120,18 @@ static_assert(sizeof(struct tdx_vp_context) == 1024);
 
 struct snp_vp_context {
 	__u8 vmsa_tweak_bitmap[64];
-	__u8 pad[960];
+	__u64 stimer0_config;
+	__u64 stimer0_count;
+	__u64 stimer0_programmed_ref_time;
+	__u32 stimer0_flags;
+	__u8 pad[932];
 };
 
 static_assert(sizeof(struct snp_vp_context) == 1024);
 
+#define MSHV_VTL_SNP_STIMER0_CONFIG_VALID	BIT(0)
+#define MSHV_VTL_SNP_STIMER0_KERNEL_UPDATE	BIT(1)
+#define MSHV_VTL_SNP_STIMER0_EXPIRED		BIT(2)
 #endif
 
 struct mshv_vtl_run {
