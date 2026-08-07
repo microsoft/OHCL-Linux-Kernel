@@ -561,28 +561,28 @@ static int mshv_update_proxy_irr_for_icr_write(u32 icr_lo, struct cpumask *local
 	const u64 bank = vector / 32;
 	const u32 mask = BIT(vector % 32);
 	const u32 self = smp_processor_id();
-
 	unsigned int cpu;
-	bool send_ipi;
 
-	send_ipi = false;
 	for_each_cpu(cpu, local_mask) {
+		struct mshv_vtl_run *run = mshv_vtl_cpu_run(cpu);
+
 		/*
 		 * The kernel doesn't provide an atomic_or which operates on u32,
 		 * so cast to atomic_t, which should have the same layout
 		 */
 		static_assert(sizeof(atomic_t) == sizeof(u32));
-		atomic_or(mask, (atomic_t *)
-				(&(mshv_vtl_cpu_run(cpu)->proxy_irr[bank])));
-		/* Make update visible to other CPUs */
-		smp_store_release(&mshv_vtl_cpu_run(cpu)->scan_proxy_irr, 1);
-		send_ipi |= cpu != self;
+		atomic_or(mask, (atomic_t *)&run->proxy_irr[bank]);
+
+		/*
+		 * The first producer with pending work wakes the target. Later
+		 * producers coalesce behind the scan that is already pending.
+		 */
+		if (xchg(&run->scan_proxy_irr, 1) || cpu == self)
+			cpumask_clear_cpu(cpu, local_mask);
 	}
 
-	if (send_ipi) {
-		cpumask_clear_cpu(self, local_mask);
+	if (!cpumask_empty(local_mask))
 		__apic_send_IPI_mask(local_mask, RESCHEDULE_VECTOR);
-	}
 
 	return 0;
 }
@@ -2064,6 +2064,34 @@ static struct sev_es_save_area *snp_this_vmsa(void)
 	return page_address(vmsa_page);
 }
 
+static u64 mshv_snp_read_vmsa_reg(struct mshv_vtl_run *run,
+				  struct sev_es_save_area *vmsa, size_t offset)
+{
+	u8 byte_index = offset / 64;
+	u8 bit_index = (offset % 64) / 8;
+	u64 value = READ_ONCE(*(u64 *)((u8 *)vmsa + offset));
+
+	if (READ_ONCE(run->snp_context.vmsa_tweak_bitmap[byte_index]) & BIT(bit_index)) {
+		static_assert(offsetof(struct sev_es_save_area, reserved_0x300) == 0x300);
+		value ^= READ_ONCE(*(u64 *)vmsa->reserved_0x300);
+	}
+
+	return value;
+}
+
+static void mshv_snp_write_vmsa_reg(struct mshv_vtl_run *run,
+				    struct sev_es_save_area *vmsa,
+				    size_t offset, u64 value)
+{
+	u8 byte_index = offset / 64;
+	u8 bit_index = (offset % 64) / 8;
+
+	if (READ_ONCE(run->snp_context.vmsa_tweak_bitmap[byte_index]) & BIT(bit_index))
+		value ^= READ_ONCE(*(u64 *)vmsa->reserved_0x300);
+
+	WRITE_ONCE(*(u64 *)((u8 *)vmsa + offset), value);
+}
+
 /*
  * Sets a benign guest error code so that there won't be another
  * #VMEXIT for the just processed one and marks the VMSA as
@@ -2077,6 +2105,24 @@ static void mshv_snp_clear_exit_code(struct sev_es_save_area *vmsa, bool int_sha
 		vmsa->vintr_ctrl &= ~V_INT_SHADOW_MASK;
 	vmsa->guest_exit_code = SVM_EXIT_INTR;
 	vmsa->vintr_ctrl &= ~V_GUEST_BUSY_MASK;
+}
+
+/*
+ * Determine if this interrupt was handled completely in the kernel.
+ *
+ * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
+ * Returns false if the exit must be handled by user-space.
+ */
+static bool mshv_snp_try_handle_interrupt_entry(struct mshv_vtl_run *run)
+{
+	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
+
+	if (!(run->offload_flags & MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT) ||
+	    READ_ONCE(hvp->vtl_entry_reason) != MSHV_ENTRY_REASON_INTERRUPT)
+		return false;
+
+	mshv_snp_clear_exit_code(snp_this_vmsa(), false);
+	return true;
 }
 
 /*
@@ -2147,11 +2193,20 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 			return true;
 		break;
 	case SVM_EXIT_MSR:
-		if (vmsa->rcx == HV_X64_MSR_GUEST_IDLE && !(vmsa->guest_exit_info_1 & 1)) {
+		if ((u32)mshv_snp_read_vmsa_reg(
+			    run, vmsa, offsetof(struct sev_es_save_area, rcx)) ==
+			    HV_X64_MSR_GUEST_IDLE &&
+		    !(vmsa->guest_exit_info_1 & 1)) {
+			u64 next_rip = mshv_snp_read_vmsa_reg(
+				run, vmsa, offsetof(struct sev_es_save_area, guest_nrip));
+
 			/* The guest indicates it's idle by reading this synthetic MSR. */
-			vmsa->rax = 0;
-			vmsa->rdx = 0;
-			vmsa->rip = vmsa->guest_nrip;
+			mshv_snp_write_vmsa_reg(
+				run, vmsa, offsetof(struct sev_es_save_area, rax), 0);
+			mshv_snp_write_vmsa_reg(
+				run, vmsa, offsetof(struct sev_es_save_area, rdx), 0);
+			mshv_snp_write_vmsa_reg(
+				run, vmsa, offsetof(struct sev_es_save_area, rip), next_rip);
 
 			run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
 			run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
@@ -2223,6 +2278,7 @@ static bool mshv_snp_try_handle_intercept(struct mshv_vtl_run *run)
 		return false;
 	case HVMSG_X64_HALT:
 		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
 		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
 		break;
 	default:
@@ -2334,8 +2390,11 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 #endif
 		} else if (hv_isolation_type_snp()) {
 #ifdef CONFIG_SEV_GUEST
-			if (mshv_snp_try_handle_intercept(mshv_vtl_this_run()) &&
-			    mshv_snp_try_handle_exit(mshv_vtl_this_run()))
+			struct mshv_vtl_run *run = mshv_vtl_this_run();
+
+			if (mshv_snp_try_handle_intercept(run) &&
+				(mshv_snp_try_handle_interrupt_entry(run) ||
+			     mshv_snp_try_handle_exit(run)))
 				continue; /* Exit handled entirely in kernel */
 #endif
 		}

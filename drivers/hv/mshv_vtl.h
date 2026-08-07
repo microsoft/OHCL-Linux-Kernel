@@ -118,6 +118,13 @@ struct tdx_vp_context {
 static_assert(offsetof(struct tdx_vp_context, l2_enter_guest_state) + 272 == 512);
 static_assert(sizeof(struct tdx_vp_context) == 1024);
 
+struct snp_vp_context {
+	__u8 vmsa_tweak_bitmap[64];
+	__u8 pad[960];
+};
+
+static_assert(sizeof(struct snp_vp_context) == 1024);
+
 #endif
 
 struct mshv_vtl_run {
@@ -134,6 +141,7 @@ struct mshv_vtl_run {
 
 #ifdef CONFIG_X86_64
 		struct tdx_vp_context tdx_context;
+		struct snp_vp_context snp_context;
 #endif
 		/*
 		 * Reserving room for the cpu context to grow and to maintain compatibility
