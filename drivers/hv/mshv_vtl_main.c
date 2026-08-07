@@ -196,6 +196,7 @@ struct mshv_vtl_per_cpu {
 #endif
 #if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
 	struct page *snp_secure_avic_page;
+	struct hrtimer snp_stimer0_timer;
 #endif
 };
 
@@ -216,6 +217,7 @@ static union hv_register_vsm_capabilities mshv_vsm_capabilities;
 static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
 static DEFINE_PER_CPU(unsigned long long, num_vtl0_transitions);
 static DEFINE_PER_CPU(struct mshv_vtl_per_cpu, mshv_vtl_per_cpu);
+static DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 
 static const union hv_input_vtl input_vtl_zero;
 static const union hv_input_vtl input_vtl_normal = {
@@ -1045,6 +1047,30 @@ static void mshv_vtl_set_tsc_deadline(u64 vm_idx, u64 deadline)
 
 #endif
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+static enum hrtimer_restart mshv_snp_stimer0_timer_fn(struct hrtimer *timer)
+{
+	struct mshv_vtl_per_cpu *per_cpu =
+		container_of(timer, struct mshv_vtl_per_cpu, snp_stimer0_timer);
+	struct mshv_vtl_run *run = READ_ONCE(per_cpu->run);
+
+	if (run) {
+		struct task_struct *thread;
+
+		/* Wake userspace to handle timer delivery. */
+		atomic_or(MSHV_VTL_SNP_STIMER0_EXPIRED,
+			  (atomic_t *)&run->snp_context.stimer0_flags);
+		WRITE_ONCE(run->cancel, 1);
+
+		thread = this_cpu_read(mshv_vtl_thread);
+		if (thread)
+			wake_up_process(thread);
+	}
+
+	return HRTIMER_NORESTART;
+}
+#endif
+
 static int mshv_vtl_alloc_context(unsigned int cpu)
 {
 	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
@@ -1090,6 +1116,10 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 #if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
 		struct page *snp_secure_avic_page;
 		int ret;
+
+		hrtimer_setup(&per_cpu->snp_stimer0_timer,
+			      mshv_snp_stimer0_timer_fn,
+			      CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
 
 		ret = mshv_snp_configure_vmsa_page(0, &per_cpu->vmsa_page);
 		if (ret < 0)
@@ -1732,7 +1762,6 @@ static void mshv_tdx_halt_timer_post(enum TDX_HALT_TIMER armed) {}
 #endif
 
 static bool in_idle_is_enabled;
-DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 
 static void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
@@ -2092,6 +2121,60 @@ static void mshv_snp_write_vmsa_reg(struct mshv_vtl_run *run,
 	WRITE_ONCE(*(u64 *)((u8 *)vmsa + offset), value);
 }
 
+#define MSHV_STIMER_ENABLE		BIT_ULL(0)
+#define MSHV_STIMER_PERIODIC		BIT_ULL(1)
+#define MSHV_STIMER_AUTO_ENABLE		BIT_ULL(3)
+
+static bool mshv_snp_try_handle_stimer0_count(struct mshv_vtl_run *run,
+					      struct sev_es_save_area *vmsa,
+					      u64 count)
+{
+	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	atomic_t *flags = (atomic_t *)&run->snp_context.stimer0_flags;
+	union hv_input_vtl target_vtl = READ_ONCE(run->target_vtl);
+	u32 old_flags = atomic_read(flags);
+	u64 config;
+	u64 now;
+	u64 delta;
+	u64 ns;
+
+	if ((target_vtl.use_target_vtl && target_vtl.target_vtl > 0) ||
+	    !(old_flags & MSHV_VTL_SNP_STIMER0_CONFIG_VALID))
+		return false;
+
+	if (old_flags & MSHV_VTL_SNP_STIMER0_KERNEL_UPDATE) {
+		hrtimer_cancel(&per_cpu->snp_stimer0_timer);
+		old_flags = atomic_read(flags);
+		if (old_flags & MSHV_VTL_SNP_STIMER0_EXPIRED)
+			return false;
+	}
+
+	config = READ_ONCE(run->snp_context.stimer0_config);
+	now = hv_read_reference_counter();
+
+	WRITE_ONCE(run->snp_context.stimer0_count, count);
+	WRITE_ONCE(run->snp_context.stimer0_programmed_ref_time, now);
+	atomic_set(flags, (old_flags | MSHV_VTL_SNP_STIMER0_KERNEL_UPDATE) &
+			  ~MSHV_VTL_SNP_STIMER0_EXPIRED);
+
+	if (count && ((config & MSHV_STIMER_ENABLE) ||
+		      (config & MSHV_STIMER_AUTO_ENABLE))) {
+		if (config & MSHV_STIMER_PERIODIC)
+			delta = count;
+		else
+			delta = (s64)(count - now) > 0 ? count - now : 0;
+		ns = delta > KTIME_MAX / 100 ? KTIME_MAX : delta * 100;
+		hrtimer_start(&per_cpu->snp_stimer0_timer, ns_to_ktime(ns),
+			      HRTIMER_MODE_REL_PINNED);
+	}
+
+	mshv_snp_write_vmsa_reg(
+		run, vmsa, offsetof(struct sev_es_save_area, rip),
+		mshv_snp_read_vmsa_reg(
+			run, vmsa, offsetof(struct sev_es_save_area, guest_nrip)));
+	return true;
+}
+
 /*
  * Sets a benign guest error code so that there won't be another
  * #VMEXIT for the just processed one and marks the VMSA as
@@ -2124,6 +2207,7 @@ static bool mshv_snp_try_handle_interrupt_entry(struct mshv_vtl_run *run)
 	mshv_snp_clear_exit_code(snp_this_vmsa(), false);
 	return true;
 }
+
 
 /*
  * Try to handle the incomplete IPI SEV-SNP exit.
@@ -2193,7 +2277,23 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 			return true;
 		break;
 	case SVM_EXIT_MSR:
-		if ((u32)mshv_snp_read_vmsa_reg(
+		if (READ_ONCE(hv_vp_assist_page[smp_processor_id()]->vtl_entry_reason) ==
+			    MSHV_ENTRY_REASON_INTERCEPT &&
+		    (u32)mshv_snp_read_vmsa_reg(
+			    run, vmsa, offsetof(struct sev_es_save_area, rcx)) ==
+			    HV_X64_MSR_STIMER0_COUNT &&
+		    (vmsa->guest_exit_info_1 & 1)) {
+			u64 count = (u32)mshv_snp_read_vmsa_reg(
+					    run, vmsa,
+					    offsetof(struct sev_es_save_area, rax)) |
+				((u64)(u32)mshv_snp_read_vmsa_reg(
+					 run, vmsa,
+					 offsetof(struct sev_es_save_area, rdx))
+				 << 32);
+
+			if (mshv_snp_try_handle_stimer0_count(run, vmsa, count))
+				goto handled;
+		} else if ((u32)mshv_snp_read_vmsa_reg(
 			    run, vmsa, offsetof(struct sev_es_save_area, rcx)) ==
 			    HV_X64_MSR_GUEST_IDLE &&
 		    !(vmsa->guest_exit_info_1 & 1)) {
@@ -2227,6 +2327,15 @@ handled:
 
 	mshv_snp_clear_exit_code(vmsa, false);
 	return true;
+}
+
+static void mshv_snp_release_stimer0(struct mshv_vtl_run *run)
+{
+	if (!(atomic_read((atomic_t *)&run->snp_context.stimer0_flags) &
+	      MSHV_VTL_SNP_STIMER0_KERNEL_UPDATE))
+		return;
+
+	hrtimer_cancel(&this_cpu_ptr(&mshv_vtl_per_cpu)->snp_stimer0_timer);
 }
 
 static bool mshv_snp_try_handle_intercept(struct mshv_vtl_run *run)
@@ -2426,6 +2535,11 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 	}
 
 done:
+#ifdef CONFIG_SEV_GUEST
+	if (hv_isolation_type_snp())
+		mshv_snp_release_stimer0(mshv_vtl_this_run());
+#endif
+
 	preempt_enable();
 
 	return 0;
