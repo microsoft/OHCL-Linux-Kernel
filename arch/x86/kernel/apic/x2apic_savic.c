@@ -9,7 +9,7 @@
 
 #include <linux/cc_platform.h>
 #include <linux/cpumask.h>
-#include <linux/percpu-defs.h>
+#include <linux/percpu.h>
 #include <linux/align.h>
 
 #include <asm/apic.h>
@@ -387,15 +387,15 @@ static void savic_teardown(void)
 static void savic_setup(void)
 {
 	void *ap = this_cpu_ptr(savic_page);
+	phys_addr_t gpa;
 	enum es_result res;
-	unsigned long gpa;
 	unsigned long gfn;
 
 	if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
 		return;
 
 	x2apic_savic_init_backing_page(ap);
-	gpa = __pa(ap);
+	gpa = per_cpu_ptr_to_phys(ap);
 
 	gfn = gpa >> PAGE_SHIFT;
 
