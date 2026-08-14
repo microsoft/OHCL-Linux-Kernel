@@ -250,9 +250,16 @@ static inline int arch_check_excluded_range(struct kimage *image,
 }
 #endif
 
+#ifdef CONFIG_MODULE_SIG_FORMAT
+int kexec_elf_payload_len(const char *kernel, unsigned long kernel_len,
+			  unsigned long *payload_len);
+#endif
 #ifdef CONFIG_KEXEC_SIG
 #ifdef CONFIG_SIGNED_PE_FILE_VERIFICATION
 int kexec_kernel_verify_pe_sig(const char *kernel, unsigned long kernel_len);
+#endif
+#ifdef CONFIG_KEXEC_ELF_VERIFY_SIG
+int kexec_kernel_verify_elf_sig(const char *kernel, unsigned long kernel_len);
 #endif
 #endif
 

@@ -92,6 +92,7 @@ static int map_mmio_serial(struct x86_mapping_info *info, pgd_t *level4p)
 
 #ifdef CONFIG_KEXEC_FILE
 const struct kexec_file_ops * const kexec_file_loaders[] = {
+		&kexec_elf64_ops,
 		&kexec_bzImage64_ops,
 		NULL
 };

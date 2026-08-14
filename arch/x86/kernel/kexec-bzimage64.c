@@ -27,10 +27,7 @@
 #include <asm/efi.h>
 #include <asm/e820/api.h>
 #include <asm/kexec-bzimage64.h>
-
-#define MAX_ELFCOREHDR_STR_LEN	30	/* elfcorehdr=0x<64bit-value> */
-#define MAX_DMCRYPTKEYS_STR_LEN	31	/* dmcryptkeys=0x<64bit-value> */
-
+#include <asm/kexec-file.h>
 
 /*
  * Defines lowest physical address for various segments. Not sure where
@@ -55,357 +52,6 @@ struct bzimage64_data {
 	 */
 	void *bootparams_buf;
 };
-
-static int setup_initrd(struct boot_params *params,
-		unsigned long initrd_load_addr, unsigned long initrd_len)
-{
-	params->hdr.ramdisk_image = initrd_load_addr & 0xffffffffUL;
-	params->hdr.ramdisk_size = initrd_len & 0xffffffffUL;
-
-	params->ext_ramdisk_image = initrd_load_addr >> 32;
-	params->ext_ramdisk_size = initrd_len >> 32;
-
-	return 0;
-}
-
-static int setup_cmdline(struct kimage *image, struct boot_params *params,
-			 unsigned long bootparams_load_addr,
-			 unsigned long cmdline_offset, char *cmdline,
-			 unsigned long cmdline_len)
-{
-	char *cmdline_ptr = ((char *)params) + cmdline_offset;
-	unsigned long cmdline_ptr_phys, len = 0;
-	uint32_t cmdline_low_32, cmdline_ext_32;
-
-	if (image->type == KEXEC_TYPE_CRASH) {
-		len = sprintf(cmdline_ptr,
-			"elfcorehdr=0x%lx ", image->elf_load_addr);
-
-		if (image->dm_crypt_keys_addr != 0)
-			len += sprintf(cmdline_ptr + len,
-					"dmcryptkeys=0x%lx ", image->dm_crypt_keys_addr);
-	}
-	memcpy(cmdline_ptr + len, cmdline, cmdline_len);
-	cmdline_len += len;
-
-	cmdline_ptr[cmdline_len - 1] = '\0';
-
-	kexec_dprintk("Final command line is: %s\n", cmdline_ptr);
-	cmdline_ptr_phys = bootparams_load_addr + cmdline_offset;
-	cmdline_low_32 = cmdline_ptr_phys & 0xffffffffUL;
-	cmdline_ext_32 = cmdline_ptr_phys >> 32;
-
-	params->hdr.cmd_line_ptr = cmdline_low_32;
-	if (cmdline_ext_32)
-		params->ext_cmd_line_ptr = cmdline_ext_32;
-
-	return 0;
-}
-
-static int setup_e820_entries(struct boot_params *params)
-{
-	unsigned int nr_e820_entries;
-
-	nr_e820_entries = e820_table_kexec->nr_entries;
-
-	/* TODO: Pass entries more than E820_MAX_ENTRIES_ZEROPAGE in bootparams setup data */
-	if (nr_e820_entries > E820_MAX_ENTRIES_ZEROPAGE)
-		nr_e820_entries = E820_MAX_ENTRIES_ZEROPAGE;
-
-	params->e820_entries = nr_e820_entries;
-	memcpy(&params->e820_table, &e820_table_kexec->entries, nr_e820_entries*sizeof(struct e820_entry));
-
-	return 0;
-}
-
-enum { RNG_SEED_LENGTH = 32 };
-
-static void
-setup_rng_seed(struct boot_params *params, unsigned long params_load_addr,
-	       unsigned int rng_seed_setup_data_offset)
-{
-	struct setup_data *sd = (void *)params + rng_seed_setup_data_offset;
-	unsigned long setup_data_phys;
-
-	if (!rng_is_initialized())
-		return;
-
-	sd->type = SETUP_RNG_SEED;
-	sd->len = RNG_SEED_LENGTH;
-	get_random_bytes(sd->data, RNG_SEED_LENGTH);
-	setup_data_phys = params_load_addr + rng_seed_setup_data_offset;
-	sd->next = params->hdr.setup_data;
-	params->hdr.setup_data = setup_data_phys;
-}
-
-#ifdef CONFIG_EFI
-static int setup_efi_info_memmap(struct boot_params *params,
-				  unsigned long params_load_addr,
-				  unsigned int efi_map_offset,
-				  unsigned int efi_map_sz)
-{
-	void *efi_map = (void *)params + efi_map_offset;
-	unsigned long efi_map_phys_addr = params_load_addr + efi_map_offset;
-	struct efi_info *ei = &params->efi_info;
-
-	if (!efi_map_sz)
-		return 0;
-
-	efi_runtime_map_copy(efi_map, efi_map_sz);
-
-	ei->efi_memmap = efi_map_phys_addr & 0xffffffff;
-	ei->efi_memmap_hi = efi_map_phys_addr >> 32;
-	ei->efi_memmap_size = efi_map_sz;
-
-	return 0;
-}
-
-static int
-prepare_add_efi_setup_data(struct boot_params *params,
-		       unsigned long params_load_addr,
-		       unsigned int efi_setup_data_offset)
-{
-	unsigned long setup_data_phys;
-	struct setup_data *sd = (void *)params + efi_setup_data_offset;
-	struct efi_setup_data *esd = (void *)sd + sizeof(struct setup_data);
-
-	esd->fw_vendor = efi_fw_vendor;
-	esd->tables = efi_config_table;
-	esd->smbios = efi.smbios;
-
-	sd->type = SETUP_EFI;
-	sd->len = sizeof(struct efi_setup_data);
-
-	/* Add setup data */
-	setup_data_phys = params_load_addr + efi_setup_data_offset;
-	sd->next = params->hdr.setup_data;
-	params->hdr.setup_data = setup_data_phys;
-
-	return 0;
-}
-
-static int
-setup_efi_state(struct boot_params *params, unsigned long params_load_addr,
-		unsigned int efi_map_offset, unsigned int efi_map_sz,
-		unsigned int efi_setup_data_offset)
-{
-	struct efi_info *current_ei = &boot_params.efi_info;
-	struct efi_info *ei = &params->efi_info;
-
-	if (!params->acpi_rsdp_addr) {
-		if (efi.acpi20 != EFI_INVALID_TABLE_ADDR)
-			params->acpi_rsdp_addr = efi.acpi20;
-		else if (efi.acpi != EFI_INVALID_TABLE_ADDR)
-			params->acpi_rsdp_addr = efi.acpi;
-	}
-
-	if (!efi_enabled(EFI_RUNTIME_SERVICES))
-		return 0;
-
-	if (!current_ei->efi_memmap_size)
-		return 0;
-
-	params->secure_boot = boot_params.secure_boot;
-	ei->efi_loader_signature = current_ei->efi_loader_signature;
-	ei->efi_systab = current_ei->efi_systab;
-	ei->efi_systab_hi = current_ei->efi_systab_hi;
-
-	ei->efi_memdesc_version = current_ei->efi_memdesc_version;
-	ei->efi_memdesc_size = efi_get_runtime_map_desc_size();
-
-	setup_efi_info_memmap(params, params_load_addr, efi_map_offset,
-			      efi_map_sz);
-	prepare_add_efi_setup_data(params, params_load_addr,
-				   efi_setup_data_offset);
-	return 0;
-}
-#endif /* CONFIG_EFI */
-
-#ifdef CONFIG_OF_FLATTREE
-static void setup_dtb(struct boot_params *params,
-		      unsigned long params_load_addr,
-		      unsigned int dtb_setup_data_offset)
-{
-	struct setup_data *sd = (void *)params + dtb_setup_data_offset;
-	unsigned long setup_data_phys, dtb_len;
-
-	dtb_len = fdt_totalsize(initial_boot_params);
-	sd->type = SETUP_DTB;
-	sd->len = dtb_len;
-
-	/* Carry over current boot DTB with setup_data */
-	memcpy(sd->data, initial_boot_params, dtb_len);
-
-	/* Add setup data */
-	setup_data_phys = params_load_addr + dtb_setup_data_offset;
-	sd->next = params->hdr.setup_data;
-	params->hdr.setup_data = setup_data_phys;
-}
-#endif /* CONFIG_OF_FLATTREE */
-
-static void
-setup_ima_state(const struct kimage *image, struct boot_params *params,
-		unsigned long params_load_addr,
-		unsigned int ima_setup_data_offset)
-{
-#ifdef CONFIG_IMA_KEXEC
-	struct setup_data *sd = (void *)params + ima_setup_data_offset;
-	unsigned long setup_data_phys;
-	struct ima_setup_data *ima;
-
-	if (!image->ima_buffer_size)
-		return;
-
-	sd->type = SETUP_IMA;
-	sd->len = sizeof(*ima);
-
-	ima = (void *)sd + sizeof(struct setup_data);
-	ima->addr = image->ima_buffer_addr;
-	ima->size = image->ima_buffer_size;
-
-	/* Add setup data */
-	setup_data_phys = params_load_addr + ima_setup_data_offset;
-	sd->next = params->hdr.setup_data;
-	params->hdr.setup_data = setup_data_phys;
-#endif /* CONFIG_IMA_KEXEC */
-}
-
-static void setup_kho(const struct kimage *image, struct boot_params *params,
-		      unsigned long params_load_addr,
-		      unsigned int setup_data_offset)
-{
-	struct setup_data *sd = (void *)params + setup_data_offset;
-	struct kho_data *kho = (void *)sd + sizeof(*sd);
-
-	if (!IS_ENABLED(CONFIG_KEXEC_HANDOVER))
-		return;
-
-	sd->type = SETUP_KEXEC_KHO;
-	sd->len = sizeof(struct kho_data);
-
-	/* Only add if we have all KHO images in place */
-	if (!image->kho.fdt || !image->kho.scratch)
-		return;
-
-	/* Add setup data */
-	kho->fdt_addr = image->kho.fdt;
-	kho->fdt_size = PAGE_SIZE;
-	kho->scratch_addr = image->kho.scratch->mem;
-	kho->scratch_size = image->kho.scratch->bufsz;
-	sd->next = params->hdr.setup_data;
-	params->hdr.setup_data = params_load_addr + setup_data_offset;
-}
-
-static int
-setup_boot_parameters(struct kimage *image, struct boot_params *params,
-		      unsigned long params_load_addr,
-		      unsigned int efi_map_offset, unsigned int efi_map_sz,
-		      unsigned int setup_data_offset)
-{
-	unsigned int nr_e820_entries;
-	unsigned long long mem_k, start, end;
-	int i, ret = 0;
-
-	/* Get subarch from existing bootparams */
-	params->hdr.hardware_subarch = boot_params.hdr.hardware_subarch;
-
-	/* Copying screen_info will do? */
-	memcpy(&params->screen_info, &screen_info, sizeof(struct screen_info));
-
-	/* Fill in memsize later */
-	params->screen_info.ext_mem_k = 0;
-	params->alt_mem_k = 0;
-
-	/* Always fill in RSDP: it is either 0 or a valid value */
-	params->acpi_rsdp_addr = boot_params.acpi_rsdp_addr;
-
-	/* Default APM info */
-	memset(&params->apm_bios_info, 0, sizeof(params->apm_bios_info));
-
-	/* Default drive info */
-	memset(&params->hd0_info, 0, sizeof(params->hd0_info));
-	memset(&params->hd1_info, 0, sizeof(params->hd1_info));
-
-#ifdef CONFIG_CRASH_DUMP
-	if (image->type == KEXEC_TYPE_CRASH) {
-		ret = crash_setup_memmap_entries(image, params);
-		if (ret)
-			return ret;
-	} else
-#endif
-		setup_e820_entries(params);
-
-	nr_e820_entries = params->e820_entries;
-
-	kexec_dprintk("E820 memmap:\n");
-	for (i = 0; i < nr_e820_entries; i++) {
-		kexec_dprintk("%016llx-%016llx (%d)\n",
-			      params->e820_table[i].addr,
-			      params->e820_table[i].addr + params->e820_table[i].size - 1,
-			      params->e820_table[i].type);
-		if (params->e820_table[i].type != E820_TYPE_RAM)
-			continue;
-		start = params->e820_table[i].addr;
-		end = params->e820_table[i].addr + params->e820_table[i].size - 1;
-
-		if ((start <= 0x100000) && end > 0x100000) {
-			mem_k = (end >> 10) - (0x100000 >> 10);
-			params->screen_info.ext_mem_k = mem_k;
-			params->alt_mem_k = mem_k;
-			if (mem_k > 0xfc00)
-				params->screen_info.ext_mem_k = 0xfc00; /* 64M*/
-			if (mem_k > 0xffffffff)
-				params->alt_mem_k = 0xffffffff;
-		}
-	}
-
-#ifdef CONFIG_EFI
-	/* Setup EFI state */
-	setup_efi_state(params, params_load_addr, efi_map_offset, efi_map_sz,
-			setup_data_offset);
-	setup_data_offset += sizeof(struct setup_data) +
-			sizeof(struct efi_setup_data);
-#endif
-
-#ifdef CONFIG_OF_FLATTREE
-	if (image->force_dtb && initial_boot_params) {
-		setup_dtb(params, params_load_addr, setup_data_offset);
-		setup_data_offset += sizeof(struct setup_data) +
-				     fdt_totalsize(initial_boot_params);
-	} else {
-		pr_debug("Not carrying over DTB, force_dtb = %d\n",
-			 image->force_dtb);
-	}
-#endif
-
-	if (IS_ENABLED(CONFIG_IMA_KEXEC)) {
-		/* Setup IMA log buffer state */
-		setup_ima_state(image, params, params_load_addr,
-				setup_data_offset);
-		setup_data_offset += sizeof(struct setup_data) +
-				     sizeof(struct ima_setup_data);
-	}
-
-	if (IS_ENABLED(CONFIG_KEXEC_HANDOVER)) {
-		/* Setup space to store preservation metadata */
-		setup_kho(image, params, params_load_addr, setup_data_offset);
-		setup_data_offset += sizeof(struct setup_data) +
-				     sizeof(struct kho_data);
-	}
-
-	/* Setup RNG seed */
-	setup_rng_seed(params, params_load_addr, setup_data_offset);
-
-	/* Setup EDD info */
-	memcpy(params->eddbuf, boot_params.eddbuf,
-				EDDMAXNR * sizeof(struct edd_info));
-	params->eddbuf_entries = boot_params.eddbuf_entries;
-
-	memcpy(params->edd_mbr_sig_buffer, boot_params.edd_mbr_sig_buffer,
-	       EDD_MBR_SIG_MAX * sizeof(unsigned int));
-
-	return ret;
-}
 
 static int bzImage64_probe(const char *buf, unsigned long len)
 {
@@ -511,7 +157,7 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 	 * In case of crash dump, we will append elfcorehdr=<addr> to
 	 * command line. Make sure it does not overflow
 	 */
-	if (cmdline_len + MAX_ELFCOREHDR_STR_LEN > header->cmdline_size) {
+	if (cmdline_len + X86_KEXEC_ELFCOREHDR_STR_LEN > header->cmdline_size) {
 		pr_err("Appending elfcorehdr=<addr> to command line exceeds maximum allowed length\n");
 		return ERR_PTR(-EINVAL);
 	}
@@ -530,7 +176,8 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 			return ERR_PTR(ret);
 		}
 		if (image->dm_crypt_keys_addr &&
-		    cmdline_len + MAX_ELFCOREHDR_STR_LEN + MAX_DMCRYPTKEYS_STR_LEN >
+		    cmdline_len + X86_KEXEC_ELFCOREHDR_STR_LEN +
+		    X86_KEXEC_DMCRYPTKEYS_STR_LEN >
 			    header->cmdline_size) {
 			pr_err("Appending dmcryptkeys=<addr> to command line exceeds maximum allowed length\n");
 			return ERR_PTR(-EINVAL);
@@ -561,15 +208,15 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 	 */
 	efi_map_sz = efi_get_runtime_map_size();
 	params_cmdline_sz = sizeof(struct boot_params) + cmdline_len +
-				MAX_ELFCOREHDR_STR_LEN;
+				X86_KEXEC_ELFCOREHDR_STR_LEN;
 	if (image->dm_crypt_keys_addr)
-		params_cmdline_sz += MAX_DMCRYPTKEYS_STR_LEN;
+		params_cmdline_sz += X86_KEXEC_DMCRYPTKEYS_STR_LEN;
 	params_cmdline_sz = ALIGN(params_cmdline_sz, 16);
 	kbuf.bufsz = params_cmdline_sz + ALIGN(efi_map_sz, 16) +
 				sizeof(struct setup_data) +
 				sizeof(struct efi_setup_data) +
 				sizeof(struct setup_data) +
-				RNG_SEED_LENGTH;
+				X86_KEXEC_RNG_SEED_LENGTH;
 
 #ifdef CONFIG_OF_FLATTREE
 	if (image->force_dtb && initial_boot_params)
@@ -641,11 +288,12 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 		kexec_dprintk("Loaded initrd at 0x%lx bufsz=0x%lx memsz=0x%lx\n",
 			      initrd_load_addr, initrd_len, initrd_len);
 
-		setup_initrd(params, initrd_load_addr, initrd_len);
+		x86_kexec_setup_initrd(params, initrd_load_addr,
+				       initrd_len);
 	}
 
-	setup_cmdline(image, params, bootparam_load_addr,
-		      sizeof(struct boot_params), cmdline, cmdline_len);
+	x86_kexec_setup_cmdline(image, params, bootparam_load_addr,
+				sizeof(struct boot_params), cmdline, cmdline_len);
 
 	/* bootloader info. Do we need a separate ID for kexec kernel loader? */
 	params->hdr.type_of_loader = 0x0D << 4;
@@ -673,9 +321,10 @@ static void *bzImage64_load(struct kimage *image, char *kernel,
 	if (ret)
 		goto out_free_params;
 
-	ret = setup_boot_parameters(image, params, bootparam_load_addr,
-				    efi_map_offset, efi_map_sz,
-				    efi_setup_data_offset);
+	ret = x86_kexec_setup_boot_parameters(image, params,
+					      bootparam_load_addr,
+					      efi_map_offset, efi_map_sz,
+					      efi_setup_data_offset);
 	if (ret)
 		goto out_free_params;
 
