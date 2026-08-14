@@ -3,5 +3,6 @@
 #define _ASM_KEXEC_BZIMAGE64_H
 
 extern const struct kexec_file_ops kexec_bzImage64_ops;
+extern const struct kexec_file_ops kexec_elf64_ops;
 
 #endif  /* _ASM_KEXE_BZIMAGE64_H */

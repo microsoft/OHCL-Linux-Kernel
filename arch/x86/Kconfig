@@ -1988,12 +1988,16 @@ config ARCH_SUPPORTS_KEXEC_FILE
 config ARCH_SELECTS_KEXEC_FILE
 	def_bool y
 	depends on KEXEC_FILE
+	select KEXEC_ELF
 	select HAVE_IMA_KEXEC if IMA
 
 config ARCH_SUPPORTS_KEXEC_PURGATORY
 	def_bool y
 
 config ARCH_SUPPORTS_KEXEC_SIG
+	def_bool y
+
+config ARCH_SUPPORTS_KEXEC_ELF_VERIFY_SIG
 	def_bool y
 
 config ARCH_SUPPORTS_KEXEC_SIG_FORCE

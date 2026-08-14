@@ -19,6 +19,8 @@
 #include <linux/list.h>
 #include <linux/fs.h>
 #include <linux/ima.h>
+#include <linux/module_signature.h>
+#include <linux/verification.h>
 #include <crypto/sha2.h>
 #include <linux/elf.h>
 #include <linux/elfcore.h>
@@ -156,6 +158,70 @@ int kexec_kernel_verify_pe_sig(const char *kernel, unsigned long kernel_len)
 					      VERIFY_USE_PLATFORM_KEYRING,
 					      VERIFYING_KEXEC_PE_SIGNATURE);
 	}
+	return ret;
+}
+#endif
+#endif /* CONFIG_KEXEC_SIG */
+
+#ifdef CONFIG_MODULE_SIG_FORMAT
+int kexec_elf_payload_len(const char *kernel, unsigned long kernel_len,
+			  unsigned long *payload_len)
+{
+	const unsigned long marker_len = sizeof(MODULE_SIG_STRING) - 1;
+	const struct module_signature *ms;
+	unsigned long sig_len;
+	int ret;
+
+	*payload_len = kernel_len;
+	if (kernel_len < marker_len ||
+	    memcmp(kernel + kernel_len - marker_len, MODULE_SIG_STRING,
+		   marker_len))
+		return 0;
+
+	if (kernel_len < marker_len + sizeof(*ms))
+		return -EBADMSG;
+	kernel_len -= marker_len;
+
+	ms = (const void *)kernel + kernel_len - sizeof(*ms);
+	ret = mod_check_sig(ms, kernel_len, "kexec ELF image");
+	if (ret)
+		return ret;
+
+	sig_len = be32_to_cpu(ms->sig_len);
+	*payload_len = kernel_len - sig_len - sizeof(*ms);
+	return 0;
+}
+#endif
+
+#ifdef CONFIG_KEXEC_SIG
+#ifdef CONFIG_KEXEC_ELF_VERIFY_SIG
+int kexec_kernel_verify_elf_sig(const char *kernel, unsigned long kernel_len)
+{
+	unsigned long payload_len;
+	unsigned long sig_len;
+	int ret;
+
+	ret = kexec_elf_payload_len(kernel, kernel_len, &payload_len);
+	if (ret)
+		return ret;
+	if (payload_len == kernel_len)
+		return -EKEYREJECTED;
+
+	sig_len = kernel_len - payload_len - sizeof(struct module_signature) -
+		  (sizeof(MODULE_SIG_STRING) - 1);
+
+	ret = verify_pkcs7_signature(kernel, payload_len,
+				     kernel + payload_len, sig_len,
+				     VERIFY_USE_SECONDARY_KEYRING,
+				     VERIFYING_MODULE_SIGNATURE,
+				     NULL, NULL);
+	if (ret == -ENOKEY && IS_ENABLED(CONFIG_INTEGRITY_PLATFORM_KEYRING))
+		ret = verify_pkcs7_signature(kernel, payload_len,
+					     kernel + payload_len, sig_len,
+					     VERIFY_USE_PLATFORM_KEYRING,
+					     VERIFYING_MODULE_SIGNATURE,
+					     NULL, NULL);
+
 	return ret;
 }
 #endif
