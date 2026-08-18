@@ -1205,13 +1205,158 @@ struct mshv_vtl_low_range {
 	struct list_head list;
 	unsigned long start_pfn;
 	unsigned long end_pfn;	/* exclusive */
+	struct rcu_head rcu;
 };
+
+/*
+ * Ranges whose devm_memremap_pages() failed (e.g. VTL2 OOM). They have no
+ * struct pages, so the huge-fault path maps them 4K (pte_special) instead of a
+ * 2M pfn PMD: a 4K special PTE makes GUP fail gracefully, whereas a memmap-less
+ * 2M PMD would oops in follow_huge_pmd(). Normally empty.
+ */
+static LIST_HEAD(mshv_vtl_low_failed_ranges);
+static DEFINE_SPINLOCK(mshv_vtl_low_failed_lock);
+
+/*
+ * Ranges whose pgmap folios are smaller than a PMD (sub-2M-aligned
+ * registrations, e.g. a RAM-map edge). A 2M/1G huge map over sub-huge folios
+ * makes slow GUP batch refcounts across folios it never referenced (corruption
+ * on unpin), so the huge-fault path serves these 4K. Order-0 still returns a
+ * pinnable page (they are registered), so GUP stays correct. Only tiny RAM-edge
+ * tails hit this, so PageTables stay flat. Normally empty.
+ */
+static LIST_HEAD(mshv_vtl_low_suborder_ranges);
+static DEFINE_SPINLOCK(mshv_vtl_low_suborder_lock);
+
+/* True if [start_pfn, last_pfn) is already covered by a registered range. */
+static bool mshv_vtl_low_range_registered(unsigned long start_pfn,
+					  unsigned long last_pfn)
+{
+	struct mshv_vtl_low_range *r;
+	bool found = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(r, &mshv_vtl_low_ranges, list) {
+		if (start_pfn >= r->start_pfn && last_pfn <= r->end_pfn) {
+			found = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	return found;
+}
+
+/*
+ * True if [start_pfn, end_pfn) intersects any range whose registration failed
+ * (no memmap). The whole span is tested, not just the base pfn: a huge PMD
+ * covers [base, base + PMD) and must fall back to 4K if any pfn in that window
+ * is memmap-less, or GUP would oops walking a struct page that does not exist.
+ */
+static bool mshv_vtl_low_span_failed(unsigned long start_pfn,
+				     unsigned long end_pfn)
+{
+	struct mshv_vtl_low_range *r;
+	bool failed = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(r, &mshv_vtl_low_failed_ranges, list) {
+		if (start_pfn < r->end_pfn && end_pfn > r->start_pfn) {
+			failed = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	return failed;
+}
+
+/*
+ * True if [start_pfn, end_pfn) intersects any registered range whose folios
+ * are smaller than a PMD. Tested across the whole span: a huge PMD over even a
+ * partial sub-PMD-folio tail makes slow GUP mis-batch refcounts across folios.
+ */
+static bool mshv_vtl_low_span_suborder(unsigned long start_pfn,
+				       unsigned long end_pfn)
+{
+	struct mshv_vtl_low_range *r;
+	bool suborder = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(r, &mshv_vtl_low_suborder_ranges, list) {
+		if (start_pfn < r->end_pfn && end_pfn > r->start_pfn) {
+			suborder = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	return suborder;
+}
+
+/*
+ * Record @range as failed, coalescing it with any entry it overlaps or abuts,
+ * so repeated failing registrations cannot grow the list without bound (which
+ * would also slow the per-fault mshv_vtl_low_span_failed() walk). Coalescing
+ * only ever joins failed ranges, so it never marks memmap-backed pfns failed.
+ * Returns true if @range is now owned by the list, false if a concurrent
+ * success registered it meanwhile (the caller frees @range).
+ */
+static bool mshv_vtl_low_failed_add(struct mshv_vtl_low_range *range)
+{
+	struct mshv_vtl_low_range *r, *tmp;
+
+	spin_lock(&mshv_vtl_low_failed_lock);
+	/*
+	 * Skip if a concurrent registration already succeeded: it publishes the
+	 * range and then clears failed markers, so recording one now (after that
+	 * clear) would strand valid memory on the 4K path. The success path
+	 * clears under this same lock, so the check and the add are ordered.
+	 */
+	if (mshv_vtl_low_range_registered(range->start_pfn, range->end_pfn)) {
+		spin_unlock(&mshv_vtl_low_failed_lock);
+		return false;
+	}
+	/* Absorb every entry that overlaps or abuts @range, extending it. */
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_failed_ranges, list) {
+		if (r->end_pfn < range->start_pfn ||
+		    r->start_pfn > range->end_pfn)
+			continue;
+		range->start_pfn = min(range->start_pfn, r->start_pfn);
+		range->end_pfn = max(range->end_pfn, r->end_pfn);
+		list_del_rcu(&r->list);
+		kfree_rcu(r, rcu);
+	}
+	list_add_rcu(&range->list, &mshv_vtl_low_failed_ranges);
+	spin_unlock(&mshv_vtl_low_failed_lock);
+	return true;
+}
+
+/*
+ * Drop any failed-range entry fully covered by [start_pfn, last_pfn). Called
+ * when a range registers successfully so its huge faults resume 2M instead of
+ * the 4K fallback. Freed after a grace period since mshv_vtl_low_span_failed()
+ * walks the list under RCU.
+ */
+static void mshv_vtl_low_failed_clear(unsigned long start_pfn,
+				      unsigned long last_pfn)
+{
+	struct mshv_vtl_low_range *r, *tmp;
+
+	spin_lock(&mshv_vtl_low_failed_lock);
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_failed_ranges, list) {
+		if (r->start_pfn >= start_pfn && r->end_pfn <= last_pfn) {
+			list_del_rcu(&r->list);
+			kfree_rcu(r, rcu);
+		}
+	}
+	spin_unlock(&mshv_vtl_low_failed_lock);
+}
 
 static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 {
 	struct mshv_vtl_ram_disposition vtl0_mem;
 	struct mshv_vtl_low_range *range;
+	struct mshv_vtl_low_range *sub = NULL;
 	struct dev_pagemap *pgmap;
+	unsigned long pfn;
 	void *addr;
 	bool decrypted;
 
@@ -1226,6 +1371,30 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 		dev_err(vtl->module_dev, "range start pfn (%llx) > end pfn (%llx)\n",
 			vtl0_mem.start_pfn, vtl0_mem.last_pfn);
 		return -EFAULT;
+	}
+
+	/*
+	 * Idempotent: a range already registered (e.g. re-registered across a
+	 * servicing save/restore) keeps its existing mapping and pin; don't
+	 * re-memremap or report a spurious failure.
+	 */
+	if (mshv_vtl_low_range_registered(vtl0_mem.start_pfn, vtl0_mem.last_pfn)) {
+		/* Drop any stale failed marker left by a prior racing failure. */
+		mshv_vtl_low_failed_clear(vtl0_mem.start_pfn, vtl0_mem.last_pfn);
+		/*
+		 * Zap any 4K fallback PTEs installed while that marker was present
+		 * so they refault as 2M now that the range is registered; the
+		 * fresh-success path below does the same after publishing.
+		 */
+		if (READ_ONCE(mshv_vtl_low_mapping)) {
+			pgoff_t start = vtl0_mem.start_pfn;
+			pgoff_t nr = vtl0_mem.last_pfn - vtl0_mem.start_pfn;
+
+			unmap_mapping_pages(mshv_vtl_low_mapping, start, nr, true);
+			unmap_mapping_pages(mshv_vtl_low_mapping,
+					    start | DECRYPTED_MASK, nr, true);
+		}
+		return 0;
 	}
 
 	pgmap = kzalloc(sizeof(*pgmap), GFP_KERNEL);
@@ -1259,12 +1428,91 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 		return -ENOMEM;
 	}
 
+	/*
+	 * Allocate the sub-PMD marker up front (before devm_memremap_pages, so
+	 * the failure unwind is clean) whenever this range's folios will be
+	 * smaller than a PMD. Publishing it before the range below means a
+	 * sub-PMD range is never briefly - or permanently on -ENOMEM -
+	 * huge-eligible, which would let slow GUP mis-batch refcounts.
+	 */
+	if (pgmap->vmemmap_shift < PMD_ORDER) {
+		sub = kzalloc(sizeof(*sub), GFP_KERNEL);
+		if (!sub) {
+			kfree(range);
+			kfree(pgmap);
+			return -ENOMEM;
+		}
+	}
+
 	addr = devm_memremap_pages(mem_dev, pgmap);
 	if (IS_ERR(addr)) {
 		dev_err(vtl->module_dev, "devm_memremap_pages error: %ld\n", PTR_ERR(addr));
-		kfree(range);
+		kfree(sub);	/* sub-PMD marker is unused on the failure path */
+		/*
+		 * A concurrent registration of the same range already succeeded,
+		 * so the memory is in fact registered: report success rather than
+		 * a spurious error, and do not mark it failed (which forces 4K).
+		 */
+		if (mshv_vtl_low_range_registered(vtl0_mem.start_pfn,
+						  vtl0_mem.last_pfn)) {
+			kfree(range);
+			kfree(pgmap);
+			return 0;
+		}
+		/*
+		 * No memmap for this range. Record it so the huge-fault path maps
+		 * it 4K (GUP-safe) instead of a 2M pfn PMD that would oops if the
+		 * range is later pinned, and zap any 2M a prior CPU fault installed
+		 * so the next access re-faults into the 4K path.
+		 */
+		range->start_pfn = vtl0_mem.start_pfn;
+		range->end_pfn = vtl0_mem.last_pfn;
+		if (!mshv_vtl_low_failed_add(range)) {
+			/*
+			 * failed_add() returns false only when a concurrent
+			 * registration already made this range valid; report
+			 * success and let the winner own the mapping and its zap.
+			 */
+			kfree(range);
+			kfree(pgmap);
+			return 0;
+		}
+		if (READ_ONCE(mshv_vtl_low_mapping)) {
+			pgoff_t start = vtl0_mem.start_pfn;
+			pgoff_t nr = vtl0_mem.last_pfn - vtl0_mem.start_pfn;
+
+			unmap_mapping_pages(mshv_vtl_low_mapping, start, nr, true);
+			unmap_mapping_pages(mshv_vtl_low_mapping,
+					    start | DECRYPTED_MASK, nr, true);
+		}
 		kfree(pgmap);
 		return PTR_ERR(addr);
+	}
+
+	/*
+	 * Hold a permanent reference on every folio in the range. The huge-fault
+	 * path maps VTL0 memory by raw pfn and keeps no per-mapping folio ref, so
+	 * GUP (try_grab_folio) relies on this pin to keep the refcount above zero
+	 * and avoid a transient-zero warning. VTL0 memory lives for the partition
+	 * lifetime, so - like the pgmap itself - these refs are never dropped.
+	 * start_pfn/last_pfn are aligned to vmemmap_shift, so each step is a head.
+	 */
+	for (pfn = vtl0_mem.start_pfn; pfn < vtl0_mem.last_pfn;
+	     pfn += 1UL << pgmap->vmemmap_shift)
+		folio_get(pfn_folio(pfn));
+
+	/*
+	 * Publish the sub-PMD marker (if any) before the range itself, so no
+	 * concurrent 2M fault can install a huge PMD over these sub-PMD folios
+	 * in the window between the range becoming visible and the marker being
+	 * added - which would make slow GUP mis-batch refcounts across folios.
+	 */
+	if (sub) {
+		sub->start_pfn = vtl0_mem.start_pfn;
+		sub->end_pfn = vtl0_mem.last_pfn;
+		spin_lock(&mshv_vtl_low_suborder_lock);
+		list_add_rcu(&sub->list, &mshv_vtl_low_suborder_ranges);
+		spin_unlock(&mshv_vtl_low_suborder_lock);
 	}
 
 	/* Publish only now: vmemmap is populated and struct pages are initialized. */
@@ -1275,9 +1523,21 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	spin_unlock(&mshv_vtl_low_ranges_lock);
 
 	/*
+	 * Now that the range is published, drop any stale failed marker from an
+	 * earlier failed attempt - and any a concurrent failing caller recorded
+	 * before it could observe this registration. Its huge faults resume 2M
+	 * and the unmap below zaps the 4K PTEs left behind. Clearing after
+	 * publish, paired with the registration re-check in
+	 * mshv_vtl_low_failed_add(), closes the race where a marker is added
+	 * just after an earlier clear.
+	 */
+	mshv_vtl_low_failed_clear(vtl0_mem.start_pfn, vtl0_mem.last_pfn);
+
+	/*
 	 * Zap stale pte_special PTEs the 4K fallback installed before this
-	 * range had a pgmap, so the next access re-faults into the folio path.
-	 * Both encrypted (pfn) and decrypted (pfn | DECRYPTED_MASK) aliases.
+	 * range had a pgmap, so the next access re-faults into the pinnable
+	 * page path. Both encrypted (pfn) and decrypted (pfn | DECRYPTED_MASK)
+	 * aliases.
 	 */
 	if (READ_ONCE(mshv_vtl_low_mapping)) {
 		pgoff_t start = vtl0_mem.start_pfn;
@@ -3828,23 +4088,22 @@ static void mshv_vtl_low_set_mapping(struct vm_fault *vmf, struct folio *folio,
 }
 
 /*
- * Note on rmap/RSS accounting for huge VTL0 mappings:
- * vmf_insert_folio_{pmd,pud}() takes a folio reference, adds a file rmap,
- * and bumps mm RSS, but the matching teardown is skipped at zap/split time
- * because vma_is_special_huge() is true (VM_MIXEDMAP) while vma_is_dax() is
- * false (CONFIG_FS_DAX is not set in OHCL). The drift is theoretical for
- * OpenVMM/OpenHCL: VTL0 memory is mapped once per partition and held for
- * its lifetime - there is no map/unmap cycling, no partial munmap, and the
- * driver is not unloaded. Stale refs land on ZONE_DEVICE folios whose
- * pgmap is intentionally never released, no real bytes are leaked, and the
- * mm's inflated RSS is discarded with the mm at process exit.
+ * Huge (PMD/PUD) VTL0 faults map by raw pfn via vmf_insert_pfn_{pmd,pud}().
+ * This intentionally avoids vmf_insert_folio_{pmd,pud}(), whose file rmap +
+ * RSS bump has no matching teardown here: the zap path skips it because
+ * vma_is_special_huge() is true (VM_MIXEDMAP) while vma_is_dax() is false
+ * (CONFIG_FS_DAX is off), which otherwise leaks the folio ref/rmap and trips
+ * a "Bad rss-counter state" BUG. The pfn mapping carries no such state.
+ * GUP still works: add_vtl0_mem() holds a permanent ref on each pgmap folio,
+ * so try_grab_folio() (reached via follow_huge_pmd) never sees a zero
+ * refcount, avoiding the warning that the plain pfn inserters caused before.
  */
 static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int order)
 {
 	unsigned long pfn = vmf->pgoff & ~DECRYPTED_MASK;
+	unsigned long pmd_pfns = PMD_SIZE >> PAGE_SHIFT;
 	bool write = vmf->flags & FAULT_FLAG_WRITE;
 	struct page *page;
-	struct folio *folio;
 
 	switch (order) {
 	case 0:
@@ -3852,9 +4111,9 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 		if (!page) {
 			/*
 			 * No pgmap yet: install pte_special so CPU access succeeds.
-			 * The unmap_mapping_range() in add_vtl0_mem() invalidates this
+			 * The unmap_mapping_pages() in add_vtl0_mem() invalidates this
 			 * PTE on registration so a later GUP-bound access re-faults
-			 * into the folio path below.
+			 * into the pinnable page path below.
 			 */
 			return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
 		}
@@ -3865,32 +4124,43 @@ static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int ord
 	case PMD_ORDER:
 		if (!can_fault(vmf, PMD_SIZE, &pfn))
 			return VM_FAULT_FALLBACK;
-		page = mshv_vtl_low_resolve_page(pfn);
-		if (!page)
-			return VM_FAULT_FALLBACK;
-		folio = page_folio(page);
 		/*
-		 * vmf_insert_folio_pmd() needs an exact-order folio; let core
-		 * retry smaller on mismatch.
+		 * Test the whole [pfn, pfn + PMD) window, not just the base pfn: a
+		 * range whose registration failed has no memmap, so a 2M PMD that
+		 * overlaps it would oops in follow_huge_pmd(). Serve such windows 4K
+		 * via the order-0 pte_special path where a later pin fails cleanly.
 		 */
-		if (folio_order(folio) != PMD_ORDER)
+		if (mshv_vtl_low_span_failed(pfn, pfn + pmd_pfns))
 			return VM_FAULT_FALLBACK;
-		mshv_vtl_low_set_mapping(vmf, folio, PMD_SIZE);
-		return vmf_insert_folio_pmd(vmf, folio, write);
+		/*
+		 * Likewise if any pfn in the window is in a sub-PMD-folio range: a
+		 * 2M map over smaller folios makes slow GUP mis-batch refcounts
+		 * across folios (order-0 returns a pinnable page instead).
+		 */
+		if (mshv_vtl_low_span_suborder(pfn, pfn + pmd_pfns))
+			return VM_FAULT_FALLBACK;
+		/*
+		 * Map 2M by raw pfn whenever the fault is 2M-aligned - do not gate on
+		 * registration. vmf_insert_pfn_pmd() dereferences no struct page, so
+		 * it works before the range is registered and for alias-mapped faults
+		 * whose pfn is not in mshv_vtl_low_ranges. Gating on resolve_page()
+		 * here forced those faults down the order-0 4K path and blew up
+		 * /proc/meminfo PageTables under guest I/O. Unlike vmf_insert_folio_pmd(),
+		 * this holds no per-mapping file rmap/RSS, so the special-huge zap has
+		 * nothing to leak; and add_vtl0_mem() pins each pgmap folio so GUP into
+		 * registered memory keeps try_grab_folio()'s refcount above zero.
+		 */
+		return vmf_insert_pfn_pmd(vmf, pfn, write);
 
 #if defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 	case PUD_ORDER:
-		if (!can_fault(vmf, PUD_SIZE, &pfn))
-			return VM_FAULT_FALLBACK;
-		page = mshv_vtl_low_resolve_page(pfn);
-		if (!page)
-			return VM_FAULT_FALLBACK;
-		folio = page_folio(page);
-		/* Same exact-order requirement as the PMD case above. */
-		if (folio_order(folio) != PUD_ORDER)
-			return VM_FAULT_FALLBACK;
-		mshv_vtl_low_set_mapping(vmf, folio, PUD_SIZE);
-		return vmf_insert_folio_pud(vmf, folio, write);
+		/*
+		 * Never map 1G by raw pfn: a 1G PUD over sub-1G pgmap folios makes
+		 * slow GUP batch refcounts across folios it never referenced
+		 * (corruption). 1G saves only one PMD table per 1G vs 2M, so fall
+		 * back and let the core retry at PMD.
+		 */
+		return VM_FAULT_FALLBACK;
 #endif
 
 	default:
@@ -4128,7 +4398,6 @@ free_dev:
 static void __exit mshv_vtl_exit(void)
 {
 	struct mshv_vtl_low_range *r, *tmp;
-	LIST_HEAD(stale);
 
 	ms_hyperv_free_redirected_intr();
 	mshv_free_apicid_to_cpuid_mapping();
@@ -4143,18 +4412,30 @@ static void __exit mshv_vtl_exit(void)
 
 	/*
 	 * /dev/mshv_vtl_low is deregistered above, so no new faults can enter
-	 * mshv_vtl_low_resolve_page(). Unlink each range under the spinlock,
-	 * wait for any in-flight RCU reader, then free.
+	 * mshv_vtl_low_resolve_page(). Unlink each range under its spinlock and
+	 * free it after a grace period so any in-flight RCU reader is done. Do
+	 * not reuse the list node before the grace period (kfree_rcu handles it).
 	 */
 	spin_lock(&mshv_vtl_low_ranges_lock);
 	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_ranges, list) {
 		list_del_rcu(&r->list);
-		list_add(&r->list, &stale);
+		kfree_rcu(r, rcu);
 	}
 	spin_unlock(&mshv_vtl_low_ranges_lock);
-	synchronize_rcu();
-	list_for_each_entry_safe(r, tmp, &stale, list)
-		kfree(r);
+
+	spin_lock(&mshv_vtl_low_failed_lock);
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_failed_ranges, list) {
+		list_del_rcu(&r->list);
+		kfree_rcu(r, rcu);
+	}
+	spin_unlock(&mshv_vtl_low_failed_lock);
+
+	spin_lock(&mshv_vtl_low_suborder_lock);
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_suborder_ranges, list) {
+		list_del_rcu(&r->list);
+		kfree_rcu(r, rcu);
+	}
+	spin_unlock(&mshv_vtl_low_suborder_lock);
 }
 
 module_init(mshv_vtl_init);
