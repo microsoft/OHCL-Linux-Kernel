@@ -80,7 +80,7 @@ if [ -n "$REPRODUCIBLE_BUILD" ]; then
 else
 	makeargs=("ARCH=x86_64")
 fi
-targets=("vmlinux modules")
+targets=("vmlinux bzImage modules")
 
 # Handle x86_64 target architecture
 if [ "$arch" = "x64" ]; then
@@ -180,6 +180,9 @@ build_kernel() {
 
 	cp $BUILD_DIR/vmlinux $OUT_DIR/build/native/bin/$arch
 	cp $BUILD_DIR/vmlinux.dbg $OUT_DIR/build/native/bin/$arch
+	if [ "$arch" = "x64" ]; then
+		cp $KBUILD_OUTPUT/arch/x86/boot/bzImage $OUT_DIR/build/native/bin/$arch
+	fi
 	echo "{}" > $OUT_DIR/build/native/bin/$arch/kernel_build_metadata.json
 	cp $LINUX_SRC/Microsoft/hcl-$arch.config $OUT_DIR
 	if [ "$arch" = "arm64" ]; then
