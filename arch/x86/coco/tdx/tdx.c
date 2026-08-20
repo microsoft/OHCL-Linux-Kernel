@@ -348,6 +348,132 @@ static void reduce_unnecessary_ve(void)
 	enable_cpu_topology_enumeration();
 }
 
+static bool tdx_page_release_supported __ro_after_init;
+
+static void detect_mem_page_release(void)
+{
+	u64 config = 0;
+
+	if (tdg_vm_rd(TDCS_CONFIG_FLAGS, &config)) {
+		pr_err("Failed to read TDCS_CONFIG_FLAGS\n");
+		return;
+	}
+
+	tdx_page_release_supported = !!(config & TDCS_CONFIG_PAGE_RELEASE);
+	pr_info("TDCS_CONFIG_FLAGS: config=0x%llx, page_release=%d\n",
+		config, tdx_page_release_supported);
+}
+
+static unsigned long try_release_one(phys_addr_t start, unsigned long len,
+				     enum pg_level pg_level)
+{
+	unsigned long release_size = page_level_size(pg_level);
+	struct tdx_module_args args = {};
+	u8 page_size;
+	u64 ret;
+
+	if (!IS_ALIGNED(start, release_size))
+		return 0;
+
+	if (len < release_size)
+		return 0;
+
+	/*
+	 * Pass the page physical address to TDX module to release the
+	 * private page and to put it in PENDING state.
+	 *
+	 * Bits 2:0 of RCX encode page size: 0 - 4K, 1 - 2M, 2 - 1G.
+	 */
+	switch (pg_level) {
+	case PG_LEVEL_4K:
+		page_size = TDX_PS_4K;
+		break;
+	case PG_LEVEL_2M:
+		page_size = TDX_PS_2M;
+		break;
+	case PG_LEVEL_1G:
+		page_size = TDX_PS_1G;
+		break;
+	default:
+		return 0;
+	}
+
+	args.rcx = start | page_size;
+	ret = __tdcall(TDG_MEM_PAGE_RELEASE, &args);
+	if (ret)
+		return 0;
+
+	return release_size;
+}
+
+static bool _tdx_release_memory(phys_addr_t start, phys_addr_t end,
+				phys_addr_t *cur)
+{
+	*cur = start;
+
+	while (*cur < end) {
+		unsigned long len = end - *cur;
+		unsigned long release_size;
+
+		/*
+		 * Try larger release first. It speeds up process by cutting
+		 * number of hypercalls (if successful).
+		 */
+
+		release_size = try_release_one(*cur, len, PG_LEVEL_1G);
+		if (!release_size)
+			release_size = try_release_one(*cur, len, PG_LEVEL_2M);
+		if (!release_size)
+			release_size = try_release_one(*cur, len, PG_LEVEL_4K);
+		if (!release_size)
+			return false;
+		*cur += release_size;
+	}
+
+	return true;
+}
+
+/*
+ * Release memory pages back to the hypervisor in TDX guests.
+ *
+ * @start: Physical start address of memory range to release
+ * @end:   Physical end address of memory range to release
+ *
+ * Uses TDG.MEM.PAGE.RELEASE TDCALL to transition private pages back to
+ * pending state. If PAGE_RELEASE is not supported by the TDX
+ * configuration, returns true (success) as no action is needed.
+ *
+ * On partial failure, automatically re-accepts any successfully released
+ * pages to restore consistent memory state. Re-acceptance failure is
+ * treated as a fatal error since it indicates severe TDX module issues.
+ *
+ * Returns: true on success, false on failure
+ */
+static bool tdx_release_memory(phys_addr_t start, phys_addr_t end)
+{
+	phys_addr_t released = start;
+	bool ret;
+
+	if (!tdx_page_release_supported)
+		return true;
+
+	ret = _tdx_release_memory(start, end, &released);
+	if (!ret) {
+		pr_err("Failed to release memory [0x%llx, 0x%llx)\n",
+		       (unsigned long long)start, (unsigned long long)end);
+
+		/*
+		 * Re-accept any pages that were successfully released before
+		 * the failure occurred. This should never fail since we're
+		 * just restoring the previous accepted state.
+		 */
+		if (!tdx_accept_memory(start, released))
+			panic("%s: failed to re-accept memory\n", __func__);
+	}
+
+	return ret;
+}
+
 static void tdx_setup(u64 *cc_mask)
 {
 	struct tdx_module_args args = {};
@@ -381,6 +507,8 @@ static void tdx_setup(u64 *cc_mask)
 	disable_sept_ve(td_attr);
 
 	reduce_unnecessary_ve();
+
+	detect_mem_page_release();
 }
 
 /*
@@ -989,6 +1117,26 @@ static bool tdx_map_gpa(phys_addr_t start, phys_addr_t end, bool enc)
 static bool tdx_enc_status_changed_phys(phys_addr_t start, phys_addr_t end,
 					bool enc)
 {
+	bool release_required = !enc && tdx_page_release_supported;
+
+	/*
+	 * For private->shared conversion, release memory pages first.
+	 * This transitions pages from accepted to pending state to be
+	 * more robust with buggy VMM, e.g., VMM may keep old pages,
+	 * when converting back to private, re-accept error triggers.
+	 */
+	if (release_required && !tdx_release_memory(start, end))
+		return false;
+
+	/*
+	 * Update the GPA mapping state. If this fails, we cannot rollback
+	 * by calling tdx_accept_memory() because tdx_map_gpa() may have
+	 * partially succeeded, creating a mix of shared and private pages.
+	 * Attempting to accept the entire range would fail on pages that
+	 * are still in shared state, and we have no way to determine which
+	 * pages are in which state after partial failure.
+	 */
+
 	if (!tdx_map_gpa(start, end, enc))
 		return false;
 

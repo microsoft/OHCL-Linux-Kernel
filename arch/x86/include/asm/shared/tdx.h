@@ -20,6 +20,7 @@
 #define TDG_VM_RD			7
 #define TDG_VM_WR			8
 #define TDG_MR_KEY_GET			29
+#define TDG_MEM_PAGE_RELEASE		30
 
 /* TDX attributes */
 #define TDX_ATTR_DEBUG_BIT		0
@@ -55,6 +56,7 @@
 
 /* TDCS_CONFIG_FLAGS bits */
 #define TDCS_CONFIG_FLEXIBLE_PENDING_VE	BIT_ULL(1)
+#define TDCS_CONFIG_PAGE_RELEASE	BIT_ULL(6)
 
 /* TDCS_TD_CTLS bits */
 #define TD_CTLS_PENDING_VE_DISABLE_BIT	0
