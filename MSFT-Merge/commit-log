@@ -106,6 +106,14 @@ ad9d7efe49c1   2026-06-26		drivers: hv: better management of HLT/IDLE states Tra
 afac98b21653   2026-07-17		drivers: hv: clear halt when injecting SNP interrupts [Hardik Garg <hargar@microsoft.com>]
 17e5bc6b912c   2026-06-12		x86/tdx: Add TDG.MR.KEY.GET ABI support [Kuppuswamy Sathyanarayanan <sathyanarayanan.kuppuswamy@linux.intel.com>]
 f5c38dc6c1ce   2026-07-30		drivers/hv/mshv_vtl: fix fabricated sidecar VP run completions [John Starks <jostarks@microsoft.com>]
+a3f5289c698e   2026-06-29		Microsoft: Update config changes with LTS [Naman Jain <namjain@linux.microsoft.com>]
+4bc1f9ae57f8   2026-07-06		Microsoft: build reproducible kernel in-place without a temp copy [Naman Jain <namjain@linux.microsoft.com>]
+951e1f6d1567   2026-08-07		drivers: hv: SNP perf fixes Share the VMSA key with userspace to allow decoding register values. Return to VTL0 if the only operation was a kernel handled interrupt. Don't resend IPI to a processor for interrupt processing. [Brian Perkins <brian.perkins@microsoft.com>]
+44cd5250ae22   2026-08-07		drivers: hv: SNP fast-path for stimer0 operations [Brian Perkins <brian.perkins@microsoft.com>]
+cd5ba8810623   2026-08-14		x86/apic/savic: ipi needs to convert apicid to cpuid [Brian Perkins <brian.perkins@microsoft.com>]
+c630cc37901b   2026-08-14		x86/apic/savic: get GPA for SAVIC page using per_cpu_ptr_to_phys [Brian Perkins <brian.perkins@microsoft.com>]
+4b8508170a0d   2026-08-20		x86/tdx: Release private memory before private->shared conversion [Dexuan Cui <decui@microsoft.com>]
+944498152d6f   2026-08-18		Drivers: hv: mshv_vtl: restore 2M VTL0 low mappings to bound PageTables [Naman Jain <namjain@linux.microsoft.com>]
 
 
 Patch series in progress
