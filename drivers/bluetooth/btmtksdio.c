@@ -272,12 +272,24 @@ static int btmtksdio_tx_packet(struct btmtksdio_dev *bdev,
 			       struct sk_buff *skb)
 {
 	struct mtkbtsdio_hdr *sdio_hdr;
+	unsigned int len, pad_len;
 	int err;
 
-	/* Make sure that there are enough rooms for SDIO header */
-	if (unlikely(skb_headroom(skb) < sizeof(*sdio_hdr))) {
-		err = pskb_expand_head(skb, sizeof(*sdio_hdr), 0,
-				       GFP_ATOMIC);
+	/* Make sure that the data buffer is not shared with anyone else and
+	 * that there is enough room for the SDIO header
+	 */
+	err = skb_cow_head(skb, sizeof(*sdio_hdr));
+	if (err < 0)
+		return err;
+
+	/* The transfer is rounded up to the SDIO block size, so the buffer
+	 * has to provide tailroom for the padding as well
+	 */
+	len = skb->len + sizeof(*sdio_hdr);
+	pad_len = round_up(len, MTK_SDIO_BLOCK_SIZE) - len;
+
+	if (unlikely(skb_tailroom(skb) < pad_len)) {
+		err = pskb_expand_head(skb, 0, pad_len, GFP_ATOMIC);
 		if (err < 0)
 			return err;
 	}
@@ -290,19 +302,22 @@ static int btmtksdio_tx_packet(struct btmtksdio_dev *bdev,
 	sdio_hdr->reserved = cpu_to_le16(0);
 	sdio_hdr->bt_type = hci_skb_pkt_type(skb);
 
-	clear_bit(BTMTKSDIO_HW_TX_READY, &bdev->tx_state);
-	err = sdio_writesb(bdev->func, MTK_REG_CTDR, skb->data,
-			   round_up(skb->len, MTK_SDIO_BLOCK_SIZE));
-	if (err < 0)
-		goto err_skb_pull;
+	/* Zero the padding so that no uninitialised memory is sent out */
+	skb_put_zero(skb, pad_len);
 
-	bdev->hdev->stat.byte_tx += skb->len;
+	clear_bit(BTMTKSDIO_HW_TX_READY, &bdev->tx_state);
+	err = sdio_writesb(bdev->func, MTK_REG_CTDR, skb->data, skb->len);
+	if (err < 0)
+		goto err_skb_restore;
+
+	bdev->hdev->stat.byte_tx += len;
 
 	kfree_skb(skb);
 
 	return 0;
 
-err_skb_pull:
+err_skb_restore:
+	skb_trim(skb, len);
 	skb_pull(skb, sizeof(*sdio_hdr));
 
 	return err;
@@ -746,7 +761,15 @@ static int btmtksdio_close(struct hci_dev *hdev)
 
 	sdio_release_irq(bdev->func);
 
+	/* No new work can be scheduled after sdio_release_irq(), so cancel the
+	 * work outside the sdio host lock. btmtksdio_txrx_work() also claims
+	 * the host, so canceling it while holding the lock would deadlock.
+	 */
+	sdio_release_host(bdev->func);
+
 	cancel_work_sync(&bdev->txrx_work);
+
+	sdio_claim_host(bdev->func);
 
 	btmtksdio_fw_pmctrl(bdev);
 
@@ -1293,7 +1316,21 @@ static void btmtksdio_reset(struct hci_dev *hdev)
 
 	sdio_writel(bdev->func, C_INT_EN_CLR, MTK_REG_CHLPCR, NULL);
 	skb_queue_purge(&bdev->txq);
+
+	/* Unregister the IRQ before releasing the host lock so that a
+	 * concurrently running btmtksdio_txrx_work() cannot re-enable the
+	 * device interrupt (C_INT_EN_SET) and be rescheduled while the device
+	 * is being reset. btmtksdio_txrx_work() also claims the host, so the
+	 * work must be cancelled outside the sdio host lock to avoid a
+	 * deadlock. The IRQ is re-claimed by btmtksdio_open() when the HCI
+	 * device is re-opened after the reset.
+	 */
+	sdio_release_irq(bdev->func);
+	sdio_release_host(bdev->func);
+
 	cancel_work_sync(&bdev->txrx_work);
+
+	sdio_claim_host(bdev->func);
 
 	gpiod_set_value_cansleep(bdev->reset, 1);
 	msleep(100);
