@@ -213,6 +213,90 @@ static void alloc_groups_to_nodes(unsigned int numgrps,
 	}
 }
 
+/* Number of CPUs of node @id that are also set in @cpu_mask. */
+static unsigned int node_cpu_cap(cpumask_var_t *node_to_cpumask,
+				 const struct cpumask *cpu_mask,
+				 struct cpumask *nmsk, unsigned int id)
+{
+	cpumask_and(nmsk, cpu_mask, node_to_cpumask[id]);
+	return cpumask_weight(nmsk);
+}
+
+/*
+ * alloc_groups_to_nodes() gave every node a deterministic group count,
+ * with any rounding remainder always landing on the same node(s) - so
+ * repeated callers of group_cpus_evenly() always overload the same
+ * node. Claw back each node's remainder down to its proportional
+ * floor, then hand the freed-up groups back out starting from a
+ * rotated node, so different callers spread the remainder around.
+ * Mirrors the cluster-level rotation in __try_group_cluster_cpus().
+ *
+ * @node_groups is indexed by array slot, not node id (alloc_groups_to_nodes()
+ * sorted it by cpu count); @active_slots lists the slots that hold a
+ * real node, and node_groups[slot].id is that node's real id.
+ */
+static void rotate_node_group_counts(struct node_groups *node_groups,
+				     const unsigned int *active_slots,
+				     unsigned int nactive,
+				     cpumask_var_t *node_to_cpumask,
+				     const struct cpumask *cpu_mask,
+				     struct cpumask *nmsk,
+				     unsigned int numgrps, unsigned int numcpus,
+				     unsigned int spread_offset)
+{
+	unsigned int total_extra = 0;
+	unsigned int start, stride, i;
+
+	/* Shrink each node to its proportional floor; pool what that frees. */
+	for (i = 0; i < nactive; i++) {
+		unsigned int slot = active_slots[i];
+		unsigned int id = node_groups[slot].id;
+		unsigned int cap = node_cpu_cap(node_to_cpumask, cpu_mask, nmsk, id);
+		unsigned int floor = max_t(unsigned int, 1, numgrps * cap / numcpus);
+
+		if (floor > node_groups[slot].ngroups)
+			floor = node_groups[slot].ngroups;
+
+		total_extra += node_groups[slot].ngroups - floor;
+		node_groups[slot].ngroups = floor;
+	}
+
+	/* Hand the pool back out, starting from a rotated node. */
+	start = spread_offset % nactive;
+	stride = (total_extra > 0 && total_extra < nactive) ?
+		 nactive / total_extra : 1;
+
+	for (i = 0; i < nactive && total_extra > 0; i++) {
+		unsigned int slot = active_slots[(start + i * stride) % nactive];
+		unsigned int id = node_groups[slot].id;
+		unsigned int cap = node_cpu_cap(node_to_cpumask, cpu_mask, nmsk, id);
+
+		if (node_groups[slot].ngroups < cap) {
+			node_groups[slot].ngroups++;
+			total_extra--;
+		}
+	}
+
+	/* Anything that didn't fit above (node at its cpu cap): place anywhere it fits. */
+	while (total_extra > 0) {
+		unsigned int placed = 0;
+
+		for (i = 0; i < nactive && total_extra > 0; i++) {
+			unsigned int slot = active_slots[i];
+			unsigned int id = node_groups[slot].id;
+			unsigned int cap = node_cpu_cap(node_to_cpumask, cpu_mask, nmsk, id);
+
+			if (node_groups[slot].ngroups < cap) {
+				node_groups[slot].ngroups++;
+				total_extra--;
+				placed++;
+			}
+		}
+		if (!placed)
+			break;
+	}
+}
+
 /*
  * Allocate group number for each node, so that for each node:
  *
@@ -231,9 +315,11 @@ static void alloc_nodes_groups(unsigned int numgrps,
 			       const struct cpumask *cpu_mask,
 			       const nodemask_t nodemsk,
 			       struct cpumask *nmsk,
-			       struct node_groups *node_groups)
+			       struct node_groups *node_groups,
+			       unsigned int spread_offset)
 {
-	unsigned int n, numcpus = 0;
+	unsigned int n, numcpus = 0, nactive = 0;
+	unsigned int *active_slots;
 
 	for (n = 0; n < nr_node_ids; n++) {
 		node_groups[n].id = n;
@@ -250,10 +336,36 @@ static void alloc_nodes_groups(unsigned int numgrps,
 			continue;
 		numcpus += ncpus;
 		node_groups[n].ncpus = ncpus;
+		nactive++;
 	}
 
 	numgrps = min_t(unsigned int, numcpus, numgrps);
 	alloc_groups_to_nodes(numgrps, numcpus, node_groups, nr_node_ids);
+
+	if (nactive <= 1)
+		return;
+
+	/*
+	 * alloc_groups_to_nodes() just sorted node_groups[] by cpu count,
+	 * so slot index no longer matches node id. Collect the slots that
+	 * hold a real node (alloc_groups_to_nodes() marks unused ones with
+	 * the ncpus/ngroups union's UINT_MAX sentinel) before rotating.
+	 */
+	active_slots = kzalloc_objs(*active_slots, nactive);
+	if (!active_slots)
+		return;
+
+	nactive = 0;
+	for (n = 0; n < nr_node_ids; n++) {
+		if (node_groups[n].ngroups != UINT_MAX)
+			active_slots[nactive++] = n;
+	}
+
+	rotate_node_group_counts(node_groups, active_slots, nactive,
+				 node_to_cpumask, cpu_mask, nmsk,
+				 numgrps, numcpus, spread_offset);
+
+	kfree(active_slots);
 }
 
 /*
@@ -559,7 +671,7 @@ static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
 
 	/* allocate group number for each node */
 	alloc_nodes_groups(numgrps, node_to_cpumask, cpu_mask,
-			   nodemsk, nmsk, node_groups);
+			   nodemsk, nmsk, node_groups, spread_offset);
 	for (i = 0; i < nr_node_ids; i++) {
 		unsigned int ncpus;
 		struct node_groups *nv = &node_groups[i];
