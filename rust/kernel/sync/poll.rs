@@ -126,7 +126,7 @@ pub struct PollCondVarBox {
 struct PollCondVarBoxInner {
     #[pin]
     inner: PollCondVar,
-    rcu: Opaque<bindings::callback_head>,
+    rcu: Opaque<bindings::kvfree_rcu_head>,
 }
 
 // SAFETY: PollCondVar is Send
