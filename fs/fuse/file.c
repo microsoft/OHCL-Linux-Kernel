@@ -272,7 +272,7 @@ static int fuse_open(struct inode *inode, struct file *file)
 		filemap_invalidate_lock(inode->i_mapping);
 		err = fuse_dax_break_layouts(inode, 0, -1);
 		if (err)
-			goto out_inode_unlock;
+			goto out_unlock;
 	}
 
 	if (is_wb_truncate || dax_truncate)
@@ -296,9 +296,9 @@ static int fuse_open(struct inode *inode, struct file *file)
 		else if (!(ff->open_flags & FOPEN_KEEP_CACHE))
 			invalidate_inode_pages2(inode->i_mapping);
 	}
+out_unlock:
 	if (dax_truncate)
 		filemap_invalidate_unlock(inode->i_mapping);
-out_inode_unlock:
 	if (is_wb_truncate || dax_truncate)
 		inode_unlock(inode);
 
@@ -605,6 +605,7 @@ void fuse_read_args_fill(struct fuse_io_args *ia, struct file *file, loff_t pos,
 	args->out_argvar = true;
 	args->out_numargs = 1;
 	args->out_args[0].size = count;
+	args->zero_copy = ff->open_flags & FOPEN_IO_URING_ZERO_COPY;
 }
 
 static void fuse_release_user_pages(struct fuse_args_pages *ap, ssize_t nres,
@@ -1153,6 +1154,7 @@ static void fuse_write_args_fill(struct fuse_io_args *ia, struct fuse_file *ff,
 	args->out_numargs = 1;
 	args->out_args[0].size = sizeof(ia->write.out);
 	args->out_args[0].value = &ia->write.out;
+	args->zero_copy = ff->open_flags & FOPEN_IO_URING_ZERO_COPY;
 }
 
 static unsigned int fuse_write_flags(struct kiocb *iocb)
