@@ -722,9 +722,12 @@ int dat_cond_set_storage_key(struct kvm_s390_mmu_cache *mmc, union asce asce, gf
 	if (rc)
 		return rc;
 
-	if (!ptep)
+	if (!ptep) {
+		if (!oldkey)
+			oldkey = &prev;
 		return page_cond_set_storage_key(large_crste_to_phys(*crstep, gfn), skey, oldkey,
 						 nq, mr, mc);
+	}
 
 	old = pgste_get_lock(ptep);
 	pgste = old;
@@ -734,6 +737,7 @@ int dat_cond_set_storage_key(struct kvm_s390_mmu_cache *mmc, union asce asce, gf
 	pgste.fp = skey.fp;
 	pgste.gc = skey.c;
 	pgste.gr = skey.r;
+	prev.skey = 0;
 
 	if (!ptep->h.i) {
 		rc = page_cond_set_storage_key(pte_origin(*ptep), skey, &prev, nq, mr, mc);
@@ -920,11 +924,8 @@ static void pgste_set_unlock_multiple(union pte *first, int n, union pgste *pgst
 {
 	int i;
 
-	for (i = 0; i < n; i++) {
-		if (!pgstes[i].pcl)
-			break;
+	for (i = 0; i < n; i++)
 		pgste_set_unlock(first + i, pgstes[i]);
-	}
 }
 
 static bool pgste_get_trylock_multiple(union pte *first, int n, union pgste *pgstes)
@@ -937,7 +938,7 @@ static bool pgste_get_trylock_multiple(union pte *first, int n, union pgste *pgs
 	}
 	if (i == n)
 		return true;
-	pgste_set_unlock_multiple(first, n, pgstes);
+	pgste_set_unlock_multiple(first, i, pgstes);
 	return false;
 }
 
