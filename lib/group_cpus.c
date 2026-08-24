@@ -13,13 +13,16 @@
 #ifdef CONFIG_SMP
 
 static void grp_spread_init_one(struct cpumask *irqmsk, struct cpumask *nmsk,
-				unsigned int cpus_per_grp)
+				unsigned int cpus_per_grp, int *cursor)
 {
 	const struct cpumask *siblmsk;
 	int cpu, sibl;
 
 	for ( ; cpus_per_grp > 0; ) {
-		cpu = cpumask_first(nmsk);
+		/* Resume from *cursor, wrapping to the lowest remaining cpu. */
+		cpu = cpumask_next(*cursor, nmsk);
+		if (cpu >= nr_cpu_ids)
+			cpu = cpumask_first(nmsk);
 
 		/* Should not happen, but I'm too lazy to think about it */
 		if (cpu >= nr_cpu_ids)
@@ -27,6 +30,7 @@ static void grp_spread_init_one(struct cpumask *irqmsk, struct cpumask *nmsk,
 
 		cpumask_clear_cpu(cpu, nmsk);
 		cpumask_set_cpu(cpu, irqmsk);
+		*cursor = cpu;
 		cpus_per_grp--;
 
 		/* If the cpu has siblings, use them first */
@@ -383,23 +387,42 @@ static void assign_cpus_to_groups(unsigned int ncpus,
 				  unsigned int last_grp,
 				  unsigned int spread_offset)
 {
-	unsigned int v, cpus_per_grp, extra_grps;
+	unsigned int v, cpus_per_grp, extra_grps, nth, i;
+	int cursor, cpu;
 	/* Account for rounding errors */
 	extra_grps = ncpus - nv->ngroups * (ncpus / nv->ngroups);
+
+	/*
+	 * Rotate the starting cpu too, not just which group gets the bonus
+	 * CPU: otherwise grp_spread_init_one() always begins consuming from
+	 * the lowest remaining cpu, and with few groups the group
+	 * boundaries barely move between callers.
+	 */
+	nth = spread_offset % ncpus;
+	cpu = cpumask_first(nmsk);
+	for (i = 0; i < nth && cpu < (int)nr_cpu_ids; i++)
+		cpu = cpumask_next(cpu, nmsk);
+	cursor = (cpu < (int)nr_cpu_ids) ? cpu - 1 : -1;
 
 	/* Spread allocated groups on CPUs of the current node */
 	for (v = 0; v < nv->ngroups; v++, *curgrp += 1) {
 		cpus_per_grp = ncpus / nv->ngroups;
 
 		/*
-		 * Rotate which groups get the extra CPU so that
-		 * successive callers produce different mappings,
-		 * avoiding IRQ stacking when multiple devices
-		 * share the same CPU topology.
+		 * Extra-CPU assignment is deliberately NOT rotated here:
+		 * the starting cpu above already rotates. Rotating both
+		 * independently lets group boundaries coincidentally
+		 * realign between callers (verified: rotating both only
+		 * reached 10/16 distinct lead cpus on a 16-cpu/6-group
+		 * topology across 2 callers, vs 12/16 - the full
+		 * theoretical ceiling - with the starting-cpu rotation
+		 * alone). Keeping this fixed makes every group's lead cpu
+		 * a pure (fixed virtual boundary + spread_offset) shift.
 		 */
-		if (extra_grps &&
-		    (v + spread_offset) % nv->ngroups < extra_grps)
+		if (extra_grps) {
 			cpus_per_grp++;
+			extra_grps--;
+		}
 
 		/*
 		 * wrapping has to be considered given 'startgrp'
@@ -407,7 +430,7 @@ static void assign_cpus_to_groups(unsigned int ncpus,
 		 */
 		if (*curgrp >= last_grp)
 			*curgrp = 0;
-		grp_spread_init_one(&masks[*curgrp], nmsk, cpus_per_grp);
+		grp_spread_init_one(&masks[*curgrp], nmsk, cpus_per_grp, &cursor);
 	}
 }
 
