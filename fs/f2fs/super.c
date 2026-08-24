@@ -2058,7 +2058,8 @@ static void f2fs_put_super(struct super_block *sb)
 		if (!get_pages(sbi, i))
 			continue;
 		f2fs_err(sbi, "detect filesystem reference count leak during "
-			"umount, type: %d, count: %lld", i, get_pages(sbi, i));
+			"umount, type: %d, count: %lld, err: %d, cp_err: %d",
+			i, get_pages(sbi, i), err, f2fs_cp_error(sbi));
 		f2fs_bug_on(sbi, 1);
 	}
 
@@ -2456,9 +2457,9 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 		seq_puts(seq, "adaptive");
 	else if (F2FS_OPTION(sbi).fs_mode == FS_MODE_LFS)
 		seq_puts(seq, "lfs");
-	else if (F2FS_OPTION(sbi).fs_mode == FS_MODE_FRAGMENT_SEG)
+	else if (f2fs_need_rand_seg(sbi, NO_CHECK_TYPE))
 		seq_puts(seq, "fragment:segment");
-	else if (F2FS_OPTION(sbi).fs_mode == FS_MODE_FRAGMENT_BLK)
+	else if (f2fs_need_rand_blk(sbi, NO_CHECK_TYPE))
 		seq_puts(seq, "fragment:block");
 	seq_printf(seq, ",active_logs=%u", F2FS_OPTION(sbi).active_logs);
 	if (test_opt(sbi, RESERVE_ROOT) || test_opt(sbi, RESERVE_NODE))
@@ -2943,11 +2944,11 @@ static int __f2fs_remount(struct fs_context *fc, struct super_block *sb)
 	if ((flags & SB_RDONLY) ||
 			(F2FS_OPTION(sbi).bggc_mode == BGGC_MODE_OFF &&
 			!test_opt(sbi, GC_MERGE))) {
-		if (sbi->gc_thread) {
+		if (sbi->gc_thread.f2fs_gc_task) {
 			f2fs_stop_gc_thread(sbi);
 			need_restart_gc = true;
 		}
-	} else if (!sbi->gc_thread) {
+	} else if (!sbi->gc_thread.f2fs_gc_task) {
 		err = f2fs_start_gc_thread(sbi);
 		if (err)
 			goto restore_opts;
@@ -2959,7 +2960,9 @@ static int __f2fs_remount(struct fs_context *fc, struct super_block *sb)
 
 		set_sbi_flag(sbi, SBI_IS_DIRTY);
 		set_sbi_flag(sbi, SBI_IS_CLOSE);
-		f2fs_sync_fs(sb, 1);
+		err = f2fs_sync_fs(sb, 1);
+		if (err)
+			goto restore_gc;
 		clear_sbi_flag(sbi, SBI_IS_CLOSE);
 	}
 
@@ -3168,7 +3171,7 @@ static ssize_t f2fs_quota_read(struct super_block *sb, int type, char *data,
 
 repeat:
 		folio = mapping_read_folio_gfp(mapping, off >> PAGE_SHIFT,
-				GFP_NOFS);
+				GFP_KERNEL);
 		if (IS_ERR(folio)) {
 			if (PTR_ERR(folio) == -ENOMEM) {
 				memalloc_retry_wait(GFP_NOFS);
@@ -5004,6 +5007,39 @@ static void f2fs_tuning_parameters(struct f2fs_sb_info *sbi)
 	sbi->readdir_ra = true;
 }
 
+static void f2fs_restore_device_alias(struct f2fs_sb_info *sbi)
+{
+	struct inode *root = d_inode(sbi->sb->s_root);
+	struct f2fs_dir_entry *de;
+	struct folio *folio;
+	int i;
+
+	if (!f2fs_sb_has_device_alias(sbi))
+		return;
+
+	for (i = 1; i < sbi->s_ndevs; i++) {
+		char *name = strrchr(FDEV(i).path, '/');
+		struct inode *inode;
+		struct qstr qstr;
+
+		name = name ? name + 1 : FDEV(i).path;
+		qstr.name = name;
+		qstr.len = strlen(name);
+
+		de = f2fs_find_entry(root, &qstr, &folio);
+		if (!de)
+			continue;
+
+		inode = f2fs_iget(sbi->sb, le32_to_cpu(de->ino));
+		if (!IS_ERR(inode)) {
+			if (IS_DEVICE_ALIASING(inode))
+				FDEV(i).has_alias = true;
+			iput(inode);
+		}
+		f2fs_folio_put(folio, 0);
+	}
+}
+
 static int f2fs_fill_super(struct super_block *sb, struct fs_context *fc)
 {
 	struct f2fs_fs_context *ctx = fc->fs_private;
@@ -5068,6 +5104,7 @@ try_onemore:
 
 	sb->s_fs_info = sbi;
 	sbi->raw_super = raw_super;
+	sbi->max_atc_write_bio_size = UINT_MAX;
 
 	INIT_WORK(&sbi->s_error_work, f2fs_record_error_work);
 	memcpy(sbi->errors, raw_super->s_errors, MAX_F2FS_ERRORS);
@@ -5207,6 +5244,7 @@ try_onemore:
 	sbi->last_valid_block_count = sbi->total_valid_block_count;
 	sbi->reserved_blocks = 0;
 	sbi->current_reserved_blocks = 0;
+	sbi->alias_reserved_blocks = 0;
 	limit_reserve_root(sbi);
 	adjust_unusable_cap_perc(sbi);
 
@@ -5433,6 +5471,8 @@ reset_checkpoint:
 	f2fs_update_time(sbi, CP_TIME);
 	f2fs_update_time(sbi, REQ_TIME);
 	clear_sbi_flag(sbi, SBI_CP_DISABLED_QUICK);
+
+	f2fs_restore_device_alias(sbi);
 
 	sbi->umount_lock_holder = NULL;
 	return 0;
@@ -5701,10 +5741,16 @@ static int __init init_f2fs_fs(void)
 	err = f2fs_init_xattr_cache();
 	if (err)
 		goto free_casefold_cache;
-	err = register_filesystem(&f2fs_fs_type);
+	err = f2fs_init_evict_inode_work();
 	if (err)
 		goto free_xattr_cache;
+	err = register_filesystem(&f2fs_fs_type);
+	if (err)
+		goto free_evict_inode_cache;
 	return 0;
+
+free_evict_inode_cache:
+	f2fs_destroy_evict_inode_work();
 free_xattr_cache:
 	f2fs_destroy_xattr_cache();
 free_casefold_cache:
@@ -5747,6 +5793,7 @@ fail:
 static void __exit exit_f2fs_fs(void)
 {
 	unregister_filesystem(&f2fs_fs_type);
+	f2fs_destroy_evict_inode_work();
 	f2fs_destroy_xattr_cache();
 	f2fs_destroy_casefold_cache();
 	f2fs_destroy_compress_cache();
