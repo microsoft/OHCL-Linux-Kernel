@@ -768,7 +768,16 @@ struct cpumask *group_cpus_evenly(unsigned int numgrps, unsigned int *nummasks)
 	if (!masks)
 		goto fail_node_to_cpumask;
 
-	spread_offset = (unsigned int)atomic_fetch_inc(&group_spread_cnt);
+	/*
+	 * A single group can't be rotated (nothing to spread it against),
+	 * so don't burn a counter tick for callers like the NVMe admin
+	 * queue or loop devices - that would only shift the phase seen
+	 * by unrelated multi-group callers for no benefit to this one.
+	 */
+	if (numgrps == 1)
+		spread_offset = 0;
+	else
+		spread_offset = (unsigned int)atomic_fetch_inc(&group_spread_cnt);
 
 	build_node_to_cpumask(node_to_cpumask);
 
