@@ -11,7 +11,7 @@ TEST_FILES := kexec_common_lib.sh
 include ../../../scripts/Makefile.arch
 
 ifeq ($(IS_64_BIT)$(ARCH_PROCESSED),1x86)
-TEST_PROGS += test_kexec_jump.sh
+TEST_PROGS += test_kexec_file_load_vmlinux.sh test_kexec_jump.sh
 TEST_GEN_PROGS := test_kexec_jump
 endif
 

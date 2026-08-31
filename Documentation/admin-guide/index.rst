@@ -73,6 +73,7 @@ problems and bugs in particular.
    ramoops
    dynamic-debug-howto
    init
+   kexec
    kdump/index
    perf/index
    pstore-blk

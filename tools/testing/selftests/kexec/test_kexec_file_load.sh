@@ -59,16 +59,29 @@ is_ima_sig_required()
 # Return 1 for PE signature found and 0 for not found.
 check_for_pesig()
 {
+	local output
+
+	if [ $elf_image -eq 1 ]; then
+		log_info "kexec kernel image is ELF, not PE"
+		return 0
+	fi
+
 	which pesign > /dev/null 2>&1 || log_skip "pesign not found"
 
-	pesign -i $KERNEL_IMAGE --show-signature | grep -q "No signatures"
-	local ret=$?
-	if [ $ret -eq 1 ]; then
+	output=$(pesign -i "$KERNEL_IMAGE" --show-signature 2>/dev/null)
+	if [ $? -ne 0 ]; then
+		log_info "kexec kernel image is not a PE image"
+		return 0
+	fi
+
+	echo "$output" | grep -q "No signatures"
+	if [ $? -eq 1 ]; then
 		log_info "kexec kernel image PE signed"
+		return 1
 	else
 		log_info "kexec kernel image not PE signed"
+		return 0
 	fi
-	return $ret
 }
 
 # The kexec_file_load_test() is complicated enough, require getfattr.
@@ -129,7 +142,13 @@ kexec_file_load_test()
 			log_fail "$succeed_msg (missing sig)"
 		fi
 
-		if [ $kexec_sig_required -eq 1 -o $pe_sig_required -eq 1 ] \
+		if [ $elf_image -eq 1 ] && [ $kexec_sig_required -eq 1 ] \
+		     && { [ $elf_sig_enabled -eq 0 ] || [ $ima_modsig -eq 0 ]; }; then
+			log_fail "$succeed_msg (missing ELF sig)"
+		fi
+
+		if [ $elf_image -eq 0 ] \
+		     && [ $kexec_sig_required -eq 1 -o $pe_sig_required -eq 1 ] \
 		     && [ $pe_signed -eq 0 ]; then
 			log_fail "$succeed_msg (missing PE sig)"
 		fi
@@ -166,7 +185,13 @@ kexec_file_load_test()
 		fi
 	fi
 
-	if [ $kexec_sig_required -eq 1 -o $pe_sig_required -eq 1 ] \
+	if [ $elf_image -eq 1 ] && [ $kexec_sig_required -eq 1 ] \
+	     && { [ $elf_sig_enabled -eq 0 ] || [ $ima_modsig -eq 0 ]; }; then
+		log_pass "$failed_msg (missing ELF sig)"
+	fi
+
+	if [ $elf_image -eq 0 ] \
+	     && [ $kexec_sig_required -eq 1 -o $pe_sig_required -eq 1 ] \
 	     && [ $pe_signed -eq 0 ]; then
 		log_pass "$failed_msg (missing PE sig)"
 	fi
@@ -219,6 +244,10 @@ kconfig_enabled "CONFIG_KEXEC_BZIMAGE_VERIFY_SIG=y" \
 	"PE signed kernel image required"
 pe_sig_required=$?
 
+kconfig_enabled "CONFIG_KEXEC_ELF_VERIFY_SIG=y" \
+	"ELF signed kernel image verification enabled"
+elf_sig_enabled=$?
+
 is_ima_sig_required
 ima_sig_required=$?
 
@@ -226,6 +255,13 @@ get_secureboot_mode
 secureboot=$?
 
 # Are there pe and ima signatures
+elf_image=0
+if [ "$(od -An -t x1 -N4 "$KERNEL_IMAGE" 2>/dev/null | tr -d ' \n')" = \
+     "7f454c46" ]; then
+	elf_image=1
+	log_info "kexec kernel image is ELF"
+fi
+
 if [ "$(get_arch)" == 'ppc64le' ]; then
 	pe_signed=0
 else

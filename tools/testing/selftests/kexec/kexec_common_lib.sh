@@ -5,7 +5,7 @@
 
 VERBOSE="${VERBOSE:-1}"
 IKCONFIG="/tmp/config-`uname -r`"
-KERNEL_IMAGE="/boot/vmlinuz-`uname -r`"
+KERNEL_IMAGE="${KERNEL_IMAGE:-/boot/vmlinuz-`uname -r`}"
 SECURITYFS=$(grep "securityfs" /proc/mounts | awk '{print $2}')
 
 log_info()
