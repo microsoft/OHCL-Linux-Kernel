@@ -7,6 +7,7 @@
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/sort.h>
+#include <linux/atomic.h>
 #include <linux/group_cpus.h>
 
 #ifdef CONFIG_SMP
@@ -99,11 +100,8 @@ static int get_nodes_in_cpumask(cpumask_var_t *node_to_cpumask,
 
 struct node_groups {
 	unsigned id;
-
-	union {
-		unsigned ngroups;
-		unsigned ncpus;
-	};
+	unsigned int ngroups;
+	unsigned int ncpus;
 };
 
 static int ncpus_cmp_func(const void *l, const void *r)
@@ -117,13 +115,19 @@ static int ncpus_cmp_func(const void *l, const void *r)
 static void alloc_groups_to_nodes(unsigned int numgrps,
 				  unsigned int numcpus,
 				  struct node_groups *node_groups,
-				  unsigned int num_nodes)
+				  unsigned int num_nodes,
+				  unsigned int spread_offset)
 {
-	unsigned int n, remaining_ncpus = numcpus;
-	unsigned int  ngroups, ncpus;
+	unsigned int total_grps = numgrps, total_cpus = numcpus;
+	unsigned int n, first_active = 0, total_extra = 0;
+	unsigned int remaining_ncpus = numcpus;
+	unsigned int nactive, start, stride;
 
 	sort(node_groups, num_nodes, sizeof(node_groups[0]),
 	     ncpus_cmp_func, NULL);
+	while (node_groups[first_active].ncpus == UINT_MAX)
+		first_active++;
+	nactive = num_nodes - first_active;
 
 	/*
 	 * Allocate groups for each node according to the ratio of this
@@ -194,21 +198,56 @@ static void alloc_groups_to_nodes(unsigned int numgrps,
 	 *
 	 */
 
-	for (n = 0; n < num_nodes; n++) {
-		if (node_groups[n].ncpus == UINT_MAX)
-			continue;
+	/*
+	 * Compute the original allocation and its proportional base together.
+	 * Pool the difference for rotated redistribution below, avoiding a
+	 * second pass that strips extras from the completed allocation.
+	 */
+	for (n = first_active; n < num_nodes; n++) {
+		unsigned int ngroups, base;
 
 		WARN_ON_ONCE(numgrps == 0);
 
-		ncpus = node_groups[n].ncpus;
 		ngroups = max_t(unsigned, 1,
-				 numgrps * ncpus / remaining_ncpus);
-		WARN_ON_ONCE(ngroups > ncpus);
+				 numgrps * node_groups[n].ncpus / remaining_ncpus);
+		WARN_ON_ONCE(ngroups > node_groups[n].ncpus);
 
-		node_groups[n].ngroups = ngroups;
+		base = max_t(unsigned int, 1,
+			     total_grps * node_groups[n].ncpus / total_cpus);
+		base = min(base, ngroups);
+		total_extra += ngroups - base;
+		node_groups[n].ngroups = base;
 
-		remaining_ncpus -= ncpus;
+		remaining_ncpus -= node_groups[n].ncpus;
 		numgrps -= ngroups;
+	}
+
+	start = spread_offset % nactive;
+	stride = (total_extra > 0 && total_extra < nactive) ?
+		 nactive / total_extra : 1;
+
+	for (n = 0; n < nactive && total_extra > 0; n++) {
+		unsigned int slot = first_active +
+			(start + n * stride) % nactive;
+
+		if (node_groups[slot].ngroups < node_groups[slot].ncpus) {
+			node_groups[slot].ngroups++;
+			total_extra--;
+		}
+	}
+
+	/*
+	 * A stride can revisit slots or hit slots at capacity. Check every
+	 * node with stride one, repeating because a node may take multiple
+	 * extras.
+	 */
+	while (total_extra > 0) {
+		for (n = first_active; n < num_nodes && total_extra > 0; n++) {
+			if (node_groups[n].ngroups < node_groups[n].ncpus) {
+				node_groups[n].ngroups++;
+				total_extra--;
+			}
+		}
 	}
 }
 
@@ -230,13 +269,15 @@ static void alloc_nodes_groups(unsigned int numgrps,
 			       const struct cpumask *cpu_mask,
 			       const nodemask_t nodemsk,
 			       struct cpumask *nmsk,
-			       struct node_groups *node_groups)
+			       struct node_groups *node_groups,
+			       unsigned int spread_offset)
 {
 	unsigned int n, numcpus = 0;
 
 	for (n = 0; n < nr_node_ids; n++) {
 		node_groups[n].id = n;
 		node_groups[n].ncpus = UINT_MAX;
+		node_groups[n].ngroups = UINT_MAX;
 	}
 
 	for_each_node_mask(n, nodemsk) {
@@ -252,29 +293,45 @@ static void alloc_nodes_groups(unsigned int numgrps,
 	}
 
 	numgrps = min_t(unsigned int, numcpus, numgrps);
-	alloc_groups_to_nodes(numgrps, numcpus, node_groups, nr_node_ids);
+	alloc_groups_to_nodes(numgrps, numcpus, node_groups, nr_node_ids,
+			      spread_offset);
 }
+
+/*
+ * Per-caller rotation counter for group_cpus_evenly().
+ * The raw value may wrap; each consumer reduces it modulo a small value
+ * (nactive, ncluster, or nv->ngroups) before use.
+ */
+static atomic_t group_spread_cnt = ATOMIC_INIT(0);
 
 static void assign_cpus_to_groups(unsigned int ncpus,
 				  struct cpumask *nmsk,
 				  struct node_groups *nv,
 				  struct cpumask *masks,
 				  unsigned int *curgrp,
-				  unsigned int last_grp)
+				  unsigned int last_grp,
+				  unsigned int spread_offset)
 {
-	unsigned int v, cpus_per_grp, extra_grps;
+	unsigned int v, cpus_per_grp, extra_grps, spread;
 	/* Account for rounding errors */
 	extra_grps = ncpus - nv->ngroups * (ncpus / nv->ngroups);
+
+	/* Keep v + spread below UINT_MAX before taking the modulo. */
+	spread = spread_offset % nv->ngroups;
 
 	/* Spread allocated groups on CPUs of the current node */
 	for (v = 0; v < nv->ngroups; v++, *curgrp += 1) {
 		cpus_per_grp = ncpus / nv->ngroups;
 
-		/* Account for extra groups to compensate rounding errors */
-		if (extra_grps) {
+		/*
+		 * Rotate which groups get the extra CPU so that
+		 * successive callers produce different mappings,
+		 * avoiding IRQ stacking when multiple devices
+		 * share the same CPU topology.
+		 */
+		if (extra_grps &&
+		    (v + spread) % nv->ngroups < extra_grps)
 			cpus_per_grp++;
-			--extra_grps;
-		}
 
 		/*
 		 * wrapping has to be considered given 'startgrp'
@@ -291,7 +348,8 @@ static int alloc_cluster_groups(unsigned int ncpus,
 				struct cpumask *node_cpumask,
 				cpumask_var_t msk,
 				const struct cpumask ***clusters_ptr,
-				struct node_groups **cluster_groups_ptr)
+				struct node_groups **cluster_groups_ptr,
+				unsigned int spread_offset)
 {
 	unsigned int ncluster = 0;
 	unsigned int cpu, nc, n;
@@ -339,7 +397,8 @@ static int alloc_cluster_groups(unsigned int ncpus,
 		cpumask_andnot(msk, msk, cluster_mask);
 	}
 
-	alloc_groups_to_nodes(ngroups, ncpus, cluster_groups, ncluster);
+	alloc_groups_to_nodes(ngroups, ncpus, cluster_groups, ncluster,
+			      spread_offset);
 
 	*clusters_ptr = clusters;
 	*cluster_groups_ptr = cluster_groups;
@@ -361,7 +420,8 @@ static bool __try_group_cluster_cpus(unsigned int ncpus,
 				     struct cpumask *node_cpumask,
 				     struct cpumask *masks,
 				     unsigned int *curgrp,
-				     unsigned int last_grp)
+				     unsigned int last_grp,
+				     unsigned int spread_offset)
 {
 	struct node_groups *cluster_groups;
 	const struct cpumask **clusters;
@@ -374,7 +434,8 @@ static bool __try_group_cluster_cpus(unsigned int ncpus,
 		goto fail_nmsk_alloc;
 
 	ncluster = alloc_cluster_groups(ncpus, ngroups, node_cpumask, nmsk,
-					&clusters, &cluster_groups);
+					&clusters, &cluster_groups,
+					spread_offset);
 
 	if (ncluster == 0)
 		goto fail_no_clusters;
@@ -384,12 +445,13 @@ static bool __try_group_cluster_cpus(unsigned int ncpus,
 
 		/* Get the cpus on this cluster. */
 		cpumask_and(nmsk, node_cpumask, clusters[nv->id]);
-		nc = cpumask_weight(nmsk);
+		nc = nv->ncpus;
 		if (!nc)
 			continue;
 		WARN_ON_ONCE(nv->ngroups > nc);
 
-		assign_cpus_to_groups(nc, nmsk, nv, masks, curgrp, last_grp);
+		assign_cpus_to_groups(nc, nmsk, nv, masks, curgrp, last_grp,
+				      spread_offset);
 	}
 
 	ret = true;
@@ -404,7 +466,8 @@ static bool __try_group_cluster_cpus(unsigned int ncpus,
 static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
 			       cpumask_var_t *node_to_cpumask,
 			       const struct cpumask *cpu_mask,
-			       struct cpumask *nmsk, struct cpumask *masks)
+			       struct cpumask *nmsk, struct cpumask *masks,
+			       unsigned int spread_offset)
 {
 	unsigned int i, n, nodes, done = 0;
 	unsigned int last_grp = numgrps;
@@ -422,7 +485,11 @@ static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
 	 * number of groups we just spread the groups across the nodes.
 	 */
 	if (numgrps <= nodes) {
-		for_each_node_mask(n, nodemsk) {
+		n = first_node(nodemsk);
+		for (i = 0; i < spread_offset % nodes; i++)
+			n = next_node_in(n, nodemsk);
+
+		for (i = 0; i < nodes; i++, n = next_node_in(n, nodemsk)) {
 			/* Ensure that only CPUs which are in both masks are set */
 			cpumask_and(nmsk, cpu_mask, node_to_cpumask[n]);
 			cpumask_or(&masks[curgrp], &masks[curgrp], nmsk);
@@ -438,30 +505,31 @@ static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
 
 	/* allocate group number for each node */
 	alloc_nodes_groups(numgrps, node_to_cpumask, cpu_mask,
-			   nodemsk, nmsk, node_groups);
+			   nodemsk, nmsk, node_groups, spread_offset);
 	for (i = 0; i < nr_node_ids; i++) {
 		unsigned int ncpus;
 		struct node_groups *nv = &node_groups[i];
 
-		if (nv->ngroups == UINT_MAX)
+		if (nv->ncpus == UINT_MAX)
 			continue;
 
 		/* Get the cpus on this node which are in the mask */
 		cpumask_and(nmsk, cpu_mask, node_to_cpumask[nv->id]);
-		ncpus = cpumask_weight(nmsk);
+		ncpus = nv->ncpus;
 		if (!ncpus)
 			continue;
 
 		WARN_ON_ONCE(nv->ngroups > ncpus);
 
 		if (__try_group_cluster_cpus(ncpus, nv->ngroups, nmsk,
-					     masks, &curgrp, last_grp)) {
+					     masks, &curgrp, last_grp,
+					     spread_offset)) {
 			done += nv->ngroups;
 			continue;
 		}
 
 		assign_cpus_to_groups(ncpus, nmsk, nv, masks, &curgrp,
-				      last_grp);
+				      last_grp, spread_offset);
 		done += nv->ngroups;
 	}
 	kfree(node_groups);
@@ -488,6 +556,7 @@ static int __group_cpus_evenly(unsigned int startgrp, unsigned int numgrps,
 struct cpumask *group_cpus_evenly(unsigned int numgrps, unsigned int *nummasks)
 {
 	unsigned int curgrp = 0, nr_present = 0, nr_others = 0;
+	unsigned int spread_offset;
 	cpumask_var_t *node_to_cpumask;
 	cpumask_var_t nmsk, npresmsk;
 	int ret = -ENOMEM;
@@ -510,6 +579,17 @@ struct cpumask *group_cpus_evenly(unsigned int numgrps, unsigned int *nummasks)
 	if (!masks)
 		goto fail_node_to_cpumask;
 
+	/*
+	 * A single group can't be rotated (nothing to spread it against),
+	 * so don't burn a counter tick for callers like the NVMe admin
+	 * queue or loop devices - that would only shift the phase seen
+	 * by unrelated multi-group callers for no benefit to this one.
+	 */
+	if (numgrps == 1)
+		spread_offset = 0;
+	else
+		spread_offset = (unsigned int)atomic_fetch_inc(&group_spread_cnt);
+
 	build_node_to_cpumask(node_to_cpumask);
 
 	/*
@@ -528,7 +608,7 @@ struct cpumask *group_cpus_evenly(unsigned int numgrps, unsigned int *nummasks)
 
 	/* grouping present CPUs first */
 	ret = __group_cpus_evenly(curgrp, numgrps, node_to_cpumask,
-				  npresmsk, nmsk, masks);
+				  npresmsk, nmsk, masks, spread_offset);
 	if (ret < 0)
 		goto fail_node_to_cpumask;
 	nr_present = ret;
@@ -545,7 +625,7 @@ struct cpumask *group_cpus_evenly(unsigned int numgrps, unsigned int *nummasks)
 		curgrp = nr_present;
 	cpumask_andnot(npresmsk, cpu_possible_mask, npresmsk);
 	ret = __group_cpus_evenly(curgrp, numgrps, node_to_cpumask,
-				  npresmsk, nmsk, masks);
+				  npresmsk, nmsk, masks, spread_offset);
 	if (ret >= 0)
 		nr_others = ret;
 
