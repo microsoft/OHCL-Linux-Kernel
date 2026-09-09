@@ -485,5 +485,7 @@ struct mshv_partition_time {
 #define MSHV_VTL_SIDECAR_STOP	_IO(MSHV_IOCTL, 0xf1)
 #define MSHV_VTL_SIDECAR_RUN	_IO(MSHV_IOCTL, 0xf2)
 #define MSHV_VTL_SIDECAR_INFO	_IOR(MSHV_IOCTL, 0xf3, struct mshv_vtl_sidecar_info)
+#define MSHV_VTL_SIDECAR_PREPARE_KEXEC	_IO(MSHV_IOCTL, 0xf4)
+#define MSHV_VTL_SIDECAR_CANCEL_KEXEC	_IO(MSHV_IOCTL, 0xf5)
 
 #endif

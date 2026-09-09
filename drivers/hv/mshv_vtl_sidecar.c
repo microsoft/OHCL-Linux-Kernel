@@ -12,6 +12,7 @@
 #include <asm/apic.h>
 #include <asm/irq_vectors.h>
 #include <asm/irq.h>
+#include <asm/smp.h>
 
 #include "mshv.h"
 
@@ -36,6 +37,8 @@ struct sidecar_control {
 static_assert(sizeof(struct sidecar_control) == 4096);
 
 static LIST_HEAD(sidecar_dev_list);
+static DECLARE_RWSEM(sidecar_kexec_sem);
+static bool sidecar_kexec_prepared;
 
 struct sidecar_dev {
 	struct device *dev;
@@ -127,18 +130,24 @@ static int sidecar_remove(unsigned int cpu)
 	struct sidecar_dev *dev;
 	u8 *slot;
 	u8 last;
-	int ret;
+	int ret = 0;
 	int cpu_index;
+
+	down_read(&sidecar_kexec_sem);
+	if (sidecar_kexec_prepared) {
+		ret = -ESHUTDOWN;
+		goto out;
+	}
 
 	dev = sidecar_dev_for_cpu(cpu);
 	if (!dev)
-		return 0;
+		goto out;
 
 	cpu_index = cpu - dev->base_cpu;
 
 	ret = sidecar_claim(dev, cpu, VP_STATE_REMOVED);
 	if (ret)
-		return ret;
+		goto out;
 
 	/*
 	 * If the cpu was already online, then skip this bit,
@@ -146,7 +155,7 @@ static int sidecar_remove(unsigned int cpu)
 	 */
 	if (cpu_online(cpu)) {
 		dev_info(dev->dev, "%d already online", cpu);
-		return 0;
+		goto out;
 	}
 
 	dev_info(dev->dev, "cpu %d: removing from sidecar", cpu);
@@ -159,7 +168,10 @@ static int sidecar_remove(unsigned int cpu)
 	dev_info(dev->dev, "cpu %d: remove complete", cpu);
 	last = READ_ONCE(dev->vp_state[cpu_index]);
 	WARN(last != VP_STATE_REMOVED, "unexpected vp state %d", last);
-	return 0;
+
+out:
+	up_read(&sidecar_kexec_sem);
+	return ret;
 
 }
 
@@ -264,12 +276,8 @@ static int sidecar_ioctl_run(struct sidecar_dev *dev, u32 cpu)
 {
 	u8 *slot;
 	u8 status;
-	int ret;
+	int ret = 0;
 	u32 cpu_index;
-
-	ret = sidecar_claim(dev, cpu, VP_STATE_SYNC);
-	if (ret)
-		return ret;
 
 	sidecar_start(dev, cpu);
 
@@ -386,23 +394,107 @@ static int sidecar_ioctl_info(struct sidecar_dev *dev, unsigned long arg)
 	return 0;
 }
 
-static long sidecar_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+static int sidecar_prepare_kexec(void)
+{
+	struct sidecar_dev *dev;
+	u32 i;
+	int ret = 0;
+
+	down_write(&sidecar_kexec_sem);
+	if (sidecar_kexec_prepared)
+		goto out;
+
+	list_for_each_entry(dev, &sidecar_dev_list, list) {
+		if (READ_ONCE(dev->needs_vp_scan) ||
+		    READ_ONCE(dev->num_vps_stopped) ||
+		    READ_ONCE(dev->control->needs_attention)) {
+			ret = -EBUSY;
+			goto out;
+		}
+
+		for (i = 0; i < dev->cpu_count; i++) {
+			u8 state = READ_ONCE(dev->vp_state[i]);
+			u8 status = READ_ONCE(dev->control->cpu_status[i]);
+
+			if (state == VP_STATE_REMOVED) {
+				if (status != CPU_STATUS_REMOVED) {
+					ret = -EBUSY;
+					goto out;
+				}
+			} else if (state != VP_STATE_AVAIL || status != CPU_STATUS_IDLE) {
+				ret = -EBUSY;
+				goto out;
+			}
+		}
+	}
+
+	list_for_each_entry(dev, &sidecar_dev_list, list)
+		WRITE_ONCE(dev->control->response_vector, 0);
+	WRITE_ONCE(x86_kexec_preserve_offline_cpus, true);
+	sidecar_kexec_prepared = true;
+out:
+	up_write(&sidecar_kexec_sem);
+	return ret;
+}
+
+static void sidecar_cancel_kexec(void)
 {
 	struct sidecar_dev *dev;
 
+	down_write(&sidecar_kexec_sem);
+	list_for_each_entry(dev, &sidecar_dev_list, list) {
+		/* Make response routing visible before sidecar operations resume. */
+		smp_store_release(&dev->control->response_vector,
+				  X86_PLATFORM_IPI_VECTOR);
+	}
+	WRITE_ONCE(x86_kexec_preserve_offline_cpus, false);
+	sidecar_kexec_prepared = false;
+	up_write(&sidecar_kexec_sem);
+}
+
+static long sidecar_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	struct sidecar_dev *dev;
+	long ret;
+
 	dev = filp->private_data;
 	switch (cmd) {
-	case MSHV_VTL_SIDECAR_START:
-		return sidecar_ioctl_start(dev, arg);
-	case MSHV_VTL_SIDECAR_STOP:
-		return sidecar_ioctl_stop(dev, arg);
-	case MSHV_VTL_SIDECAR_RUN:
-		return sidecar_ioctl_run(dev, arg);
+	case MSHV_VTL_SIDECAR_PREPARE_KEXEC:
+		return sidecar_prepare_kexec();
+	case MSHV_VTL_SIDECAR_CANCEL_KEXEC:
+		sidecar_cancel_kexec();
+		return 0;
 	case MSHV_VTL_SIDECAR_INFO:
 		return sidecar_ioctl_info(dev, arg);
-	default:
-		return -ENOTTY;
 	}
+
+	down_read(&sidecar_kexec_sem);
+	if (sidecar_kexec_prepared) {
+		ret = -ESHUTDOWN;
+		goto out;
+	}
+
+	switch (cmd) {
+	case MSHV_VTL_SIDECAR_START:
+		ret = sidecar_ioctl_start(dev, arg);
+		break;
+	case MSHV_VTL_SIDECAR_STOP:
+		ret = sidecar_ioctl_stop(dev, arg);
+		break;
+	case MSHV_VTL_SIDECAR_RUN:
+		ret = sidecar_claim(dev, arg, VP_STATE_SYNC);
+		up_read(&sidecar_kexec_sem);
+		if (ret)
+			return ret;
+		return sidecar_ioctl_run(dev, arg);
+	default:
+		ret = -ENOTTY;
+		break;
+	}
+
+out:
+	up_read(&sidecar_kexec_sem);
+	return ret;
 }
 
 static ssize_t sidecar_read(struct file *filp, char __user *buf, size_t count, loff_t *pos)
@@ -475,6 +567,7 @@ static struct miscdevice sidecar_misc = {
 static int sidecar_probe(struct platform_device *pdev)
 {
 	int ret;
+	u32 i;
 	resource_size_t total_shmem_size;
 	struct sidecar_dev *dev;
 	char name[64];
@@ -516,19 +609,35 @@ static int sidecar_probe(struct platform_device *pdev)
 	init_waitqueue_head(&dev->wait);
 	mutex_init(&dev->scan_mutex);
 	dev->base_cpu = READ_ONCE(dev->control->base_cpu);
+	dev->cpu_count = READ_ONCE(dev->control->cpu_count);
+	if (!dev->cpu_count || dev->base_cpu >= nr_cpu_ids ||
+	    dev->cpu_count > ARRAY_SIZE(dev->control->cpu_status) ||
+	    dev->cpu_count > nr_cpu_ids - dev->base_cpu)
+		return -EINVAL;
+	if (!READ_ONCE(dev->control->request_vector))
+		return -EINVAL;
 	if (per_cpu(sidecar_interrupt_dev, dev->base_cpu)) {
 		dev_err(&pdev->dev, "sidecar already registered for cpu %d", dev->base_cpu);
 		return -EBUSY;
 	}
 
-	dev->cpu_count = READ_ONCE(dev->control->cpu_count);
-	if (!dev->cpu_count)
-		return -EINVAL;
-
 	dev->index = READ_ONCE(dev->control->index);
 	dev->vp_state = devm_kzalloc(&pdev->dev, dev->cpu_count, GFP_KERNEL);
 	if (!dev->vp_state)
 		return -ENOMEM;
+	for (i = 0; i < dev->cpu_count; i++) {
+		u32 cpu = dev->base_cpu + i;
+		u8 status = READ_ONCE(dev->control->cpu_status[i]);
+
+		if (status == CPU_STATUS_REMOVED && cpu_online(cpu)) {
+			dev->vp_state[i] = VP_STATE_REMOVED;
+		} else if (status != CPU_STATUS_IDLE || cpu_online(cpu)) {
+			dev_err(&pdev->dev,
+				"cpu %u ownership mismatch: status %u online %u\n",
+				cpu, status, cpu_online(cpu));
+			return -EBUSY;
+		}
+	}
 
 	dev->shmem_pages = platform_get_resource_byname(pdev, IORESOURCE_MEM, "shmem");
 	if (!dev->shmem_pages)
@@ -553,9 +662,15 @@ static int sidecar_probe(struct platform_device *pdev)
 		}
 	}
 
-	dev->control->response_cpu = per_cpu(x86_cpu_to_apicid, dev->base_cpu);
-	dev->control->response_vector = X86_PLATFORM_IPI_VECTOR;
+	WRITE_ONCE(dev->needs_vp_scan, 0);
+	WRITE_ONCE(dev->num_vps_stopped, 0);
+	WRITE_ONCE(dev->control->needs_attention, 0);
+	WRITE_ONCE(dev->control->response_cpu,
+		   per_cpu(x86_cpu_to_apicid, dev->base_cpu));
 	per_cpu(sidecar_interrupt_dev, dev->base_cpu) = dev;
+	/* Publish the response vector only after the ISR state is installed. */
+	smp_store_release(&dev->control->response_vector,
+			  X86_PLATFORM_IPI_VECTOR);
 
 	dev->misc = sidecar_misc;
 	snprintf(name, sizeof(name), "mshv_vtl_sidecar%u", dev->index);

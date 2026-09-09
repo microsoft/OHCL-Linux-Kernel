@@ -36,6 +36,8 @@
 #include <asm/kexec.h>
 #include <asm/reboot.h>
 
+bool x86_kexec_preserve_offline_cpus;
+
 /*
  *	Some notes on x86 processor bugs affecting SMP operation:
  *
@@ -191,7 +193,10 @@ static void native_stop_other_cpus(int wait)
 	cpumask_clear_cpu(this_cpu, &cpus_stop_mask);
 
 	if (!cpumask_empty(&cpus_stop_mask)) {
-		apic_send_IPI_allbutself(REBOOT_VECTOR);
+		if (kexec_in_progress && READ_ONCE(x86_kexec_preserve_offline_cpus))
+			__apic_send_IPI_mask(&cpus_stop_mask, REBOOT_VECTOR);
+		else
+			apic_send_IPI_allbutself(REBOOT_VECTOR);
 
 		/*
 		 * Don't wait longer than a second for IPI completion. The

@@ -47,6 +47,7 @@ extern void set_cpu_sibling_map(int cpu);
 
 #ifdef CONFIG_SMP
 extern struct smp_ops smp_ops;
+extern bool x86_kexec_preserve_offline_cpus;
 
 static inline void smp_send_stop(void)
 {
