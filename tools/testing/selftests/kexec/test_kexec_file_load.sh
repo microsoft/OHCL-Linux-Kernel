@@ -59,16 +59,29 @@ is_ima_sig_required()
 # Return 1 for PE signature found and 0 for not found.
 check_for_pesig()
 {
+	local output
+
+	if [ $elf_image -eq 1 ]; then
+		log_info "kexec kernel image is ELF, not PE"
+		return 0
+	fi
+
 	which pesign > /dev/null 2>&1 || log_skip "pesign not found"
 
-	pesign -i $KERNEL_IMAGE --show-signature | grep -q "No signatures"
-	local ret=$?
-	if [ $ret -eq 1 ]; then
+	output=$(pesign -i "$KERNEL_IMAGE" --show-signature 2>/dev/null)
+	if [ $? -ne 0 ]; then
+		log_info "kexec kernel image is not a PE image"
+		return 0
+	fi
+
+	echo "$output" | grep -q "No signatures"
+	if [ $? -eq 1 ]; then
 		log_info "kexec kernel image PE signed"
+		return 1
 	else
 		log_info "kexec kernel image not PE signed"
+		return 0
 	fi
-	return $ret
 }
 
 # The kexec_file_load_test() is complicated enough, require getfattr.
@@ -116,10 +129,11 @@ kexec_file_load_test()
 	local failed_msg="kexec_file_load failed"
 	local key_msg="try enabling the CONFIG_INTEGRITY_PLATFORM_KEYRING"
 
-	line=$(kexec --load --kexec-file-syscall $KERNEL_IMAGE 2>&1)
+	line=$(LC_ALL=C kexec --load --kexec-file-syscall "$KERNEL_IMAGE" 2>&1)
 
 	if [ $? -eq 0 ]; then
-		kexec --unload --kexec-file-syscall
+		kexec --unload --kexec-file-syscall ||
+			log_fail "kexec_file_load unload failed"
 
 		# In secureboot mode with an architecture  specific
 		# policy, make sure either an IMA or PE signature exists.
@@ -129,7 +143,14 @@ kexec_file_load_test()
 			log_fail "$succeed_msg (missing sig)"
 		fi
 
-		if [ $kexec_sig_required -eq 1 -o $pe_sig_required -eq 1 ] \
+		if [ $elf_image -eq 1 ] && [ "$(get_arch)" = 'x86_64' ] \
+		     && [ $kexec_sig_required -eq 1 ] \
+		     && { [ $elf_sig_enabled -eq 0 ] || [ $ima_modsig -eq 0 ]; }; then
+			log_fail "$succeed_msg (missing ELF sig)"
+		fi
+
+		if [ $elf_image -eq 0 ] \
+		     && [ $kexec_sig_required -eq 1 -o $pe_sig_required -eq 1 ] \
 		     && [ $pe_signed -eq 0 ]; then
 			log_fail "$succeed_msg (missing PE sig)"
 		fi
@@ -156,6 +177,11 @@ kexec_file_load_test()
 		log_pass "$succeed_msg"
 	fi
 
+	echo "$line" | grep -Eq \
+		-e "Required key not available|Key was rejected by service" \
+		-e "Permission denied|Operation not permitted" ||
+		log_fail "$failed_msg (unexpected error: $line)"
+
 	# Check the reason for the kexec_file_load failure
 	echo $line | grep -q "Required key not available"
 	if [ $? -eq 0 ]; then
@@ -166,7 +192,14 @@ kexec_file_load_test()
 		fi
 	fi
 
-	if [ $kexec_sig_required -eq 1 -o $pe_sig_required -eq 1 ] \
+	if [ $elf_image -eq 1 ] && [ "$(get_arch)" = 'x86_64' ] \
+	     && [ $kexec_sig_required -eq 1 ] \
+	     && { [ $elf_sig_enabled -eq 0 ] || [ $ima_modsig -eq 0 ]; }; then
+		log_pass "$failed_msg (missing ELF sig)"
+	fi
+
+	if [ $elf_image -eq 0 ] \
+	     && [ $kexec_sig_required -eq 1 -o $pe_sig_required -eq 1 ] \
 	     && [ $pe_signed -eq 0 ]; then
 		log_pass "$failed_msg (missing PE sig)"
 	fi
@@ -181,8 +214,7 @@ kexec_file_load_test()
 		log_pass "$failed_msg (possibly missing IMA sig)"
 	fi
 
-	log_pass "$failed_msg"
-	return 0
+	log_fail "$failed_msg (unexpected error: $line)"
 }
 
 # kexec requires root privileges
@@ -219,6 +251,10 @@ kconfig_enabled "CONFIG_KEXEC_BZIMAGE_VERIFY_SIG=y" \
 	"PE signed kernel image required"
 pe_sig_required=$?
 
+kconfig_enabled "CONFIG_KEXEC_ELF_VERIFY_SIG=y" \
+	"ELF signed kernel image verification enabled"
+elf_sig_enabled=$?
+
 is_ima_sig_required
 ima_sig_required=$?
 
@@ -226,7 +262,14 @@ get_secureboot_mode
 secureboot=$?
 
 # Are there pe and ima signatures
-if [ "$(get_arch)" == 'ppc64le' ]; then
+elf_image=0
+if [ "$(od -An -t x1 -N4 "$KERNEL_IMAGE" 2>/dev/null | tr -d ' \n')" = \
+     "7f454c46" ]; then
+	elf_image=1
+	log_info "kexec kernel image is ELF"
+fi
+
+if [ $elf_image -eq 1 ] || [ "$(get_arch)" = 'ppc64le' ]; then
 	pe_signed=0
 else
 	check_for_pesig
