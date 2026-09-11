@@ -60,6 +60,19 @@ config KEXEC_SIG
 	  verification for the corresponding kernel image type being
 	  loaded in order for this to work.
 
+config KEXEC_ELF_VERIFY_SIG
+	bool "Enable ELF kernel image signature verification support"
+	depends on ARCH_SUPPORTS_KEXEC_ELF_VERIFY_SIG
+	depends on KEXEC_SIG
+	select MODULE_SIG_FORMAT
+	select SYSTEM_TRUSTED_KEYRING
+	help
+	  Enable verification of a PKCS#7 signature appended to an ELF kernel
+	  image in the same format used for signed kernel modules. Images can
+	  be signed with scripts/sign-file. Verification uses the secondary
+	  trusted keyring and, when enabled, the platform keyring. This option
+	  is required to load ELF kernels when KEXEC_SIG_FORCE is enabled.
+
 config KEXEC_SIG_FORCE
 	bool "Require a valid signature in kexec_file_load() syscall"
 	depends on ARCH_SUPPORTS_KEXEC_SIG_FORCE
