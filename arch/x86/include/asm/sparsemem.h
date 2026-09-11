@@ -4,6 +4,11 @@
 
 #include <linux/types.h>
 
+#ifdef CONFIG_X86_64
+#define MAX_PHYSMEM_BITS_L4 46
+#define MAX_PHYSMEM_BITS_L5 52
+#endif
+
 #ifdef CONFIG_SPARSEMEM
 /*
  * generic non-linear memory support:
@@ -26,7 +31,7 @@
 # endif
 #else /* CONFIG_X86_32 */
 # define SECTION_SIZE_BITS	27 /* matt - 128 is convenient right now */
-# define MAX_PHYSMEM_BITS	(pgtable_l5_enabled() ? 52 : 46)
+# define MAX_PHYSMEM_BITS	(pgtable_l5_enabled() ? MAX_PHYSMEM_BITS_L5 : MAX_PHYSMEM_BITS_L4)
 #endif
 
 #endif /* CONFIG_SPARSEMEM */
