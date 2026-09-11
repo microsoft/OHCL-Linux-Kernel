@@ -502,8 +502,10 @@ static inline int cpuhp_state_remove_instance_nocalls(enum cpuhp_state state,
 }
 
 #ifdef CONFIG_SMP
+bool cpuhp_is_rollback(unsigned int cpu);
 void cpuhp_online_idle(enum cpuhp_state state);
 #else
+static inline bool cpuhp_is_rollback(unsigned int cpu) { return false; }
 static inline void cpuhp_online_idle(enum cpuhp_state state) { }
 #endif
 

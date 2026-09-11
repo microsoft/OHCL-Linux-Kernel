@@ -18,6 +18,8 @@
 #include <linux/eventfd.h>
 #include <linux/poll.h>
 #include <linux/file.h>
+#include <linux/reboot.h>
+#include <linux/rwsem.h>
 #include <linux/vmalloc.h>
 #include <asm/debugreg.h>
 #include <asm/mshyperv.h>
@@ -53,6 +55,8 @@ static bool has_message;
 static struct eventfd_ctx *flag_eventfds[HV_EVENT_FLAGS_COUNT];
 static DEFINE_MUTEX(flag_lock);
 static bool __read_mostly mshv_has_reg_page;
+static DECLARE_RWSEM(mshv_vtl_state_lock);
+static bool mshv_vtl_shutting_down;
 
 /* hvcall code is of type u16, allocate a bitmap of size (1 << 16) to accommodate it */
 #define MAX_BITMAP_SIZE ((U16_MAX + 1) / 8)
@@ -67,13 +71,24 @@ struct mshv_vtl_hvcall_fd {
 	struct miscdevice *dev;
 };
 
-struct mshv_vtl_poll_file {
-	struct file *file;
+struct mshv_vtl_poll_wait {
 	wait_queue_entry_t wait;
 	wait_queue_head_t *wqh;
+	struct mshv_vtl_poll_file *poll_file;
+	struct mshv_vtl_poll_wait *next;
+};
+
+struct mshv_vtl_poll_file {
+	struct file *file;
+	struct mshv_vtl_poll_wait *waiters;
 	poll_table pt;
 	int cpu;
+	int error;
+	atomic_t state;
 };
+
+#define MSHV_VTL_POLL_ACTIVE BIT(0)
+#define MSHV_VTL_POLL_PENDING BIT(1)
 
 struct mshv_vtl {
 	struct device *module_dev;
@@ -83,6 +98,7 @@ struct mshv_vtl {
 struct mshv_vtl_per_cpu {
 	struct mshv_vtl_run *run;
 	struct page *reg_page;
+	bool online;
 };
 
 /* SYNIC_OVERLAY_PAGE_MSR - internal, identical to hv_synic_simp */
@@ -95,11 +111,11 @@ union hv_synic_overlay_page_msr {
 	} __packed;
 };
 
-static struct mutex mshv_vtl_poll_file_lock;
+static DEFINE_MUTEX(mshv_vtl_poll_file_lock);
 static union hv_register_vsm_page_offsets mshv_vsm_page_offsets;
 static union hv_register_vsm_capabilities mshv_vsm_capabilities;
 
-static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
+static DEFINE_PER_CPU(struct mshv_vtl_poll_file *, mshv_vtl_poll_file);
 static DEFINE_PER_CPU(unsigned long long, num_vtl0_transitions);
 static DEFINE_PER_CPU(struct mshv_vtl_per_cpu, mshv_vtl_per_cpu);
 
@@ -204,16 +220,18 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
-static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
+static int mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
 	struct hv_register_assoc reg_assoc = {};
 	union hv_synic_overlay_page_msr overlay = {};
-	struct page *reg_page;
+	struct page *reg_page = per_cpu->reg_page;
+	int ret;
 
-	reg_page = alloc_page(GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL);
+	if (!reg_page)
+		reg_page = alloc_page(GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL);
 	if (!reg_page) {
 		WARN(1, "failed to allocate register page\n");
-		return;
+		return -ENOMEM;
 	}
 
 	overlay.enabled = 1;
@@ -221,15 +239,18 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 	reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_uint64;
 
-	if (hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				     1, input_vtl_zero, &reg_assoc)) {
+	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+				       1, input_vtl_zero, &reg_assoc);
+	if (ret) {
 		WARN(1, "failed to setup register page\n");
-		__free_page(reg_page);
-		return;
+		if (!per_cpu->reg_page)
+			__free_page(reg_page);
+		return ret;
 	}
 
 	per_cpu->reg_page = reg_page;
 	mshv_has_reg_page = true;
+	return 0;
 }
 
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
@@ -327,20 +348,92 @@ static void mshv_vtl_vmbus_isr(void)
 static int mshv_vtl_alloc_context(unsigned int cpu)
 {
 	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	int ret;
 
-	per_cpu->run = (struct mshv_vtl_run *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
+	if (READ_ONCE(mshv_vtl_shutting_down))
+		return per_cpu->run ? 0 : -ESHUTDOWN;
+
+	if (!per_cpu->run)
+		per_cpu->run = (struct mshv_vtl_run *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
 	if (!per_cpu->run)
 		return -ENOMEM;
 
-	if (mshv_vsm_capabilities.intercept_page_available)
-		mshv_vtl_configure_reg_page(per_cpu);
+	if (mshv_vsm_capabilities.intercept_page_available) {
+		ret = mshv_vtl_configure_reg_page(per_cpu);
+		if (ret && per_cpu->reg_page) {
+			if (cpuhp_is_rollback(cpu))
+				panic("Failed to restore VTL register page on CPU %u: %d\n",
+				      cpu, ret);
+			return ret;
+		}
+	}
 
 	mshv_vtl_synic_enable_regs(cpu);
+	WRITE_ONCE(per_cpu->online, true);
+
+	return 0;
+}
+
+static int mshv_vtl_disable_context(unsigned int cpu)
+{
+	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	struct hv_register_assoc reg_assoc = {};
+	union hv_synic_sint sint = {};
+	unsigned long flags;
+	int ret = 0;
+
+	local_irq_save(flags);
+	if (!per_cpu->online)
+		goto out;
+
+	WRITE_ONCE(per_cpu->online, false);
+	if (!mshv_vsm_capabilities.intercept_page_available) {
+		sint.masked = true;
+		hv_set_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
+			   sint.as_uint64);
+	}
+
+	if (per_cpu->reg_page) {
+		reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
+		ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+					       1, input_vtl_zero, &reg_assoc);
+	}
+out:
+	local_irq_restore(flags);
+	if (ret)
+		panic("Failed to disable VTL register page on CPU %u: %d\n", cpu, ret);
 
 	return 0;
 }
 
 static int mshv_vtl_cpuhp_online;
+
+static void mshv_vtl_shutdown_cpu(void *unused)
+{
+	mshv_vtl_disable_context(smp_processor_id());
+}
+
+static int mshv_vtl_reboot_notify(struct notifier_block *nb,
+				  unsigned long action, void *unused)
+{
+	if (action != SYS_RESTART)
+		return NOTIFY_DONE;
+
+	{
+		guard(rwsem_write)(&mshv_vtl_state_lock);
+		cpus_read_lock();
+		WRITE_ONCE(mshv_vtl_shutting_down, true);
+		on_each_cpu(mshv_vtl_shutdown_cpu, NULL, 1);
+		cpus_read_unlock();
+	}
+	wake_up_interruptible_poll(&fd_wait_queue, EPOLLHUP);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block mshv_vtl_reboot_nb = {
+	.notifier_call = mshv_vtl_reboot_notify,
+};
 
 static int hv_vtl_setup_synic(void)
 {
@@ -350,7 +443,7 @@ static int hv_vtl_setup_synic(void)
 	hv_setup_vmbus_handler(mshv_vtl_vmbus_isr);
 
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "hyperv/vtl:online",
-				mshv_vtl_alloc_context, NULL);
+				mshv_vtl_alloc_context, mshv_vtl_disable_context);
 	if (ret < 0) {
 		hv_setup_vmbus_handler(vmbus_isr);
 		return ret;
@@ -358,11 +451,19 @@ static int hv_vtl_setup_synic(void)
 
 	mshv_vtl_cpuhp_online = ret;
 
+	ret = register_reboot_notifier(&mshv_vtl_reboot_nb);
+	if (ret) {
+		cpuhp_remove_state(mshv_vtl_cpuhp_online);
+		hv_setup_vmbus_handler(vmbus_isr);
+		return ret;
+	}
+
 	return 0;
 }
 
 static void hv_vtl_remove_synic(void)
 {
+	unregister_reboot_notifier(&mshv_vtl_reboot_nb);
 	cpuhp_remove_state(mshv_vtl_cpuhp_online);
 	hv_setup_vmbus_handler(vmbus_isr);
 }
@@ -392,6 +493,10 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 			vtl0_mem.start_pfn, vtl0_mem.last_pfn);
 		return -EFAULT;
 	}
+
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
 
 	pgmap = kzalloc_obj(*pgmap);
 	if (!pgmap)
@@ -447,9 +552,19 @@ static void mshv_vtl_cancel(int cpu)
 
 static int mshv_vtl_poll_file_wake(wait_queue_entry_t *wait, unsigned int mode, int sync, void *key)
 {
-	struct mshv_vtl_poll_file *poll_file = container_of(wait, struct mshv_vtl_poll_file, wait);
+	struct mshv_vtl_poll_wait *waiter = container_of(wait, struct mshv_vtl_poll_wait, wait);
+	struct mshv_vtl_poll_file *poll_file = waiter->poll_file;
 
-	mshv_vtl_cancel(poll_file->cpu);
+	if (atomic_fetch_or(MSHV_VTL_POLL_PENDING, &poll_file->state) & MSHV_VTL_POLL_ACTIVE) {
+		if (!READ_ONCE(mshv_vtl_shutting_down))
+			mshv_vtl_cancel(poll_file->cpu);
+	}
+
+	if (key_to_poll(key) & POLLFREE) {
+		list_del_init(&wait->entry);
+		/* Pair with the acquire load in mshv_vtl_detach_poll_file(). */
+		smp_store_release(&waiter->wqh, NULL);
+	}
 
 	return 0;
 }
@@ -457,20 +572,113 @@ static int mshv_vtl_poll_file_wake(wait_queue_entry_t *wait, unsigned int mode, 
 static void mshv_vtl_ptable_queue_proc(struct file *file, wait_queue_head_t *wqh, poll_table *pt)
 {
 	struct mshv_vtl_poll_file *poll_file = container_of(pt, struct mshv_vtl_poll_file, pt);
+	struct mshv_vtl_poll_wait *waiter;
 
-	WARN_ON(poll_file->wqh);
-	poll_file->wqh = wqh;
-	add_wait_queue(wqh, &poll_file->wait);
+	if (poll_file->error)
+		return;
+
+	waiter = kzalloc_obj(*waiter);
+	if (!waiter) {
+		poll_file->error = -ENOMEM;
+		return;
+	}
+	waiter->poll_file = poll_file;
+	waiter->wqh = wqh;
+	init_waitqueue_func_entry(&waiter->wait, mshv_vtl_poll_file_wake);
+	add_wait_queue(wqh, &waiter->wait);
+	waiter->next = poll_file->waiters;
+	poll_file->waiters = waiter;
+}
+
+static void mshv_vtl_detach_poll_file(struct mshv_vtl_poll_file *poll_file)
+{
+	struct mshv_vtl_poll_wait *waiter;
+	wait_queue_head_t *wqh;
+
+	if (!poll_file)
+		return;
+
+	atomic_andnot(MSHV_VTL_POLL_ACTIVE, &poll_file->state);
+	rcu_read_lock();
+	for (waiter = poll_file->waiters; waiter; waiter = waiter->next) {
+		/* POLLFREE unlinks before publishing NULL; RCU keeps non-NULL heads alive. */
+		wqh = smp_load_acquire(&waiter->wqh);
+		if (wqh) {
+			remove_wait_queue(wqh, &waiter->wait);
+			WRITE_ONCE(waiter->wqh, NULL);
+		}
+	}
+	rcu_read_unlock();
+}
+
+static void mshv_vtl_put_poll_file(struct mshv_vtl_poll_file *poll_file)
+{
+	struct mshv_vtl_poll_wait *waiter;
+
+	if (!poll_file)
+		return;
+
+	mshv_vtl_detach_poll_file(poll_file);
+	while (poll_file->waiters) {
+		waiter = poll_file->waiters;
+		poll_file->waiters = waiter->next;
+		kfree(waiter);
+	}
+	fput(poll_file->file);
+	kfree(poll_file);
+}
+
+static void mshv_vtl_cleanup_poll_files(void)
+{
+	struct mshv_vtl_poll_file *poll_file;
+	int cpu;
+
+	{
+		guard(rwsem_write)(&mshv_vtl_state_lock);
+		WRITE_ONCE(mshv_vtl_shutting_down, true);
+	}
+
+	for_each_possible_cpu(cpu) {
+		{
+			guard(mutex)(&mshv_vtl_poll_file_lock);
+			poll_file = per_cpu(mshv_vtl_poll_file, cpu);
+			per_cpu(mshv_vtl_poll_file, cpu) = NULL;
+			mshv_vtl_detach_poll_file(poll_file);
+		}
+		mshv_vtl_put_poll_file(poll_file);
+	}
+}
+
+static int mshv_vtl_publish_poll_file(struct mshv_vtl_poll_file *poll_file,
+				      struct mshv_vtl_poll_file **old_file)
+{
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
+	if (!READ_ONCE(per_cpu(mshv_vtl_per_cpu, poll_file->cpu).online))
+		return -ENODEV;
+
+	guard(mutex)(&mshv_vtl_poll_file_lock);
+	*old_file = per_cpu(mshv_vtl_poll_file, poll_file->cpu);
+	mshv_vtl_detach_poll_file(*old_file);
+	per_cpu(mshv_vtl_poll_file, poll_file->cpu) = poll_file;
+	if (atomic_fetch_or(MSHV_VTL_POLL_ACTIVE, &poll_file->state) & MSHV_VTL_POLL_PENDING)
+		mshv_vtl_cancel(poll_file->cpu);
+
+	return 0;
 }
 
 static int mshv_vtl_ioctl_set_poll_file(struct mshv_vtl_set_poll_file __user *user_input)
 {
-	struct file *file, *old_file;
-	struct mshv_vtl_poll_file *poll_file;
+	struct file *file;
+	struct mshv_vtl_poll_file *poll_file, *old_file;
 	struct mshv_vtl_set_poll_file input;
+	int ret;
 
 	if (copy_from_user(&input, user_input, sizeof(input)))
 		return -EFAULT;
+	if (READ_ONCE(mshv_vtl_shutting_down))
+		return -ESHUTDOWN;
 
 	if (input.cpu >= num_possible_cpus() || !cpu_online(input.cpu))
 		return -EINVAL;
@@ -479,35 +687,33 @@ static int mshv_vtl_ioctl_set_poll_file(struct mshv_vtl_set_poll_file __user *us
 	 * CPU is expected to remain online after above cpu_online() check.
 	 */
 
-	file = NULL;
 	file = fget(input.fd);
 	if (!file)
 		return -EBADFD;
 
-	poll_file = per_cpu_ptr(&mshv_vtl_poll_file, READ_ONCE(input.cpu));
-	if (!poll_file)
-		return -EINVAL;
-
-	mutex_lock(&mshv_vtl_poll_file_lock);
-
-	if (poll_file->wqh)
-		remove_wait_queue(poll_file->wqh, &poll_file->wait);
-	poll_file->wqh = NULL;
-
-	old_file = poll_file->file;
+	poll_file = kzalloc_obj(*poll_file);
+	if (!poll_file) {
+		fput(file);
+		return -ENOMEM;
+	}
 	poll_file->file = file;
 	poll_file->cpu = input.cpu;
-
-	if (file) {
-		init_waitqueue_func_entry(&poll_file->wait, mshv_vtl_poll_file_wake);
-		init_poll_funcptr(&poll_file->pt, mshv_vtl_ptable_queue_proc);
-		vfs_poll(file, &poll_file->pt);
+	atomic_set(&poll_file->state, 0);
+	init_poll_funcptr(&poll_file->pt, mshv_vtl_ptable_queue_proc);
+	vfs_poll(file, &poll_file->pt);
+	if (poll_file->error) {
+		ret = poll_file->error;
+		mshv_vtl_put_poll_file(poll_file);
+		return ret;
 	}
 
-	mutex_unlock(&mshv_vtl_poll_file_lock);
+	ret = mshv_vtl_publish_poll_file(poll_file, &old_file);
+	if (ret) {
+		mshv_vtl_put_poll_file(poll_file);
+		return ret;
+	}
 
-	if (old_file)
-		fput(old_file);
+	mshv_vtl_put_poll_file(old_file);
 
 	return 0;
 }
@@ -674,6 +880,12 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		}
 
 		local_irq_save(irq_flags);
+		if (READ_ONCE(mshv_vtl_shutting_down) ||
+		    !this_cpu_read(mshv_vtl_per_cpu.online)) {
+			local_irq_restore(irq_flags);
+			preempt_enable();
+			return -ENODEV;
+		}
 		if (READ_ONCE(mshv_vtl_this_run()->cancel)) {
 			local_irq_restore(irq_flags);
 			preempt_enable();
@@ -709,6 +921,18 @@ done:
 	return 0;
 }
 
+static int mshv_vtl_access_register(struct hv_register_assoc *reg, bool set)
+{
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
+
+	if (!mshv_vtl_get_set_reg(reg, set))
+		return 0;
+
+	return set ? vtl_set_vp_register(reg) : vtl_get_vp_register(reg);
+}
+
 static long
 mshv_vtl_ioctl_get_regs(void __user *user_args)
 {
@@ -727,14 +951,10 @@ mshv_vtl_ioctl_get_regs(void __user *user_args)
 			   sizeof(reg)))
 		return -EFAULT;
 
-	ret = mshv_vtl_get_set_reg(&reg, false);
-	if (!ret)
-		goto copy_args; /* No need of hypercall */
-	ret = vtl_get_vp_register(&reg);
+	ret = mshv_vtl_access_register(&reg, false);
 	if (ret)
 		return ret;
 
-copy_args:
 	if (copy_to_user((void __user *)args.regs_ptr, &reg, sizeof(reg)))
 		ret = -EFAULT;
 
@@ -746,7 +966,6 @@ mshv_vtl_ioctl_set_regs(void __user *user_args)
 {
 	struct mshv_vp_registers args;
 	struct hv_register_assoc reg;
-	long ret;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
@@ -758,12 +977,7 @@ mshv_vtl_ioctl_set_regs(void __user *user_args)
 	if (copy_from_user(&reg, (void __user *)args.regs_ptr, sizeof(reg)))
 		return -EFAULT;
 
-	ret = mshv_vtl_get_set_reg(&reg, true);
-	if (!ret)
-		return ret; /* No need of hypercall */
-	ret = vtl_set_vp_register(&reg);
-
-	return ret;
+	return mshv_vtl_access_register(&reg, true);
 }
 
 static long
@@ -771,6 +985,12 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
 	long ret;
 	struct mshv_vtl *vtl = filp->private_data;
+
+	if (ioctl == MSHV_RETURN_TO_LOWER_VTL)
+		return mshv_vtl_ioctl_return_to_lower_vtl();
+
+	if (READ_ONCE(mshv_vtl_shutting_down))
+		return -ESHUTDOWN;
 
 	switch (ioctl) {
 	case MSHV_SET_POLL_FILE:
@@ -781,9 +1001,6 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;
 	case MSHV_SET_VP_REGISTERS:
 		ret = mshv_vtl_ioctl_set_regs((void __user *)arg);
-		break;
-	case MSHV_RETURN_TO_LOWER_VTL:
-		ret = mshv_vtl_ioctl_return_to_lower_vtl();
 		break;
 	case MSHV_ADD_VTL0_MEMORY:
 		ret = mshv_vtl_ioctl_add_vtl0_mem(vtl, (void __user *)arg);
@@ -888,6 +1105,15 @@ static void mshv_vtl_read_remote(void *buffer)
 
 static bool vtl_synic_mask_vmbus_sint_masked = true;
 
+static int mshv_vtl_read_message(struct hv_message *msg)
+{
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
+
+	return smp_call_function_single(VMBUS_CONNECT_CPU, mshv_vtl_read_remote, msg, true);
+}
+
 static ssize_t mshv_vtl_sint_read(struct file *filp, char __user *arg, size_t size, loff_t *offset)
 {
 	struct hv_message msg = {};
@@ -897,7 +1123,11 @@ static ssize_t mshv_vtl_sint_read(struct file *filp, char __user *arg, size_t si
 		return -EINVAL;
 
 	for (;;) {
-		smp_call_function_single(VMBUS_CONNECT_CPU, mshv_vtl_read_remote, &msg, true);
+		ret = mshv_vtl_read_message(&msg);
+		if (ret == -ESHUTDOWN)
+			return 0;
+		if (ret)
+			return ret;
 		if (msg.header.message_type != HVMSG_NONE)
 			break;
 
@@ -908,7 +1138,8 @@ static ssize_t mshv_vtl_sint_read(struct file *filp, char __user *arg, size_t si
 			return -EAGAIN;
 
 		ret = wait_event_interruptible(fd_wait_queue,
-					       READ_ONCE(has_message) ||
+					       READ_ONCE(mshv_vtl_shutting_down) ||
+						READ_ONCE(has_message) ||
 						READ_ONCE(vtl_synic_mask_vmbus_sint_masked));
 		if (ret)
 			return ret;
@@ -925,6 +1156,8 @@ static __poll_t mshv_vtl_sint_poll(struct file *filp, poll_table *wait)
 	__poll_t mask = 0;
 
 	poll_wait(filp, &fd_wait_queue, wait);
+	if (READ_ONCE(mshv_vtl_shutting_down))
+		return EPOLLHUP;
 	if (READ_ONCE(has_message) || READ_ONCE(vtl_synic_mask_vmbus_sint_masked))
 		mask |= EPOLLIN | EPOLLRDNORM;
 
@@ -950,6 +1183,10 @@ static int mshv_vtl_sint_ioctl_post_msg(struct mshv_vtl_sint_post_msg __user *ar
 			   message.payload_size))
 		return -EFAULT;
 
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
+
 	return hv_post_message((union hv_connection_id)message.connection_id,
 			       message.message_type, (void *)payload,
 			       message.payload_size);
@@ -962,6 +1199,10 @@ static int mshv_vtl_sint_ioctl_signal_event(struct mshv_vtl_signal_event __user 
 
 	if (copy_from_user(&signal_event, arg, sizeof(signal_event)))
 		return -EFAULT;
+
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
 
 	input = signal_event.connection_id | ((u64)signal_event.flag << 32);
 
@@ -979,6 +1220,10 @@ static int mshv_vtl_sint_ioctl_set_eventfd(struct mshv_vtl_set_eventfd __user *a
 		return -EFAULT;
 	if (set_eventfd.flag >= HV_EVENT_FLAGS_COUNT)
 		return -EINVAL;
+
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
 
 	eventfd = NULL;
 	if (set_eventfd.fd >= 0) {
@@ -1006,6 +1251,11 @@ static int mshv_vtl_sint_ioctl_pause_msg_stream(struct mshv_sint_mask __user *ar
 
 	if (copy_from_user(&mask, arg, sizeof(mask)))
 		return -EFAULT;
+
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
+
 	guard(mutex)(&vtl2_vmbus_sint_mask_mutex);
 	on_each_cpu(mshv_vtl_synic_mask_vmbus_sint, &mask.mask, 1);
 	WRITE_ONCE(vtl_synic_mask_vmbus_sint_masked, mask.mask != 0);
@@ -1017,6 +1267,9 @@ static int mshv_vtl_sint_ioctl_pause_msg_stream(struct mshv_sint_mask __user *ar
 
 static long mshv_vtl_sint_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
+	if (READ_ONCE(mshv_vtl_shutting_down))
+		return -ESHUTDOWN;
+
 	switch (cmd) {
 	case MSHV_SINT_POST_MESSAGE:
 		return mshv_vtl_sint_ioctl_post_msg((struct mshv_vtl_sint_post_msg __user *)arg);
@@ -1114,6 +1367,16 @@ static bool mshv_vtl_hvcall_is_allowed(struct mshv_vtl_hvcall_fd *fd, u16 call_c
 	return test_bit(call_code, (unsigned long *)fd->allow_bitmap);
 }
 
+static int mshv_vtl_do_hvcall(u64 control, void *input, void *output, u64 *status)
+{
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
+
+	*status = hv_do_hypercall(control, input, output);
+	return 0;
+}
+
 static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 				struct mshv_vtl_hvcall __user *hvcall_user)
 {
@@ -1165,7 +1428,9 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 	 */
 	memset(out, 0, hvcall.output_size);
 
-	hvcall.status = hv_do_hypercall(hvcall.control, in, out);
+	ret = mshv_vtl_do_hvcall(hvcall.control, in, out, &hvcall.status);
+	if (ret)
+		goto free_pages;
 
 	if (copy_to_user((void __user *)hvcall.output_ptr, out, hvcall.output_size)) {
 		ret = -EFAULT;
@@ -1367,8 +1632,6 @@ static int __init mshv_vtl_init(void)
 		goto free_low;
 	}
 
-	mutex_init(&mshv_vtl_poll_file_lock);
-
 	device_initialize(mem_dev);
 	dev_set_name(mem_dev, "mshv vtl mem dev");
 	ret = device_add(mem_dev);
@@ -1390,6 +1653,7 @@ free_sint:
 free_synic:
 	hv_vtl_remove_synic();
 free_dev:
+	mshv_vtl_cleanup_poll_files();
 	misc_deregister(&mshv_dev);
 
 	return ret;
@@ -1397,6 +1661,7 @@ free_dev:
 
 static void __exit mshv_vtl_exit(void)
 {
+	mshv_vtl_cleanup_poll_files();
 	device_del(mem_dev);
 	kfree(mem_dev);
 	misc_deregister(&mshv_vtl_low);
