@@ -26,6 +26,7 @@
 #include <asm/resctrl.h>
 #include <asm/msr.h>
 #include <asm/sev.h>
+#include <asm/mshyperv.h>
 
 #ifdef CONFIG_X86_64
 # include <asm/mmconfig.h>
@@ -1125,8 +1126,8 @@ static void init_amd(struct cpuinfo_x86 *c)
 		 * msr_set_bit() uses the safe accessors, too, even if the MSR
 		 * is not present.
 		 */
-		msr_set_bit(MSR_AMD64_DE_CFG,
-			    MSR_AMD64_DE_CFG_LFENCE_SERIALIZE_BIT);
+		//msr_set_bit(MSR_AMD64_DE_CFG,
+		//	    MSR_AMD64_DE_CFG_LFENCE_SERIALIZE_BIT);
 
 		/* A serializing LFENCE stops RDTSC speculation */
 		set_cpu_cap(c, X86_FEATURE_LFENCE_RDTSC);
@@ -1171,6 +1172,9 @@ static void init_amd(struct cpuinfo_x86 *c)
 	/* Enable Translation Cache Extension */
 	if (cpu_has(c, X86_FEATURE_TCE))
 		msr_set_bit(MSR_EFER, _EFER_TCE);
+
+	/* Correct misconfigured CPUID on some clients. */
+	clear_cpu_cap(c, X86_FEATURE_INVLPGB);
 }
 
 #ifdef CONFIG_X86_32
@@ -1357,6 +1361,13 @@ static __init int print_s5_reset_status_mmio(void)
 	void __iomem *addr;
 	u32 value;
 	int i;
+
+	/*
+	 * The below ioread32() causes a triple fault for SNP due to a hypevisor
+	 * bug. Work it around for now.
+	 */
+	if (!ms_hyperv.paravisor_present && hv_is_isolation_supported())
+		return 0;
 
 	if (!cpu_feature_enabled(X86_FEATURE_ZEN))
 		return 0;

@@ -314,6 +314,8 @@ snp_cpuid_postprocess(void (*cpuid_fn)(void *ctx, struct cpuid_leaf *leaf),
 		leaf->ebx = (leaf_hv.ebx & GENMASK(31, 24)) | (leaf->ebx & GENMASK(23, 0));
 		/* APIC enabled bit */
 		leaf->edx = (leaf_hv.edx & BIT(9)) | (leaf->edx & ~BIT(9));
+		leaf->ecx |= BIT(31); /* Inside a VM */
+		leaf->ecx |= BIT(21); /* x2apic bit */
 
 		/* OSXSAVE enabled bit */
 		if (native_read_cr4() & X86_CR4_OSXSAVE)
@@ -427,8 +429,12 @@ int snp_cpuid(void (*cpuid_fn)(void *ctx, struct cpuid_leaf *leaf),
 		/* Skip post-processing for out-of-range zero leafs. */
 		if (!(leaf->fn <= cpuid_std_range_max ||
 		      (leaf->fn >= 0x40000000 && leaf->fn <= cpuid_hyp_range_max) ||
-		      (leaf->fn >= 0x80000000 && leaf->fn <= cpuid_ext_range_max)))
-			return 0;
+		      (leaf->fn >= 0x80000000 && leaf->fn <= cpuid_ext_range_max))) {
+                       if (leaf->fn < 0x400000ff && leaf->fn >= 0x40000000)
+                               return -EOPNOTSUPP;
+                       else
+                               return 0;
+		}
 	}
 
 	return snp_cpuid_postprocess(cpuid_fn, ctx, leaf);

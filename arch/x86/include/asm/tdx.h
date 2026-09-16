@@ -76,11 +76,15 @@ bool tdx_handle_virt_exception(struct pt_regs *regs, struct ve_info *ve);
 
 void tdx_halt(void);
 
+void tdx_safe_halt(void);
+
 bool tdx_early_handle_ve(struct pt_regs *regs);
 
 int tdx_mcall_get_report0(u8 *reportdata, u8 *tdreport);
 
 int tdx_mcall_extend_rtmr(u8 index, u8 *data);
+
+u64 tdx_mcall_key_get(u8 *indata, u8 *outdata);
 
 u64 tdx_hcall_get_quote(u8 *buf, size_t size);
 
@@ -91,6 +95,7 @@ void __init tdx_dump_td_ctls(u64 td_ctls);
 
 static inline void tdx_early_init(void) { };
 static inline void tdx_halt(void) { };
+static inline void tdx_safe_halt(void) { };
 
 static inline bool tdx_early_handle_ve(struct pt_regs *regs) { return false; }
 

@@ -141,7 +141,12 @@ struct rmp_state {
 	u32 asid;
 } __packed;
 
-#define RMPADJUST_VMSA_PAGE_BIT		BIT(16)
+/* Target VMPL takes the first byte */
+#define RMPADJUST_ENABLE_READ			BIT(8)
+#define RMPADJUST_ENABLE_WRITE			BIT(9)
+#define RMPADJUST_USER_EXECUTE			BIT(10)
+#define RMPADJUST_KERNEL_EXECUTE		BIT(11)
+#define RMPADJUST_VMSA_PAGE_BIT			BIT(16)
 
 /* SNP Guest message request */
 struct snp_req_data {
@@ -464,6 +469,19 @@ static __always_inline void sev_es_nmi_complete(void)
 extern int __init sev_es_efi_map_ghcbs_cas(pgd_t *pgd);
 extern void sev_enable(struct boot_params *bp);
 
+static inline int rmpquery(unsigned long vaddr, u64 *rmp_psize, u64 *attrs)
+{
+	int rc;
+
+	/* "rmpquery" mnemonic support in binutils 2.36 and newer */
+	asm volatile(".byte 0xF3,0x0F,0x01,0xFD\n\t"
+			: "=a"(rc), "=c"(*rmp_psize), "=d"(*attrs)
+			: "a"(vaddr), "c"(*rmp_psize), "d"(*attrs)
+			: "memory", "cc");
+
+	return rc;
+}
+
 /*
  * RMPADJUST modifies the RMP permissions of a page of a lesser-
  * privileged (numerically higher) VMPL.
@@ -501,6 +519,9 @@ static inline int pvalidate(unsigned long vaddr, bool rmp_psize, bool validate)
 	return rc;
 }
 
+struct snp_guest_request_ioctl;
+
+void snp_mshv_vtl_return(u8 input_vtl);
 void setup_ghcb(void);
 void snp_register_ghcb_early(unsigned long paddr);
 void early_snp_set_memory_private(unsigned long vaddr, unsigned long paddr,
@@ -596,6 +617,8 @@ static inline void sev_evict_cache(void *va, int npages)
 		val = bytes[page_idx * PAGE_SIZE + PAGE_SIZE - 1];
 	}
 }
+void snp_update_svsm_ca(void);
+void snp_mshv_vtl_return(u8 target_vtl);
 
 #else	/* !CONFIG_AMD_MEM_ENCRYPT */
 
@@ -643,6 +666,8 @@ static inline enum es_result savic_register_gpa(u64 gpa) { return ES_UNSUPPORTED
 static inline enum es_result savic_unregister_gpa(u64 *gpa) { return ES_UNSUPPORTED; }
 static inline void savic_ghcb_msr_write(u32 reg, u64 value) { }
 static inline u64 savic_ghcb_msr_read(u32 reg) { return 0; }
+static inline void snp_update_svsm_ca(void) { }
+static inline void snp_mshv_vtl_return(u8 input_vtl) { }
 
 #endif	/* CONFIG_AMD_MEM_ENCRYPT */
 

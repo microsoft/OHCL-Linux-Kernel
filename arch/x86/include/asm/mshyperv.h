@@ -11,6 +11,7 @@
 #include <asm/msr.h>
 #include <hyperv/hvhdk.h>
 #include <asm/fpu/types.h>
+#include <asm/tdx.h>
 
 /*
  * Hyper-V always provides a single IO-APIC at this MMIO address.
@@ -19,10 +20,6 @@
  * VMs, before ACPI functions can be used.
  */
 #define HV_IOAPIC_BASE_ADDRESS 0xfec00000
-
-#define HV_VTL_NORMAL 0x0
-#define HV_VTL_SECURE 0x1
-#define HV_VTL_MGMT   0x2
 
 union hv_ghcb;
 
@@ -46,6 +43,7 @@ extern u64 hv_std_hypercall(u64 control, u64 param1, u64 param2);
 
 #if IS_ENABLED(CONFIG_HYPERV)
 extern void *hv_hypercall_pg;
+extern void *hv_vp_early_input_arg;
 
 extern union hv_ghcb * __percpu *hv_ghcb_pg;
 
@@ -169,6 +167,8 @@ void __init hyperv_init(void);
 void hyperv_setup_mmu_ops(void);
 void set_hv_tscchange_cb(void (*cb)(void));
 void clear_hv_tscchange_cb(void);
+void hv_save_sched_clock_state(void);
+void hv_restore_sched_clock_state(void);
 void hyperv_stop_tsc_emulation(void);
 int hyperv_flush_guest_mapping(u64 as);
 int hyperv_flush_guest_mapping_range(u64 as,
@@ -199,6 +199,7 @@ int hv_unmap_ioapic_interrupt(int ioapic_id, struct hv_interrupt_entry *entry);
 bool hv_ghcb_negotiate_protocol(void);
 void __noreturn hv_ghcb_terminate(unsigned int set, unsigned int reason);
 int hv_snp_boot_ap(u32 apic_id, unsigned long start_ip, unsigned int cpu);
+enum es_result hv_set_savic_backing_page(u64 gfn);
 #else
 static inline bool hv_ghcb_negotiate_protocol(void) { return false; }
 static inline void hv_ghcb_terminate(unsigned int set, unsigned int reason) {}
@@ -248,6 +249,7 @@ void hv_crash_asm_end(void);
 static inline void hv_root_crash_init(void) {}
 #endif  /* CONFIG_MSHV_ROOT && CONFIG_CRASH_DUMP */
 
+int hv_vtl_apicid_to_vp_id(u32 apic_id);
 #else /* CONFIG_HYPERV */
 static inline void hyperv_init(void) {}
 static inline void hyperv_setup_mmu_ops(void) {}
@@ -297,19 +299,50 @@ struct mshv_vtl_cpu_context {
 	struct fxregs_state fx_state;
 };
 
+#define MSHV_VTL_RUN_FLAG_HALTED BIT(0)
+
+void __init whv_vtl_init_platform(void);
+int __init hv_vtl_early_init(void);
+
+static inline void hv_vtl_idle(void)
+{
+	if (hv_isolation_type_tdx())
+		tdx_halt();
+	else
+		native_safe_halt();
+}
+
+/*
+ * Registers are only accessible via HVCALL_GET_VP_REGISTERS hvcall and
+ * there is not associated MSR address.
+ */
+#ifndef HV_X64_REGISTER_VSM_VP_STATUS
+#define		HV_X64_REGISTER_VSM_VP_STATUS   0x000D0003
+#endif
+#ifndef HV_X64_VTL_MASK
+#define		HV_X64_VTL_MASK                 GENMASK(3, 0)
+#endif
+#ifndef HV_X64_REGISTER_SEV_AVIC_GPA
+#define		HV_X64_REGISTER_SEV_AVIC_GPA    0x00090043
+#endif
+
 #ifdef CONFIG_HYPERV_VTL_MODE
 void __init hv_vtl_init_platform(void);
 int __init hv_vtl_early_init(void);
 void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
 void mshv_vtl_return_call_init(u64 vtl_return_offset);
 void mshv_vtl_return_hypercall(void);
+struct mshv_vtl_run *mshv_vtl_this_run(void);
+void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0);
 void __mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
+int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared);
 #else
 static inline void __init hv_vtl_init_platform(void) {}
 static inline int __init hv_vtl_early_init(void) { return 0; }
 static inline void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
 static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
 static inline void mshv_vtl_return_hypercall(void) {}
+static inline void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0) {}
 static inline void __mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0) {}
 #endif
 

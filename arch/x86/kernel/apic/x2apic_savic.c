@@ -9,11 +9,12 @@
 
 #include <linux/cc_platform.h>
 #include <linux/cpumask.h>
-#include <linux/percpu-defs.h>
+#include <linux/percpu.h>
 #include <linux/align.h>
 
 #include <asm/apic.h>
 #include <asm/sev.h>
+#include <asm/mshyperv.h>
 
 #include "local.h"
 
@@ -166,7 +167,22 @@ static inline void self_ipi(unsigned int vector, bool nmi)
 	native_x2apic_icr_write(icr_low, 0);
 }
 
-static void savic_icr_write(u32 icr_low, u32 icr_high)
+static int savic_apicid_to_cpu(u32 apic_id)
+{
+	unsigned int cpu;
+
+	if (apic_id == BAD_APICID)
+		return -EINVAL;
+
+	for_each_possible_cpu(cpu) {
+		if (per_cpu(x86_cpu_to_apicid, cpu) == apic_id)
+			return cpu;
+	}
+
+	return -EINVAL;
+}
+
+static void __savic_icr_write(u32 icr_low, u32 icr_high, int cpu)
 {
 	unsigned int dsh, vector;
 	u64 icr_data;
@@ -187,7 +203,9 @@ static void savic_icr_write(u32 icr_low, u32 icr_high)
 		send_ipi_allbut(vector, nmi);
 		break;
 	default:
-		send_ipi_dest(icr_high, vector, nmi);
+		if (WARN_ON_ONCE(cpu < 0))
+			break;
+		send_ipi_dest(cpu, vector, nmi);
 		break;
 	}
 
@@ -195,6 +213,16 @@ static void savic_icr_write(u32 icr_low, u32 icr_high)
 	if (dsh != APIC_DEST_SELF)
 		savic_ghcb_msr_write(APIC_ICR, icr_data);
 	apic_set_reg64(this_cpu_ptr(savic_page), APIC_ICR, icr_data);
+}
+
+static void savic_icr_write(u32 icr_low, u32 icr_high)
+{
+	int cpu = -1;
+
+	if (!(icr_low & APIC_DEST_ALLBUT))
+		cpu = savic_apicid_to_cpu(icr_high);
+
+	__savic_icr_write(icr_low, icr_high, cpu);
 }
 
 static void savic_write(u32 reg, u32 data)
@@ -241,16 +269,26 @@ static void savic_write(u32 reg, u32 data)
 	}
 }
 
-static void send_ipi(u32 dest, unsigned int vector, unsigned int dsh)
+static void send_ipi(unsigned int cpu, unsigned int vector)
 {
-	savic_icr_write(__prepare_ICR(dsh, vector, APIC_DEST_PHYSICAL), dest);
+	unsigned int icr_low;
+	u32 dest = per_cpu(x86_cpu_to_apicid, cpu);
+
+	icr_low = __prepare_ICR(0, vector, APIC_DEST_PHYSICAL);
+	__savic_icr_write(icr_low, dest, cpu);
+}
+
+static void send_ipi_shorthand(unsigned int vector, unsigned int dsh)
+{
+	unsigned int icr_low;
+
+	icr_low = __prepare_ICR(dsh, vector, APIC_DEST_PHYSICAL);
+	__savic_icr_write(icr_low, 0, -1);
 }
 
 static void savic_send_ipi(int cpu, int vector)
 {
-	u32 dest = per_cpu(x86_cpu_to_apicid, cpu);
-
-	send_ipi(dest, vector, 0);
+	send_ipi(cpu, vector);
 }
 
 static void send_ipi_mask(const struct cpumask *mask, unsigned int vector, bool excl_self)
@@ -264,7 +302,7 @@ static void send_ipi_mask(const struct cpumask *mask, unsigned int vector, bool 
 	for_each_cpu(cpu, mask) {
 		if (excl_self && cpu == this_cpu)
 			continue;
-		send_ipi(per_cpu(x86_cpu_to_apicid, cpu), vector, 0);
+		send_ipi(cpu, vector);
 	}
 }
 
@@ -280,12 +318,12 @@ static void savic_send_ipi_mask_allbutself(const struct cpumask *mask, int vecto
 
 static void savic_send_ipi_allbutself(int vector)
 {
-	send_ipi(0, vector, APIC_DEST_ALLBUT);
+	send_ipi_shorthand(vector, APIC_DEST_ALLBUT);
 }
 
 static void savic_send_ipi_all(int vector)
 {
-	send_ipi(0, vector, APIC_DEST_ALLINC);
+	send_ipi_shorthand(vector, APIC_DEST_ALLINC);
 }
 
 static void savic_send_ipi_self(int vector)
@@ -327,6 +365,18 @@ static void savic_eoi(void)
 	}
 }
 
+void x2apic_savic_init_backing_page(void *ap)
+{
+	u32 apic_id;
+
+	/*
+	 * Before Secure AVIC is enabled, APIC msr reads are intercepted.
+	 * APIC_ID msr read returns the value from the Hypervisor.
+	 */
+	apic_id = native_apic_msr_read(APIC_ID);
+	apic_set_reg(ap, APIC_ID, apic_id);
+}
+
 static void savic_teardown(void)
 {
 	/* Disable Secure AVIC */
@@ -337,16 +387,17 @@ static void savic_teardown(void)
 static void savic_setup(void)
 {
 	void *ap = this_cpu_ptr(savic_page);
+	phys_addr_t gpa;
 	enum es_result res;
-	unsigned long gpa;
+	unsigned long gfn;
 
-	/*
-	 * Before Secure AVIC is enabled, APIC MSR reads are intercepted.
-	 * APIC_ID MSR read returns the value from the hypervisor.
-	 */
-	apic_set_reg(ap, APIC_ID, native_apic_msr_read(APIC_ID));
+	if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC))
+		return;
 
-	gpa = __pa(ap);
+	x2apic_savic_init_backing_page(ap);
+	gpa = per_cpu_ptr_to_phys(ap);
+
+	gfn = gpa >> PAGE_SHIFT;
 
 	/*
 	 * The NPT entry for a vCPU's APIC backing page must always be
@@ -358,7 +409,11 @@ static void savic_setup(void)
 	 * VMRUN, the hypervisor makes use of this information to make sure
 	 * the APIC backing page is mapped in NPT.
 	 */
-	res = savic_register_gpa(gpa);
+	if (hv_isolation_type_snp())
+		res = hv_set_savic_backing_page(gfn);
+	else
+		res = savic_register_gpa(gpa);
+
 	if (res != ES_OK)
 		sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_SAVIC_FAIL);
 

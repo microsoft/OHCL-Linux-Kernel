@@ -25,6 +25,7 @@
 #include <linux/clockchips.h>
 #include <linux/slab.h>
 #include <linux/cpuhotplug.h>
+#include <linux/cc_platform.h>
 #include <asm/hypervisor.h>
 #include <asm/mshyperv.h>
 #include <asm/apic.h>

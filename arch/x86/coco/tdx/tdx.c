@@ -8,6 +8,8 @@
 #include <linux/export.h>
 #include <linux/io.h>
 #include <linux/kexec.h>
+#include <linux/mm.h>
+#include <linux/sched/signal.h>
 #include <asm/coco.h>
 #include <asm/tdx.h>
 #include <asm/vmx.h>
@@ -178,6 +180,26 @@ int tdx_mcall_extend_rtmr(u8 index, u8 *data)
 EXPORT_SYMBOL_GPL(tdx_mcall_extend_rtmr);
 
 /**
+ * tdx_mcall_key_get() - Wrapper to derive a persistent key for the TD,
+ *			 customized to the TD's measurements and policy
+ *			 using TDG.MR.KEY.GET TDCALL.
+ * @indata: Address of the input buffer with TDKEYREQUEST data.
+ * @outdata: Address of the output buffer with the requested key data.
+ *
+ * Return 0 on success or error code on other TDCALL failures.
+ */
+u64 tdx_mcall_key_get(u8 *indata, u8 *outdata)
+{
+	struct tdx_module_args args = {
+		.rcx = virt_to_phys(indata),
+		.rdx = virt_to_phys(outdata),
+	};
+
+	return __tdcall(TDG_MR_KEY_GET, &args);
+}
+EXPORT_SYMBOL_GPL(tdx_mcall_key_get);
+
+/**
  * tdx_hcall_get_quote() - Wrapper to request TD Quote using GetQuote
  *                         hypercall.
  * @buf: Address of the directly mapped shared kernel buffer which
@@ -327,6 +349,132 @@ static void reduce_unnecessary_ve(void)
 	enable_cpu_topology_enumeration();
 }
 
+static bool tdx_page_release_supported __ro_after_init;
+
+static void detect_mem_page_release(void)
+{
+	u64 config = 0;
+
+	if (tdg_vm_rd(TDCS_CONFIG_FLAGS, &config)) {
+		pr_err("Failed to read TDCS_CONFIG_FLAGS\n");
+		return;
+	}
+
+	tdx_page_release_supported = !!(config & TDCS_CONFIG_PAGE_RELEASE);
+	pr_info("TDCS_CONFIG_FLAGS: config=0x%llx, page_release=%d\n",
+		config, tdx_page_release_supported);
+}
+
+static unsigned long try_release_one(phys_addr_t start, unsigned long len,
+				     enum pg_level pg_level)
+{
+	unsigned long release_size = page_level_size(pg_level);
+	struct tdx_module_args args = {};
+	u8 page_size;
+	u64 ret;
+
+	if (!IS_ALIGNED(start, release_size))
+		return 0;
+
+	if (len < release_size)
+		return 0;
+
+	/*
+	 * Pass the page physical address to TDX module to release the
+	 * private page and to put it in PENDING state.
+	 *
+	 * Bits 2:0 of RCX encode page size: 0 - 4K, 1 - 2M, 2 - 1G.
+	 */
+	switch (pg_level) {
+	case PG_LEVEL_4K:
+		page_size = TDX_PS_4K;
+		break;
+	case PG_LEVEL_2M:
+		page_size = TDX_PS_2M;
+		break;
+	case PG_LEVEL_1G:
+		page_size = TDX_PS_1G;
+		break;
+	default:
+		return 0;
+	}
+
+	args.rcx = start | page_size;
+	ret = __tdcall(TDG_MEM_PAGE_RELEASE, &args);
+	if (ret)
+		return 0;
+
+	return release_size;
+}
+
+static bool _tdx_release_memory(phys_addr_t start, phys_addr_t end,
+				phys_addr_t *cur)
+{
+	*cur = start;
+
+	while (*cur < end) {
+		unsigned long len = end - *cur;
+		unsigned long release_size;
+
+		/*
+		 * Try larger release first. It speeds up process by cutting
+		 * number of hypercalls (if successful).
+		 */
+
+		release_size = try_release_one(*cur, len, PG_LEVEL_1G);
+		if (!release_size)
+			release_size = try_release_one(*cur, len, PG_LEVEL_2M);
+		if (!release_size)
+			release_size = try_release_one(*cur, len, PG_LEVEL_4K);
+		if (!release_size)
+			return false;
+		*cur += release_size;
+	}
+
+	return true;
+}
+
+/*
+ * Release memory pages back to the hypervisor in TDX guests.
+ *
+ * @start: Physical start address of memory range to release
+ * @end:   Physical end address of memory range to release
+ *
+ * Uses TDG.MEM.PAGE.RELEASE TDCALL to transition private pages back to
+ * pending state. If PAGE_RELEASE is not supported by the TDX
+ * configuration, returns true (success) as no action is needed.
+ *
+ * On partial failure, automatically re-accepts any successfully released
+ * pages to restore consistent memory state. Re-acceptance failure is
+ * treated as a fatal error since it indicates severe TDX module issues.
+ *
+ * Returns: true on success, false on failure
+ */
+static bool tdx_release_memory(phys_addr_t start, phys_addr_t end)
+{
+	phys_addr_t released = start;
+	bool ret;
+
+	if (!tdx_page_release_supported)
+		return true;
+
+	ret = _tdx_release_memory(start, end, &released);
+	if (!ret) {
+		pr_err("Failed to release memory [0x%llx, 0x%llx)\n",
+		       (unsigned long long)start, (unsigned long long)end);
+
+		/*
+		 * Re-accept any pages that were successfully released before
+		 * the failure occurred. This should never fail since we're
+		 * just restoring the previous accepted state.
+		 */
+		if (!tdx_accept_memory(start, released))
+			panic("%s: failed to re-accept memory\n", __func__);
+	}
+
+	return ret;
+}
+
 static void tdx_setup(u64 *cc_mask)
 {
 	struct tdx_module_args args = {};
@@ -360,6 +508,8 @@ static void tdx_setup(u64 *cc_mask)
 	disable_sept_ve(td_attr);
 
 	reduce_unnecessary_ve();
+
+	detect_mem_page_release();
 }
 
 /*
@@ -459,7 +609,7 @@ void __cpuidle tdx_halt(void)
 		WARN_ONCE(1, "HLT instruction emulation failed\n");
 }
 
-static void __cpuidle tdx_safe_halt(void)
+void __cpuidle tdx_safe_halt(void)
 {
 	tdx_halt();
 	/*
@@ -807,6 +957,11 @@ void tdx_get_ve_info(struct ve_info *ve)
 	ve->instr_info  = upper_32_bits(args.r10);
 }
 
+static inline bool is_private_gpa(u64 gpa)
+{
+	return gpa == cc_mkenc(gpa);
+}
+
 /*
  * Handle the user initiated #VE.
  *
@@ -818,15 +973,18 @@ static int virt_exception_user(struct pt_regs *regs, struct ve_info *ve)
 	switch (ve->exit_reason) {
 	case EXIT_REASON_CPUID:
 		return handle_cpuid(regs, ve);
+	case EXIT_REASON_EPT_VIOLATION:
+		if (is_private_gpa(ve->gpa))
+			panic("Unexpected EPT-violation on private memory.");
+
+		force_sig_fault(SIGBUS, BUS_ADRERR, (void __user *)ve->gla);
+
+		/* Return 0 to avoid incrementing RIP */
+		return 0;
 	default:
 		pr_warn("Unexpected #VE: %lld\n", ve->exit_reason);
 		return -EIO;
 	}
-}
-
-static inline bool is_private_gpa(u64 gpa)
-{
-	return gpa == cc_mkenc(gpa);
 }
 
 /*
@@ -955,15 +1113,28 @@ static bool tdx_map_gpa(phys_addr_t start, phys_addr_t end, bool enc)
 	return false;
 }
 
-/*
- * Inform the VMM of the guest's intent for this physical page: shared with
- * the VMM or private to the guest.  The VMM is expected to change its mapping
- * of the page in response.
- */
-static bool tdx_enc_status_changed(unsigned long vaddr, int numpages, bool enc)
+static bool tdx_enc_status_changed_phys(phys_addr_t start, phys_addr_t end,
+					bool enc)
 {
-	phys_addr_t start = __pa(vaddr);
-	phys_addr_t end   = __pa(vaddr + numpages * PAGE_SIZE);
+	bool release_required = !enc && tdx_page_release_supported;
+
+	/*
+	 * For private->shared conversion, release memory pages first.
+	 * This transitions pages from accepted to pending state to be
+	 * more robust with buggy VMM, e.g., VMM may keep old pages,
+	 * when converting back to private, re-accept error triggers.
+	 */
+	if (release_required && !tdx_release_memory(start, end))
+		return false;
+
+	/*
+	 * Update the GPA mapping state. If this fails, we cannot rollback
+	 * by calling tdx_accept_memory() because tdx_map_gpa() may have
+	 * partially succeeded, creating a mix of shared and private pages.
+	 * Attempting to accept the entire range would fail on pages that
+	 * are still in shared state, and we have no way to determine which
+	 * pages are in which state after partial failure.
+	 */
 
 	if (!tdx_map_gpa(start, end, enc))
 		return false;
@@ -971,6 +1142,33 @@ static bool tdx_enc_status_changed(unsigned long vaddr, int numpages, bool enc)
 	/* shared->private conversion requires memory to be accepted before use */
 	if (enc)
 		return tdx_accept_memory(start, end);
+
+	return true;
+}
+
+/*
+ * Inform the VMM of the guest's intent for this physical page: shared with
+ * the VMM or private to the guest.  The VMM is expected to change its mapping
+ * of the page in response.
+ */
+static bool tdx_enc_status_changed(unsigned long vaddr, int numpages, bool enc)
+{
+	unsigned long start = vaddr;
+	unsigned long end = start + numpages * PAGE_SIZE;
+	unsigned long step = end - start;
+	unsigned long addr;
+
+	/* Step through page-by-page for vmalloc() mappings */
+	if (is_vmalloc_addr((void *)vaddr))
+		step = PAGE_SIZE;
+
+	for (addr = start; addr < end; addr += step) {
+		phys_addr_t start_pa = slow_virt_to_phys((void *)addr);
+		phys_addr_t end_pa   = start_pa + step;
+
+		if (!tdx_enc_status_changed_phys(start_pa, end_pa, enc))
+			return false;
+	}
 
 	return true;
 }

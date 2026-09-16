@@ -76,13 +76,11 @@ static inline void hv_set_hypercall_pg(void *ptr)
 EXPORT_SYMBOL_GPL(hv_hypercall_pg);
 #endif
 
+void *hv_vp_early_input_arg;
 union hv_ghcb * __percpu *hv_ghcb_pg;
 
 /* Storage to save the hypercall page temporarily for hibernation */
 static void *hv_hypercall_pg_saved;
-
-struct hv_vp_assist_page **hv_vp_assist_page;
-EXPORT_SYMBOL_GPL(hv_vp_assist_page);
 
 static int hyperv_init_ghcb(void)
 {
@@ -117,58 +115,15 @@ static int hyperv_init_ghcb(void)
 
 static int hv_cpu_init(unsigned int cpu)
 {
-	union hv_vp_assist_msr_contents msr = { 0 };
-	struct hv_vp_assist_page **hvp;
 	int ret;
 
 	ret = hv_common_cpu_init(cpu);
 	if (ret)
 		return ret;
 
-	if (!hv_vp_assist_page)
-		return 0;
-
-	hvp = &hv_vp_assist_page[cpu];
-	if (hv_root_partition()) {
-		/*
-		 * For root partition we get the hypervisor provided VP assist
-		 * page, instead of allocating a new page.
-		 */
-		rdmsrq(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-		*hvp = memremap(msr.pfn << HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_SHIFT,
-				PAGE_SIZE, MEMREMAP_WB);
-	} else {
-		/*
-		 * The VP assist page is an "overlay" page (see Hyper-V TLFS's
-		 * Section 5.2.1 "GPA Overlay Pages"). Here it must be zeroed
-		 * out to make sure we always write the EOI MSR in
-		 * hv_apic_eoi_write() *after* the EOI optimization is disabled
-		 * in hv_cpu_die(), otherwise a CPU may not be stopped in the
-		 * case of CPU offlining and the VM will hang.
-		 */
-		if (!*hvp) {
-			*hvp = __vmalloc(PAGE_SIZE, GFP_KERNEL | __GFP_ZERO);
-
-			/*
-			 * Hyper-V should never specify a VM that is a Confidential
-			 * VM and also running in the root partition. Root partition
-			 * is blocked to run in Confidential VM. So only decrypt assist
-			 * page in non-root partition here.
-			 */
-			if (*hvp && !ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
-				WARN_ON_ONCE(set_memory_decrypted((unsigned long)(*hvp), 1));
-				memset(*hvp, 0, PAGE_SIZE);
-			}
-		}
-
-		if (*hvp)
-			msr.pfn = vmalloc_to_pfn(*hvp);
-
-	}
-	if (!WARN_ON(!(*hvp))) {
-		msr.enable = 1;
-		wrmsrq(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-	}
+	/* Allow Hyper-V stimer vector to be injected from Hypervisor. */
+	if (ms_hyperv.misc_features & HV_STIMER_DIRECT_MODE_AVAILABLE)
+		apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, true);
 
 	/* Allow Hyper-V stimer vector to be injected from Hypervisor. */
 	apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, true);
@@ -280,26 +235,10 @@ static int hv_cpu_die(unsigned int cpu)
 		*ghcb_va = NULL;
 	}
 
-	apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, false);
+	if (ms_hyperv.misc_features & HV_STIMER_DIRECT_MODE_AVAILABLE)
+		apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, false);
 
 	hv_common_cpu_die(cpu);
-
-	if (hv_vp_assist_page && hv_vp_assist_page[cpu]) {
-		union hv_vp_assist_msr_contents msr = { 0 };
-		if (hv_root_partition()) {
-			/*
-			 * For root partition the VP assist page is mapped to
-			 * hypervisor provided page, and thus we unmap the
-			 * page here and nullify it, so that in future we have
-			 * correct page address mapped in hv_cpu_init.
-			 */
-			memunmap(hv_vp_assist_page[cpu]);
-			hv_vp_assist_page[cpu] = NULL;
-			rdmsrq(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-			msr.enable = 0;
-		}
-		wrmsrq(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-	}
 
 	if (hv_reenlightenment_cb == NULL)
 		return 0;
@@ -454,6 +393,7 @@ void __init hyperv_init(void)
 	u64 guest_id;
 	union hv_x64_msr_hypercall_contents hypercall_msr;
 	int cpuhp;
+	int ret;
 
 	if (x86_hyper_type != X86_HYPER_MS_HYPERV)
 		return;
@@ -474,6 +414,24 @@ void __init hyperv_init(void)
 
 		if (!hv_isolation_type_tdx())
 			goto common_free;
+	}
+
+	if (cc_platform_has(CC_ATTR_SNP_SECURE_AVIC)) {
+		hv_vp_early_input_arg = (void *)__get_free_pages(
+					     GFP_KERNEL | __GFP_ZERO,
+					     get_order(num_possible_cpus() * PAGE_SIZE));
+		if (hv_vp_early_input_arg) {
+			ret = set_memory_decrypted((u64)hv_vp_early_input_arg,
+					     num_possible_cpus());
+			if (ret) {
+				free_pages((unsigned long)hv_vp_early_input_arg,
+					   get_order(num_possible_cpus() * PAGE_SIZE));
+				hv_vp_early_input_arg = NULL;
+				goto common_free;
+			}
+		} else {
+			goto common_free;
+		}
 	}
 
 	if (ms_hyperv.paravisor_present && hv_isolation_type_snp()) {
@@ -617,6 +575,13 @@ free_ghcb_page:
 free_vp_assist_page:
 	kfree(hv_vp_assist_page);
 	hv_vp_assist_page = NULL;
+	if (hv_vp_early_input_arg) {
+		set_memory_encrypted((u64)hv_vp_early_input_arg,
+				     num_possible_cpus());
+		free_pages((unsigned long)hv_vp_early_input_arg,
+			   get_order(num_possible_cpus() * PAGE_SIZE));
+		hv_vp_early_input_arg = NULL;
+	}
 common_free:
 	hv_common_free();
 }
