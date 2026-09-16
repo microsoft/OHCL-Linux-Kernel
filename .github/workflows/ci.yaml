@@ -1,0 +1,334 @@
+name: OHCL Build and Validation
+
+on:
+  pull_request:
+    branches:
+      - 'product/hcl-main/*'
+      - 'project/hcl-dev/*'
+  push:
+    tags:
+      - 'rolling-lts/hcl-main/*'
+      - 'rolling-lts/hcl-dev/*'
+
+jobs:
+  build_linux:
+    name: Build Linux kernel (reproducible, run ${{ matrix.repro_run }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ['x64', 'cvm-x64', 'arm64']
+        repro_run: [1, 2]
+    env:
+      # Stable build identity used to derive SOURCE_DATE_EPOCH and metadata.
+      KBUILD_BUILD_USER: builder
+      KBUILD_BUILD_HOST: nixos
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          # Need the HEAD commit's timestamp for SOURCE_DATE_EPOCH; depth=1 is sufficient.
+          fetch-depth: 1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Map ci arch to build args
+        id: args
+        run: |
+          case "${{ matrix.arch }}" in
+            x64)
+              echo "build_arch=amd64"   >> "$GITHUB_OUTPUT"
+              echo "config=Microsoft/hcl-x64.config"   >> "$GITHUB_OUTPUT"
+              echo "is_cvm=0"            >> "$GITHUB_OUTPUT"
+              ;;
+            cvm-x64)
+              echo "build_arch=amd64"   >> "$GITHUB_OUTPUT"
+              echo "config=Microsoft/hcl-x64.config"   >> "$GITHUB_OUTPUT"
+              echo "is_cvm=1"            >> "$GITHUB_OUTPUT"
+              ;;
+            arm64)
+              echo "build_arch=arm64"   >> "$GITHUB_OUTPUT"
+              echo "config=Microsoft/hcl-arm64.config" >> "$GITHUB_OUTPUT"
+              echo "is_cvm=0"            >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Merge CVM config fragment
+        if: steps.args.outputs.is_cvm == '1'
+        run: |
+          # Run the merge inside the Nix dev shell so flex/bison/gcc are present
+          # and so that scripts/kconfig builds against the same toolchain that
+          # will be used for the actual kernel compile.
+            nix develop -i \
+              -k HOME -k USER -k TERM \
+            --command bash -ec './Microsoft/merge-cvm-config.sh'
+
+      - name: Build kernel reproducibly
+        env:
+          # SOURCE_DATE_EPOCH is derived from the HEAD commit by the pipeline
+          # script when not pre-set; exporting it here makes it visible in logs.
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          # The pipeline script copies the source into /tmp/ohcl-kernel-build/src
+          # to normalise embedded paths. Place the build dir OUTSIDE the source
+          # so it survives that rsync (which excludes ./build, ./out, ./compare).
+          BUILD_DIR="${RUNNER_TEMP:-/tmp}/build-output-${{ matrix.arch }}-run${{ matrix.repro_run }}"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
+
+          export SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> "$GITHUB_ENV"
+
+          ./Microsoft/build-hcl-kernel-pipeline.sh \
+            --source-dir "$PWD" \
+            --build-dir "$BUILD_DIR" \
+            --config "${{ steps.args.outputs.config }}" \
+            --arch "${{ steps.args.outputs.build_arch }}" \
+            --reproducible
+
+      - name: Package artifacts
+        run: |
+          # Packaging runs inside the Nix shell so the cross objcopy is on PATH
+          # for arm64 module stripping.
+            nix develop -i \
+              -k HOME -k USER -k TERM \
+              -k BUILD_DIR \
+            --command bash -ec '
+              bash ./Microsoft/package-ci-artifacts.sh \
+                "$BUILD_DIR" \
+                "${{ matrix.arch }}" \
+                "$PWD" \
+                "$PWD/release_artifacts" \
+                "${{ github.ref_name }}" \
+                "${{ github.sha }}" \
+                "${{ github.run_id }}"
+            '
+
+      - name: Print reproducibility hashes
+        run: |
+          ART="release_artifacts/${{ matrix.arch }}"
+          echo "## Reproducibility hashes (${{ matrix.arch }} / run ${{ matrix.repro_run }})" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ( cd "$ART" && sha256sum vmlinux vmlinux.dbg kernel_config \
+              $( [ -f Image ] && echo Image ) ) | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.arch }}-build-run${{ matrix.repro_run }}
+          path: release_artifacts/${{ matrix.arch }}/
+
+  compare_repro:
+    name: Compare reproducibility hashes
+    needs: build_linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download x64 run 1 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: x64-build-run1
+          path: compare/x64/run1/
+
+      - name: Download x64 run 2 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: x64-build-run2
+          path: compare/x64/run2/
+
+      - name: Download cvm-x64 run 1 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cvm-x64-build-run1
+          path: compare/cvm-x64/run1/
+
+      - name: Download cvm-x64 run 2 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cvm-x64-build-run2
+          path: compare/cvm-x64/run2/
+
+      - name: Download arm64 run 1 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: arm64-build-run1
+          path: compare/arm64/run1/
+
+      - name: Download arm64 run 2 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: arm64-build-run2
+          path: compare/arm64/run2/
+
+      - name: Compare hashes
+        run: |
+          set -euo pipefail
+          status=0
+
+          echo "## Reproducibility comparison" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "| Arch | File | Run1 SHA256 | Run2 SHA256 | Result |" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- | --- | --- |" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          for arch in x64 cvm-x64 arm64; do
+            run1="compare/$arch/run1"
+            run2="compare/$arch/run2"
+            sha1="/tmp/${arch}.run1.tsv"
+            sha2="/tmp/${arch}.run2.tsv"
+            merged="/tmp/${arch}.merged.tsv"
+
+            ( cd "$run1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum ) \
+              | awk '{print $2 "\t" $1}' > "$sha1"
+            ( cd "$run2" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum ) \
+              | awk '{print $2 "\t" $1}' > "$sha2"
+
+            awk -F '\t' '
+              NR == FNR { run1[$1] = $2; next }
+              { run2[$1] = $2 }
+              END {
+                for (f in run1) seen[f] = 1
+                for (f in run2) seen[f] = 1
+                for (f in seen) {
+                  h1 = (f in run1) ? run1[f] : "MISSING"
+                  h2 = (f in run2) ? run2[f] : "MISSING"
+                  r = (h1 == h2) ? "match" : "mismatch"
+                  printf "%s\t%s\t%s\t%s\n", f, h1, h2, r
+                }
+              }
+            ' "$sha1" "$sha2" | sort > "$merged"
+
+            while IFS=$'\t' read -r file h1 h2 result; do
+              echo "| $arch | $file | $h1 | $h2 | $result |" | tee -a "$GITHUB_STEP_SUMMARY"
+              if [[ "$result" == "mismatch" ]]; then
+                status=1
+              fi
+            done < "$merged"
+
+            if [[ "$status" -ne 0 ]]; then
+              echo "::error::Reproducibility mismatch detected for $arch"
+              echo "--- $arch mismatches ---"
+              awk -F '\t' '$4 == "mismatch" {print $1 " run1=" $2 " run2=" $3}' "$merged" | sed -n '1,200p'
+            fi
+          done
+
+          echo "" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -eq 0 ]]; then
+            echo "All reproducibility hashes matched across both runs." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "One or more reproducibility comparisons mismatched." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+  build_perf:
+    name: Build Perf
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        arch: ['x64', 'arm64']
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev
+          [ "${{ matrix.arch }}" == "arm64" ] && sudo apt-get install -y g++-aarch64-linux-gnu || true
+
+      - name: Run build script
+        run: |
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            export makeargs="ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-"
+            export strip="aarch64-linux-gnu-strip"
+          elif [ "${{ matrix.arch }}" == "x64" ]; then
+            export makeargs="ARCH=x86_64"
+            export strip="strip"
+          fi
+          make $makeargs \
+            NO_ZLIB=1 NO_LIBELF=1 NO_LIBCRYPTO=1 NO_LIBPYTHON=1 NO_JEVENTS=1 NO_LIBTRACEEVENT=1 \
+            LDFLAGS=-static -C tools DESTDIR="$PWD/perf-"${{ matrix.arch }}"" perf_install
+
+          $strip perf-"${{ matrix.arch }}"/bin/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ matrix.arch }}
+          path: perf-${{ matrix.arch }}/
+
+  create_release:
+    name: Create GitHub Release
+    needs: [compare_repro, build_perf]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: x64-build-run1
+          path: release_artifacts/x64/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cvm-x64-build-run1
+          path: release_artifacts/cvm-x64/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: arm64-build-run1
+          path: release_artifacts/arm64/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: perf-x64
+          path: perf-x64/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: perf-arm64
+          path: perf-arm64/
+
+      - name: Archive artifacts
+        run: |
+          # Install perf
+          mkdir release_artifacts/x64/tools
+          mkdir release_artifacts/cvm-x64/tools
+          mkdir release_artifacts/arm64/tools
+          cp -r perf-x64/ release_artifacts/x64/tools/perf/
+          cp -r perf-x64/ release_artifacts/cvm-x64/tools/perf/
+          cp -r perf-arm64/ release_artifacts/arm64/tools/perf/
+
+          # Archive repo
+          kernel_tag="$(echo ${{ github.ref_name }} | sed 's:.*/::g')"
+          kern="Kernel"
+          echo ${{ github.ref_name }} | grep -q "dev" && kern="Kernel.Dev"
+          tar czvf Microsoft.OHCL.$kern.$kernel_tag-x64.tar.gz -C release_artifacts/x64/ .
+          tar czvf Microsoft.OHCL.$kern.$kernel_tag-cvm-x64.tar.gz -C release_artifacts/cvm-x64/ .
+          tar czvf Microsoft.OHCL.$kern.$kernel_tag-arm64.tar.gz -C release_artifacts/arm64/ .
+
+      - name: Update release notes
+        run: |
+          rolling_tag="${{ github.ref_name }}"
+          kernel_tag="$(make kernelversion)"
+          date="$(date +"%B %d %Y")"
+          sed -i "s:{{rolling lts tag}}:${rolling_tag}:g" MSFT-Merge/release-notes.md
+          sed -i "s:{{LTS Tag}}:${kernel_tag}:g" MSFT-Merge/release-notes.md
+          sed -i "s:{{Date}}:${date}:g" MSFT-Merge/release-notes.md
+
+      - name: Create a GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ github.workspace }}/MSFT-Merge/release-notes.md
+          draft: false
+          files: |
+            Microsoft.OHCL.Kernel.*.tar.gz
+          token: ${{ secrets.RELEASE_TOKEN }}
