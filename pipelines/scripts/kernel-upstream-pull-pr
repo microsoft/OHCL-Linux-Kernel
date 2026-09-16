@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+
+__copyright__ = "Copyright (c) Microsoft Corporation."
+
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
+
+from lsgtools import log
+from lsgtools import cli
+from lsgtools import ado
+from lsgtools.virt.mshv import kernel
+
+arg_parser = cli.create_arg_parser(prog="kernel-upstream-pull-pr",
+                                   description="File a PR in linux-dom0 for the specific branch")
+arg_parser.add_argument("--ado-org", help="Name of the Azure DevOps organization", required=True)
+arg_parser.add_argument("--ado-project", help="Name of the Azure DevOps project", required=True)
+arg_parser.add_argument("--ado-access-token", help="Azure DevOps access token", required=True)
+arg_parser.add_argument("--token-type", help="Token type: PAT or OAUTH", default="OAUTH")
+arg_parser.add_argument("--repo-id", help="Repository ID", required=True)
+arg_parser.add_argument("--source-branch", help="Source branch of the pull request", required=True)
+arg_parser.add_argument("--tag", help="Pulled upstream tag name", required=True)
+arg_parser.add_argument("--build-requestedfor-id", help="Id of the person who checked in the changes", required=True)
+args = arg_parser.parse_args()
+log.set_verbosity(args.verbose)
+ado.init_defaults(args.ado_org, args.ado_project, args.repo_id, None,
+                  args.token_type, args.ado_access_token)
+
+
+source_branch = args.source_branch
+if not source_branch.startswith("refs/heads/"):
+    source_branch = "refs/heads/{}".format(source_branch)
+payload = {
+    "sourceRefName": source_branch,
+    "targetRefName": "refs/heads/main",
+    "title": "rolling: Autoupdate pull {}".format(kernel.get_version_from_tag(args.tag)),
+    "description": "Upstream tag: {}".format(args.tag),
+    "completionOptions": {
+        "deleteSourceBranch": True,
+        "mergeStrategy": "rebaseMerge",
+        "squashMerge": False,
+        "bypassPolicy": False
+    }
+}
+
+try:
+    if ado.pr_create(payload=payload):
+        exit(0)
+    raise Exception("Failed to create PR")
+except Exception as e:
+    log.fatal("{}".format(e))
+    exit(1)
