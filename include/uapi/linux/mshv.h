@@ -330,6 +330,7 @@ struct mshv_get_set_vp_state {
 #define MSHV_CAP_REGISTER_PAGE          0x1
 #define MSHV_CAP_VTL_RETURN_ACTION      0x2
 #define MSHV_CAP_DR6_SHARED             0x3
+#define MSHV_CAP_LOWER_VTL_TIMER_VIRT   0x4
 #define MSHV_MAX_RUN_MSG_SIZE                256
 
 struct mshv_vp_registers {
@@ -357,7 +358,7 @@ struct mshv_vtl_sint_post_msg {
 
 struct mshv_vtl_ram_disposition {
 	__u64 start_pfn;
-	__u64 last_pfn; /* last_pfn is excluded from the range [start_pfn, last_pfn) */
+	__u64 last_pfn;
 };
 
 struct mshv_vtl_set_poll_file {
@@ -384,7 +385,88 @@ struct mshv_sint_mask {
 	__u8 reserved[7];
 };
 
+struct mshv_vtl_sidecar_info {
+	__u32 base_cpu;
+	__u32 cpu_count;
+	__u32 per_cpu_shmem;
+};
+
+struct mshv_kick_cpus {
+	__u64 len;
+	__u64 cpu_mask_ptr;	/* pointer to cpu mask bits */
+	__u64 flags;
+} __packed;
+
+#define MSHV_KICK_CPUS_FLAG_WAIT_FOR_CPUS	(1 << 0)
+#define MSHV_KICK_CPUS_FLAG_CANCEL_CPU_RUN	(1 << 1)
+
 /* /dev/mshv device IOCTL */
+struct mshv_tdcall {
+	__u64 rax;	/* Call code and returned status */
+	__u64 rcx;
+	__u64 rdx;
+	__u64 r8;
+	__u64 r9;
+	__u64 r10_out;	/* Only supported as output */
+	__u64 r11_out;	/* Only supported as output */
+} __packed;
+
+struct mshv_pvalidate {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u8 validate;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding;
+} __packed;
+
+struct mshv_rmpadjust {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u64 value;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[6];
+} __packed;
+
+struct mshv_rmpquery {
+	__u64 start_pfn;
+	__u64 page_count;
+	__u8 terminate_on_failure;
+	__u8 ram;
+	__u8 padding[6];
+	__u64 *flags;
+	__u64 *page_size;
+	__u64 *pages_processed;
+} __packed;
+
+struct mshv_invlpgb {
+	__u64 rax;
+	__u32 pad0;
+	__u32 edx;
+	__u32 pad1;
+	__u32 ecx;
+} __packed;
+
+struct mshv_map_device_intr {
+	__u32 vector;
+	__u32 apic_id;
+	__u8 create_mapping;
+	__u8 padding[7];
+} __packed;
+
+struct mshv_partition_time {
+	__u32 tsc_sequence;
+	__u32 reserved;
+	__u64 reference_time_in_100_ns;
+	__u64 tsc;
+} __packed;
+
+#define MSHV_KICK_CPUS_FLAG_WAIT_FOR_CPUS	(1 << 0)
+#define MSHV_KICK_CPUS_FLAG_CANCEL_CPU_RUN	(1 << 1)
+
+#define MSHV_IOCTL 0xB8
+
 #define MSHV_CHECK_EXTENSION    _IOW(MSHV_IOCTL, 0x00, __u32)
 
 /* vtl device */
@@ -394,6 +476,27 @@ struct mshv_sint_mask {
 #define MSHV_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
 #define MSHV_GET_VP_REGISTERS		_IOWR(MSHV_IOCTL, 0x05, struct mshv_vp_registers)
 #define MSHV_SET_VP_REGISTERS		_IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
+#define MSHV_VTL_KICK_CPU		_IOW(MSHV_IOCTL, 0x38, struct mshv_kick_cpus)
+
+/* For x86-64 SEV-SNP only */
+#define MSHV_VTL_PVALIDATE	_IOW(MSHV_IOCTL, 0x28, struct mshv_pvalidate)
+#define MSHV_VTL_RMPADJUST	_IOW(MSHV_IOCTL, 0x29, struct mshv_rmpadjust)
+
+/* For x86-64 TDX only */
+#define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
+#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
+#define MSHV_VTL_MAP_REDIRECTED_DEVICE_INTERRUPT _IOWR(MSHV_IOCTL, 0x39, \
+						       struct mshv_map_device_intr)
+
+/* For x86-64 only */
+#define MSHV_RESTORE_PARTITION_TIME	_IOW(MSHV_IOCTL, 0x13, struct mshv_partition_time)
+#define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
+
+/* For x86-64 SEV-SNP only */
+#define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
+#define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
+#define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
+#define MSHV_VTL_SECURE_AVIC_VTL0_PFN	_IOWR(MSHV_IOCTL, 0x40, __u64)
 
 /* VMBus device IOCTLs */
 #define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_vtl_signal_event)
@@ -401,7 +504,22 @@ struct mshv_sint_mask {
 #define MSHV_SINT_SET_EVENTFD     _IOW(MSHV_IOCTL, 0x24, struct mshv_vtl_set_eventfd)
 #define MSHV_SINT_PAUSE_MESSAGE_STREAM     _IOW(MSHV_IOCTL, 0x25, struct mshv_sint_mask)
 
+/* For x86-64 TDX only */
+#define MSHV_VTL_TDCALL _IOWR(MSHV_IOCTL, 0x32, struct mshv_tdcall)
+#define MSHV_VTL_READ_VMX_CR4_FIXED1 _IOR(MSHV_IOCTL, 0x33, __u64)
+#define MSHV_VTL_GUEST_VSM_VMSA_PFN	_IOWR(MSHV_IOCTL, 0x34, __u64)
+#define MSHV_VTL_RMPQUERY	_IOW(MSHV_IOCTL, 0x35, struct mshv_rmpquery)
+#define MSHV_VTL_INVLPGB	_IOW(MSHV_IOCTL, 0x36, struct mshv_invlpgb)
+#define MSHV_VTL_TLBSYNC	_IO(MSHV_IOCTL, 0x37)
+
 /* hv_hvcall device */
 #define MSHV_HVCALL_SETUP        _IOW(MSHV_IOCTL, 0x1E, struct mshv_vtl_hvcall_setup)
 #define MSHV_HVCALL              _IOWR(MSHV_IOCTL, 0x1F, struct mshv_vtl_hvcall)
+
+/* mshv_vtl_sidecar device */
+#define MSHV_VTL_SIDECAR_START	_IO(MSHV_IOCTL, 0xf0)
+#define MSHV_VTL_SIDECAR_STOP	_IO(MSHV_IOCTL, 0xf1)
+#define MSHV_VTL_SIDECAR_RUN	_IO(MSHV_IOCTL, 0xf2)
+#define MSHV_VTL_SIDECAR_INFO	_IOR(MSHV_IOCTL, 0xf3, struct mshv_vtl_sidecar_info)
+
 #endif

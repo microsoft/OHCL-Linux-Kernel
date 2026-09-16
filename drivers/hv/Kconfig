@@ -88,7 +88,7 @@ config MSHV_ROOT
 
 config MSHV_VTL
 	tristate "Microsoft Hyper-V VTL driver"
-	depends on X86_64 && HYPERV_VTL_MODE
+	depends on (X86_64 || ARM64) && HYPERV_VTL_MODE
 	depends on HYPERV_VMBUS
 	# Mapping VTL0 memory to a userspace process in VTL2 is supported in OpenHCL.
 	# VTL2 for OpenHCL makes use of Huge Pages to improve performance on VMs,
@@ -97,8 +97,11 @@ config MSHV_VTL
 	# MTRRs are controlled by VTL0, and are not specific to individual VTLs.
 	# Therefore, do not attempt to access or modify MTRRs here.
 	depends on !MTRR
+	depends on OF
 	select CPUMASK_OFFSTACK
 	select VIRT_XFER_TO_GUEST_WORK
+	select VMAP_PFN
+	select USER_RETURN_NOTIFIER if X86
 	default n
 	help
 	  Select this option to enable Hyper-V VTL driver support.

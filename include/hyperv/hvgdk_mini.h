@@ -149,6 +149,7 @@ struct hv_u128 {
 #define HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_SHIFT	12
 #define HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_MASK	\
 		(~((1ull << HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_SHIFT) - 1))
+#define HV_SYN_REG_VP_ASSIST_PAGE              (HV_X64_MSR_VP_ASSIST_PAGE)
 
 /* Hyper-V Enlightened VMCS version mask in nested features CPUID */
 #define HV_X64_ENLIGHTENED_VMCS_VERSION		0xff
@@ -634,6 +635,16 @@ enum hv_interrupt_type {
 	HV_X64_INTERRUPT_TYPE_MAXIMUM		= 0x000A,
 };
 
+struct hv_x64_proxy_interrupt_message_payload {
+       __u8 interrupt_vtl;
+       __u8 assert_multiple;
+       __u8 reserved[2];
+       union {
+               __u32 asserted_vector;
+               __u32 asserted_irr[8];
+       } u;
+} __packed;
+
 /* Define synthetic interrupt source. */
 union hv_synic_sint {
 	u64 as_uint64;
@@ -746,6 +757,7 @@ enum hv_message_type {
 	/* Root scheduler messages */
 	HVMSG_SCHEDULER_VP_SIGNAL_BITSET	= 0x80000100,
 	HVMSG_SCHEDULER_VP_SIGNAL_PAIR		= 0x80000101,
+	HVMSG_X64_PROXY_INTERRUPT_INTERCEPT     = 0x8001000f,
 
 	/* Platform-specific processor intercept messages. */
 	HVMSG_X64_IO_PORT_INTERCEPT		= 0x80010000,
@@ -854,7 +866,7 @@ union hv_input_vtl {
 	};
 } __packed;
 
-struct hv_init_vp_context {
+struct hv_x64_init_vp_context {
 	u64 rip;
 	u64 rsp;
 	u64 rflags;
@@ -878,13 +890,31 @@ struct hv_init_vp_context {
 	u64 msr_cr_pat;
 } __packed;
 
+struct hv_arm64_init_vp_context {
+	u64 pc;
+	u64 sp_elh;
+	u64 spctlr_el1;
+	u64 mair_el1;
+	u64 tcr_el1;
+	u64 vbar_el1;
+	u64 ttbr0_el1;
+	u64 ttbr1_el1;
+	u64 x18;
+} __packed;
+
 struct hv_enable_vp_vtl {
 	u64				partition_id;
 	u32				vp_index;
 	union hv_input_vtl		target_vtl;
 	u8				mbz0;
 	u16				mbz1;
-	struct hv_init_vp_context	vp_context;
+#if defined(__x86_64__)
+	struct hv_x64_init_vp_context	vp_context;
+#elif defined(__aarch64__)
+	struct hv_arm64_init_vp_context	vp_context;
+#else
+	#error "The architecture is not supported"
+#endif
 } __packed;
 
 struct hv_get_vp_from_apic_id_in {
@@ -1058,13 +1088,15 @@ enum hv_register_name {
 
 	/* VSM */
 	HV_REGISTER_VSM_VP_STATUS				= 0x000D0003,
-
 	/* Synthetic VSM registers */
 	HV_REGISTER_VSM_CODE_PAGE_OFFSETS	= 0x000D0002,
 	HV_REGISTER_VSM_CAPABILITIES		= 0x000D0006,
 	HV_REGISTER_VSM_PARTITION_CONFIG	= 0x000D0007,
 
 #if defined(CONFIG_X86)
+	/* X64 Control Registers */
+	HV_X64_REGISTER_XFEM	= 0x00040005,
+
 	/* X64 Debug Registers */
 	HV_X64_REGISTER_DR0	= 0x00050000,
 	HV_X64_REGISTER_DR1	= 0x00050001,
@@ -1120,11 +1152,18 @@ enum hv_register_name {
 	HV_X64_REGISTER_MSR_MTRR_FIX4KF0000	= 0x00080079,
 	HV_X64_REGISTER_MSR_MTRR_FIX4KF8000	= 0x0008007A,
 
-	HV_X64_REGISTER_REG_PAGE	= 0x0009001C,
+	/* AMD SEV SNP configuration register */
+	HV_X64_REGISTER_SEV_CONTROL             = 0x00090040,
+	HV_X64_REGISTER_SEV_AVIC_GPA            = 0x00090043,
 #elif defined(CONFIG_ARM64)
 	HV_ARM64_REGISTER_SINT_RESERVED_INTERRUPT_ID	= 0x00070001,
 #endif
+	HV_REGISTER_REG_PAGE			= 0x0009001C,
+
 };
+
+#define		HV_X64_REGISTER_VSM_VP_STATUS   0x000D0003
+#define		HV_X64_VTL_MASK                 GENMASK(3, 0)
 
 /*
  * Arch compatibility regs for use with hv_set/get_register
@@ -1174,9 +1213,11 @@ enum hv_register_name {
 #define HV_MSR_CRASH_P4		(HV_REGISTER_GUEST_CRASH_P4)
 #define HV_MSR_CRASH_CTL	(HV_REGISTER_GUEST_CRASH_CTL)
 
+#define HV_MSR_GUEST_OS_ID     (HV_REGISTER_GUEST_OSID)
 #define HV_MSR_VP_INDEX		(HV_REGISTER_VP_INDEX)
 #define HV_MSR_TIME_REF_COUNT	(HV_REGISTER_TIME_REF_COUNT)
 #define HV_MSR_REFERENCE_TSC	(HV_REGISTER_REFERENCE_TSC)
+#define HV_SYN_REG_VP_ASSIST_PAGE              (HV_REGISTER_VP_ASSIST_PAGE)
 
 #define HV_MSR_SINT0		(HV_REGISTER_SINT0)
 #define HV_MSR_SCONTROL		(HV_REGISTER_SCONTROL)
@@ -1187,6 +1228,25 @@ enum hv_register_name {
 
 #define HV_MSR_STIMER0_CONFIG	(HV_REGISTER_STIMER0_CONFIG)
 #define HV_MSR_STIMER0_COUNT	(HV_REGISTER_STIMER0_COUNT)
+#define HV_SYN_REG_VP_ASSIST_PAGE              (HV_REGISTER_VP_ASSIST_PAGE)
+
+#define HV_ARM64_HVC_SMCCC_IMM16        0
+#define HV_ARM64_HVC_IMM16              1
+#define HV_ARM64_HVC_VTLENTRY_IMM16     2
+#define HV_ARM64_HVC_VTLEXIT_IMM16      3
+#define HV_ARM64_HVC_LAUNCH_IMM16       4
+
+struct hv_init_vp_context {
+	u64 pc;
+	u64 sp_elh;
+	u64 spctlr_el1;
+	u64 mair_el1;
+	u64 tcr_el1;
+	u64 vbar_el1;
+	u64 ttbr0_el1;
+	u64 ttbr1_el1;
+	u64 x18;
+} __packed;
 
 #endif /* CONFIG_ARM64 */
 
@@ -1328,6 +1388,36 @@ struct hv_input_get_vp_registers {
 	u8  rsvd_z8;
 	u16 rsvd_z16;
 	u32 names[];
+} __packed;
+
+union hv_x64_register_sev_gpa_page {
+       u64 u64;
+       struct {
+               u64 enabled:1;
+               u64 reserved:11;
+               u64 pagenumber:52;
+       };
+} __packed;
+
+struct hv_set_vp_registers_input {
+        struct {
+                u64 partitionid;
+                u32 vpindex;
+                u8  inputvtl;
+                u8  padding[3];
+        } header;
+        struct {
+                u32 name;
+                u32 padding1;
+                u64 padding2;
+                union {
+                        union hv_register_value value;
+                        struct {
+                                u64 valuelow;
+                                u64 valuehigh;
+                        };
+                };
+        } element[];
 } __packed;
 
 struct hv_input_set_vp_registers {
@@ -1539,5 +1629,15 @@ enum hv_intercept_access_type {
 	HV_INTERCEPT_ACCESS_WRITE	= 1,
 	HV_INTERCEPT_ACCESS_EXECUTE	= 2
 };
+
+#if defined(__x86_64__)
+struct hv_input_restore_partition_time {
+	__u64 partition_id;
+	__u32 tsc_sequence;
+	__u32 reserved;
+	__u64 reference_time_in_100_ns;
+	__u64 tsc;
+} __packed;
+#endif
 
 #endif /* _HV_HVGDK_MINI_H */

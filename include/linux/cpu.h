@@ -121,7 +121,7 @@ void notify_cpu_starting(unsigned int cpu);
 extern void cpu_maps_update_begin(void);
 extern void cpu_maps_update_done(void);
 int bringup_hibernate_cpu(unsigned int sleep_cpu);
-void bringup_nonboot_cpus(unsigned int max_cpus);
+void bringup_nonboot_cpus(unsigned int max_cpus, const struct cpumask *boot_cpus);
 int arch_cpu_rescan_dead_smt_siblings(void);
 
 #else	/* CONFIG_SMP */
