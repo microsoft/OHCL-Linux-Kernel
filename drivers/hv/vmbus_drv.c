@@ -21,6 +21,7 @@
 #include <linux/hyperv.h>
 #include <linux/kernel_stat.h>
 #include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/clockchips.h>
 #include <linux/cpu.h>
 #include <linux/sched/isolation.h>
@@ -2664,6 +2665,8 @@ static int vmbus_device_add(struct platform_device *pdev)
 	int ret;
 
 	vmbus_root_device = &pdev->dev;
+	pr_info("VMBus is present in DeviceTree\n");
+
 
 	ret = of_range_parser_init(&parser, np);
 	if (ret)

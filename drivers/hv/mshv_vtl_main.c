@@ -9,26 +9,54 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/hashtable.h>
 #include <linux/module.h>
 #include <linux/miscdevice.h>
 #include <linux/anon_inodes.h>
 #include <linux/cpuhotplug.h>
 #include <linux/count_zeros.h>
 #include <linux/entry-virt.h>
+#include <linux/context_tracking.h>
 #include <linux/eventfd.h>
 #include <linux/poll.h>
 #include <linux/file.h>
+#include <linux/pagemap.h>
+#include <linux/user-return-notifier.h>
 #include <linux/vmalloc.h>
-#include <asm/debugreg.h>
+#include <asm/boot.h>
+#include <linux/tick.h>
+#include <asm/pgalloc.h>
 #include <asm/mshyperv.h>
+#include <asm/trace/hyperv.h>
 #include <trace/events/ipi.h>
-#include <uapi/asm/mtrr.h>
 #include <uapi/linux/mshv.h>
 #include <hyperv/hvhdk.h>
+#include <asm/set_memory.h>
+
+#ifdef CONFIG_X86_64
+#include <uapi/asm/mtrr.h>
+#include <asm/apic.h>
+#include <asm/debugreg.h>
+#include "../../kernel/fpu/legacy.h"
+#include <linux/cleanup.h>
+#include <linux/stop_machine.h>
+
+#include <asm/apic.h>
+#include <uapi/asm/mtrr.h>
+#include <asm/svm.h>
+#include <asm/sev.h>
+#include <asm/tdx.h>
+#include <asm/fpu/xcr.h>
+#include <asm/debugreg.h>
+#include <asm/vmx.h>
 
 #include "../../kernel/fpu/legacy.h"
+#include "../../kernel/time/timekeeping.h"
+
+#endif
 #include "mshv.h"
 #include "mshv_vtl.h"
+#include "mshv_vtl_local_maps.h"
 #include "hyperv_vmbus.h"
 
 MODULE_AUTHOR("Microsoft");
@@ -43,7 +71,30 @@ MODULE_DESCRIPTION("Microsoft Hyper-V VTL Driver");
 #define MSHV_PG_OFF_CPU_MASK	(BIT_ULL(MSHV_REAL_OFF_SHIFT) - 1)
 #define MSHV_RUN_PAGE_OFFSET	0
 #define MSHV_REG_PAGE_OFFSET	1
+#define MSHV_VMSA_PAGE_OFFSET	2
+#define MSHV_APIC_PAGE_OFFSET	3
+#define MSHV_VMSA_GUEST_VSM_PAGE_OFFSET	4
 #define VTL2_VMBUS_SINT_INDEX	7
+
+#ifdef CONFIG_X86_64
+
+static __always_inline unsigned long mshv_vtl_smap_save(void)
+{
+	unsigned long flags = 0;
+
+	if (boot_cpu_has(X86_FEATURE_SMAP))
+		asm volatile ("pushf; pop %0; stac\n\t" : "=rm" (flags) : : "memory", "cc");
+
+	return flags;
+}
+
+static __always_inline void mshv_vtl_smap_restore(unsigned long flags)
+{
+	if (boot_cpu_has(X86_FEATURE_SMAP))
+		asm volatile ("push %0; popf\n\t" : : "g" (flags) : "memory", "cc");
+}
+
+#endif
 
 static struct device *mem_dev;
 
@@ -77,12 +128,76 @@ struct mshv_vtl_poll_file {
 
 struct mshv_vtl {
 	struct device *module_dev;
+	struct mshv_local_maps *local_maps;
 	u64 id;
 };
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+#define MSHV_VTL_NUM_L2_VM	3
+#define TDVPS_TSC_DEADLINE_DISARMED	(~0ULL)
+
+#define TDVPS_TSC_DEADLINE	0xA020000300000058ULL
+
+#define TDG_VP_ENTRY_VM_SHIFT	52
+#define TDG_VP_ENTRY_VM_MASK	GENMASK_ULL(53, 52)
+#define TDG_VP_ENTRY_VM_IDX(entry_rcx)			\
+	(((entry_rcx) & TDG_VP_ENTRY_VM_MASK) >>	\
+	 TDG_VP_ENTRY_VM_SHIFT)
+
+/* index: 0: L1 VM, 1-3: L2 VM */
+static bool is_tdx_vm_idx_valid(u64 vm_idx)
+{
+	return vm_idx >= 1 && vm_idx <= MSHV_VTL_NUM_L2_VM;
+}
+
+/*
+ * Convert SDM TSC deadline to TDX TD partitioning guest timer service.
+ * See SDM TSC-Deadline Mode
+ * SDM: tdx_vp_context.tsc_deadline follows this.
+ * 0: disarmed.
+ * -1: armed. It's far future (years). It won't fire in practical time.
+ *
+ * TDX TDVPS deadline:
+ * See Intel TDX Module Partitioning Architecture Specification
+ * L2 VM TSC Deadline Support
+ * 0: immediate inject timer interrupt.
+ * -1: disarmed.
+ * -2: this can also be considered as far future.
+ */
+static u64 tsc_deadline_to_tdvps(u64 tsc_deadline)
+{
+	if (tsc_deadline == MSHV_VTL_TDX_L2_DEADLINE_DISARMED)
+		tsc_deadline = TDVPS_TSC_DEADLINE_DISARMED;
+	else if (tsc_deadline == ~0ULL)
+		tsc_deadline = ~0ULL - 1ULL;
+
+	return tsc_deadline;
+}
+#endif
 
 struct mshv_vtl_per_cpu {
 	struct mshv_vtl_run *run;
 	struct page *reg_page;
+	struct page *vmsa_page;
+	struct page *vmsa_guest_vsm_page;
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	struct page *tdx_apic_page;
+	u64 xss;
+	u64 l1_msr_kernel_gs_base;
+	u64 l1_msr_star;
+	u64 l1_msr_lstar;
+	u64 l1_msr_sfmask;
+	u64 l1_msr_tsc_aux;
+	u64 l2_tsc_deadline_prev[MSHV_VTL_NUM_L2_VM];
+	u64 l2_hlt_tsc_deadline;
+	bool l2_tsc_deadline_expired[MSHV_VTL_NUM_L2_VM];
+	bool msrs_are_guest;
+	struct user_return_notifier mshv_urn;
+#endif
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+	struct page *snp_secure_avic_page;
+	struct hrtimer snp_stimer0_timer;
+#endif
 };
 
 /* SYNIC_OVERLAY_PAGE_MSR - internal, identical to hv_synic_simp */
@@ -102,6 +217,7 @@ static union hv_register_vsm_capabilities mshv_vsm_capabilities;
 static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
 static DEFINE_PER_CPU(unsigned long long, num_vtl0_transitions);
 static DEFINE_PER_CPU(struct mshv_vtl_per_cpu, mshv_vtl_per_cpu);
+static DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 
 static const union hv_input_vtl input_vtl_zero;
 static const union hv_input_vtl input_vtl_normal = {
@@ -116,13 +232,24 @@ mshv_ioctl_create_vtl(void __user *user_arg, struct device *module_dev)
 	struct mshv_vtl *vtl;
 	struct file *file;
 	int fd;
+	struct mshv_local_maps *local_maps = NULL;
 
 	vtl = kzalloc_obj(*vtl);
 	if (!vtl)
 		return -ENOMEM;
 
+	if (hv_isolation_type_snp()) {
+		local_maps = mshv_vtl_setup_local_maps();
+		if (!local_maps) {
+			kfree(vtl);
+			return -ENOMEM;
+		}
+	}
+
 	fd = get_unused_fd_flags(O_CLOEXEC);
 	if (fd < 0) {
+		if (local_maps)
+			mshv_vtl_teardown_local_maps(local_maps);
 		kfree(vtl);
 		return fd;
 	}
@@ -130,13 +257,29 @@ mshv_ioctl_create_vtl(void __user *user_arg, struct device *module_dev)
 				  vtl, O_RDWR);
 	if (IS_ERR(file)) {
 		put_unused_fd(fd);
+		if (local_maps)
+			mshv_vtl_teardown_local_maps(local_maps);
 		kfree(vtl);
 		return PTR_ERR(file);
 	}
 	vtl->module_dev = module_dev;
+	vtl->local_maps = local_maps;
 	fd_install(fd, file);
 
 	return fd;
+}
+
+static long mshv_tdx_vtl_ioctl_check_extension(u32 arg)
+{
+	if (!IS_ENABLED(CONFIG_INTEL_TDX_GUEST))
+		return -EOPNOTSUPP;
+
+	switch (arg) {
+	case MSHV_CAP_LOWER_VTL_TIMER_VIRT:
+		return 1;
+	default:
+		return -EOPNOTSUPP;
+	}
 }
 
 static long
@@ -156,6 +299,10 @@ mshv_ioctl_check_extension(void __user *user_arg)
 		return mshv_vsm_capabilities.return_action_available;
 	case MSHV_CAP_DR6_SHARED:
 		return mshv_vsm_capabilities.dr6_shared;
+	case MSHV_CAP_LOWER_VTL_TIMER_VIRT:
+		if (hv_isolation_type_tdx())
+			return mshv_tdx_vtl_ioctl_check_extension(arg);
+		return 0;
 	}
 
 	return -EOPNOTSUPP;
@@ -189,7 +336,20 @@ static struct miscdevice mshv_dev = {
 	.mode = 0600,
 };
 
-static struct mshv_vtl_run *mshv_vtl_this_run(void)
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+static DEFINE_PER_CPU(struct hrtimer, mshv_tdx_halt_timer);
+static struct hrtimer *tdx_this_halt_timer(void)
+{
+	return this_cpu_ptr(&mshv_tdx_halt_timer);
+}
+static void mshv_tdx_init_halt_timer(void);
+#endif
+
+noinline void mshv_vtl_return_tdx(void);
+struct mshv_vtl_run *mshv_vtl_this_run(void);
+void mshv_tdx_request_cache_flush(bool wbnoinvd);
+
+struct mshv_vtl_run *mshv_vtl_this_run(void)
 {
 	return *this_cpu_ptr(&mshv_vtl_per_cpu.run);
 }
@@ -204,11 +364,344 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
+#if defined(CONFIG_X86_64)
+
+#if defined(CONFIG_INTEL_TDX_GUEST)
+
+static struct page *tdx_this_apic_page(void)
+{
+	return *this_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page);
+}
+
+static u32 *mshv_tdx_vapic_irr(void)
+{
+	return (u32 *)((char *)page_address(tdx_this_apic_page()) + APIC_IRR);
+}
+
+#endif /* defined(CONFIG_INTEL_TDX_GUEST) */
+
+static struct page *tdx_apic_page(int cpu)
+{
+#if defined(CONFIG_INTEL_TDX_GUEST)
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.tdx_apic_page, cpu);
+#else
+	(void)cpu;
+	return NULL;
+#endif
+}
+
+static struct page *snp_secure_avic_page(int cpu)
+{
+#if defined(CONFIG_SEV_GUEST)
+	return *per_cpu_ptr(&mshv_vtl_per_cpu.snp_secure_avic_page, cpu);
+#else
+	(void)cpu;
+	return NULL;
+#endif
+}
+
+static struct page *mshv_apic_page(int cpu)
+{
+	if (hv_isolation_type_tdx())
+		return tdx_apic_page(cpu);
+	else if (hv_isolation_type_snp())
+		return snp_secure_avic_page(cpu);
+
+	return NULL;
+}
+
+#if defined(CONFIG_SEV_GUEST) || defined(CONFIG_INTEL_TDX_GUEST)
+/*
+ * For ICR emulation when running a hardware isolated guest, we need a fast way to map
+ * APICIDs to CPUIDs.
+ * Instead of iterating through all CPUs for each target in the ICR destination field
+ * precompute a mapping. APICIDs can be sparse so we have to use a hash table.
+ * Note: CPU hotplug is not supported (both by this code and by the paravisor in general)
+ */
+static DEFINE_HASHTABLE(apicid_to_cpuid, bits_per(NR_CPUS));
+struct apicid_to_cpuid_entry {
+	int apicid;
+	unsigned int cpuid;
+	struct hlist_node node;
+};
+
+static int get_cpuid(int apicid)
+{
+	struct apicid_to_cpuid_entry *found;
+
+	hash_for_each_possible(apicid_to_cpuid, found, node, apicid) {
+		if (found->apicid == apicid)
+			return found->cpuid;
+	}
+
+	return -EINVAL;
+}
+
+/*
+ * Sets the cpu described by apicid in cpu_mask.
+ * Returns 0 on success, -EINVAL if no cpu matches the apicid.
+ */
+static int mshv_set_cpumask_from_apicid(int apicid, struct cpumask *cpu_mask)
+{
+
+	int cpu = get_cpuid(apicid);
+
+	if (cpu >= 0) {
+		cpumask_set_cpu(cpu, cpu_mask);
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+/*
+ * Returns the cpumask described by dest, where dest is a logical destination.
+ * cpu_mask should have no CPUs set.
+ * Returns 0 on success
+ */
+static int mshv_get_logical_cpumask(u32 dest, struct cpumask *cpu_mask)
+{
+	int ret = 0;
+
+	while ((u16)dest) {
+		const u16 i = fls((u16)dest) - 1;
+		const u32 physical_id = (dest >> 16 << 4) | i;
+
+		ret = mshv_set_cpumask_from_apicid(physical_id, cpu_mask);
+		dest &= ~BIT(i);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
+/*
+ * Interrupt handling (particularly sending (via ICR writes) and receiving interrupts),
+ * is a hot path on hardware-isolated VMs. By performing some of the common functionality
+ * entirely in-kernel we eliminate costly user<->kernel transitions.
+ */
+static void mshv_free_apicid_to_cpuid_mapping(void)
+{
+	int bkt;
+	struct apicid_to_cpuid_entry *entry;
+	struct hlist_node *tmp;
+
+	hash_for_each_safe(apicid_to_cpuid, bkt, tmp, entry, node) {
+		hash_del(&entry->node);
+		kfree(entry);
+	}
+}
+
+/*
+ * Creates and populates the apicid_to_cpuid hash table.
+ * This mapping is used for fast ICR emulation on hardware-isolated VMs.
+ * Returns 0 on success.
+ */
+static int mshv_create_apicid_to_cpuid_mapping(struct device *dev)
+{
+	int cpu, ret = 0;
+
+	for_each_online_cpu(cpu) {
+		struct apicid_to_cpuid_entry *entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+
+		if (!entry) {
+			ret = -ENOMEM;
+			break;
+		}
+
+		entry->apicid = cpuid_to_apicid[cpu];
+		entry->cpuid = cpu;
+
+		if (entry->apicid == BAD_APICID) {
+			dev_emerg(dev, "Bad APICID: %d !!\n", entry->apicid);
+			kfree(entry);
+			ret = -ENODEV;
+			break;
+		}
+
+		hash_add(apicid_to_cpuid, &entry->node, entry->apicid);
+	}
+
+	if (ret)
+		mshv_free_apicid_to_cpuid_mapping();
+
+	return ret;
+}
+
+/*
+ * Attempts to handle an ICR write. Returns 0 if successful, other values
+ * indicate user-space should be invoked to gracefully handle the error.
+ */
+static int mshv_cpu_mask_for_icr_write(u32 icr_lo, u32 dest, struct cpumask *local_mask)
+{
+	const u8 shorthand = (icr_lo >> 18) & 0b11;
+	const u32 self = smp_processor_id();
+	int ret = 0;
+
+	cpumask_clear(local_mask);
+	if (shorthand == 0b10 || dest == (u32)-1) { /* shorthand all or destination id == all */
+		cpumask_copy(local_mask, cpu_online_mask);
+	} else if (shorthand == 0b11) { /* shorthand all but self */
+		cpumask_copy(local_mask, cpu_online_mask);
+		cpumask_clear_cpu(self, local_mask);
+	} else if (shorthand == 0b01) { /* shorthand self */
+		cpumask_set_cpu(self, local_mask);
+	} else if (icr_lo & BIT(11)) { /* logical */
+		ret = mshv_get_logical_cpumask(dest, local_mask);
+	} else { /* physical */
+		ret = mshv_set_cpumask_from_apicid(dest, local_mask);
+	}
+
+	return ret;
+}
+
+/*
+ * Attempts to handle an ICR write. Returns 0 if successful, other values
+ * indicate user-space should be invoked to gracefully handle the error.
+ */
+static int mshv_update_proxy_irr_for_icr_write(u32 icr_lo, struct cpumask *local_mask)
+{
+	const u8 vector = icr_lo;
+	const u64 bank = vector / 32;
+	const u32 mask = BIT(vector % 32);
+	const u32 self = smp_processor_id();
+	unsigned int cpu;
+
+	for_each_cpu(cpu, local_mask) {
+		struct mshv_vtl_run *run = mshv_vtl_cpu_run(cpu);
+
+		/*
+		 * The kernel doesn't provide an atomic_or which operates on u32,
+		 * so cast to atomic_t, which should have the same layout
+		 */
+		static_assert(sizeof(atomic_t) == sizeof(u32));
+		atomic_or(mask, (atomic_t *)&run->proxy_irr[bank]);
+
+		/*
+		 * The first producer with pending work wakes the target. Later
+		 * producers coalesce behind the scan that is already pending.
+		 */
+		if (xchg(&run->scan_proxy_irr, 1) || cpu == self)
+			cpumask_clear_cpu(cpu, local_mask);
+	}
+
+	if (!cpumask_empty(local_mask))
+		__apic_send_IPI_mask(local_mask, RESCHEDULE_VECTOR);
+
+	return 0;
+}
+
+/*
+ * Attempts to handle an ICR write. Returns 0 if successful, other values
+ * indicate user-space should be invoked to gracefully handle the error.
+ * Secure AVIC accelerates self-IPI only.
+ */
+static int mshv_snp_handle_simple_icr_write(u32 icr_lo, u32 dest)
+{
+	struct cpumask local_mask;
+	int ret;
+
+	ret = mshv_cpu_mask_for_icr_write(icr_lo, dest, &local_mask);
+	if (ret)
+		return ret;
+	ret = mshv_update_proxy_irr_for_icr_write(icr_lo, &local_mask);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+/*
+ * Pull the interrupts in the `proxy_irr` field into the VAPIC page
+ * Returns true if an exit to user-space is required (sync tmr state)
+ */
+static bool __mshv_pull_proxy_irr(struct mshv_vtl_run *run, struct page *apic_page)
+{
+	u32 *apic_page_irr;
+
+	if (!apic_page)
+		return false;
+
+	apic_page_irr = (u32 *)((char *)page_address(apic_page) + APIC_IRR);
+
+	if (!xchg(&run->scan_proxy_irr, 0))
+		return false;
+
+	for (int i = 0; i < 8; i++) {
+		const u32 val = xchg(&run->proxy_irr[i], 0);
+
+		if (!val)
+			continue;
+
+		if (run->proxy_irr_exit_mask[i] & val) {
+			/*
+			 * This vector was previously used for a level-triggered interrupt.
+			 * An edge-triggered interrupt has now arrived, so we need to involve
+			 * user-space to clear its copy of the tmr.
+			 * Put the interrupt(s) back on the run page so it can do so.
+			 * nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write
+			 */
+			atomic_or(val, (atomic_t *)(&run->proxy_irr[i]));
+			WRITE_ONCE(run->scan_proxy_irr, 1);
+			return true;
+		}
+
+		/*
+		 * IRR is non-contiguous.
+		 * Each bank is 4 bytes with 12 bytes of padding between banks.
+		 */
+		apic_page_irr[i * 4] |= val;
+	}
+
+	return false;
+}
+
+static void mshv_vtl_offload_resume(struct mshv_vtl_run *run)
+{
+	run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+	run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+	if (!(run->offload_flags & MSHV_VTL_OFFLOAD_FLAG_HALT_OTHER))
+		run->flags &= ~MSHV_VTL_RUN_FLAG_HALTED;
+}
+
+#if defined(CONFIG_SEV_GUEST)
+static void mshv_snp_clear_halt_if_irr_pending(struct mshv_vtl_run *run, struct page *apic_page)
+{
+	u32 *apic_page_irr;
+
+	if (!apic_page || !(READ_ONCE(run->flags) & MSHV_VTL_RUN_FLAG_HALTED))
+		return;
+
+	apic_page_irr = (u32 *)((char *)page_address(apic_page) + APIC_IRR);
+
+	for (int i = 7; i >= 0; i--) {
+		if (READ_ONCE(apic_page_irr[i * 4])) {
+			mshv_vtl_offload_resume(run);
+			return;
+		}
+	}
+}
+#endif
+
+#else
+
+static int mshv_create_apicid_to_cpuid_mapping(struct device *dev) { return 0; }
+static void mshv_free_apicid_to_cpuid_mapping(void) {}
+
+#endif /* defined(CONFIG_SEV_GUEST) || defined(CONFIG_INTEL_TDX_GUEST) */
+
+#else
+static int mshv_create_apicid_to_cpuid_mapping(struct device *dev) { return 0; }
+static void mshv_free_apicid_to_cpuid_mapping(void) {}
+#endif /* defined(CONFIG_X86_64) */
+
 static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
 	struct hv_register_assoc reg_assoc = {};
 	union hv_synic_overlay_page_msr overlay = {};
 	struct page *reg_page;
+	int ret;
 
 	reg_page = alloc_page(GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL);
 	if (!reg_page) {
@@ -218,31 +711,118 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 
 	overlay.enabled = 1;
 	overlay.pfn = page_to_hvpfn(reg_page);
-	reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
+	reg_assoc.name = HV_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_uint64;
 
-	if (hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				     1, input_vtl_zero, &reg_assoc)) {
-		WARN(1, "failed to setup register page\n");
+	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+				       1, input_vtl_zero, &reg_assoc);
+	if (ret) {
 		__free_page(reg_page);
-		return;
+
+		if (ret == -EINVAL || ret == -EACCES) {
+			/*
+			 * EINVAL is returned when the hypervisor predates register page support.
+			 * EACCES is returned when the register page is not available for use.
+			 *
+			 * TODO: replace `ret == -EINVAL` with
+			 *       `ret == HV_STATUS_INVALID_PARAMETER'.
+			 *
+			 * The older hypervisors might not support the register page.
+			 * This feature is a performance optimization enabling the user
+			 * mode not to use hypercalls for setting general purpose registers.
+			 * The register page not being present or not being used isn't a bug.
+			 *
+			 * If the register page is not supported, the hypervisor returns
+			 * `HV_STATUS_INVALID_PARAMETER`. That cannot be detected here as the
+			 * `hv_call_set_vp_registers` above calls `hv_status_to_errno` whereby
+			 * the original `HV_STATUS` is lost having been converted to `errno`.
+			 *
+			 * The best approximation is `ret == -EINVAL`. It is imprecise because of
+			 * `HV_STATUS` to `errno` conversion, and due to that this is a necessary
+			 * condition but not a sufficient one.
+			 *
+			 * The situation could be rectified by refactoring the code of
+			 * `hv_call_set_vp_registers`by pulling out the hypercall-related part
+			 * into some `hv_call_set_vp_registers_raw` function. Then here we could
+			 * call `hv_call_set_vp_registers_raw` to be able to be precise when detecting
+			 * whether the register page is available or not.
+			 */
+			pr_info("not using the register page");
+		} else {
+			pr_emerg("error when setting up the register page: %d\n", ret);
+			BUG();
+		}
+	} else {
+		per_cpu->reg_page = reg_page;
+		mshv_has_reg_page = true;
+	}
+}
+
+#ifdef CONFIG_X86_64
+static int mshv_snp_configure_vmsa_page(u8 target_vtl, struct page **vmsa_page)
+{
+	struct page *page;
+	struct hv_register_assoc reg_assoc = {};
+	union hv_input_vtl vtl = {};
+	int ret;
+
+	/* Might be called from the page fault handling code hence GFP_ATOMIC */
+	page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
+	if (!page)
+		return -ENOMEM;
+
+	if (target_vtl == 0) {
+		reg_assoc.name = HV_X64_REGISTER_SEV_CONTROL;
+		reg_assoc.value.reg64 = page_to_phys(page) | 1;
+
+		vtl.use_target_vtl = 1;
+		vtl.target_vtl = 0;
+		ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+						1, vtl, &reg_assoc);
+
+		if (ret) {
+			pr_err("failed to set VMSA page for VTL %d in hypervisor: %d\n",
+			       target_vtl, ret);
+			__free_page(page);
+			return ret;
+		}
 	}
 
-	per_cpu->reg_page = reg_page;
-	mshv_has_reg_page = true;
+	/*
+	 * Use VMPL1 as the target VMPL when setting a page bit, as
+	 * required by AMD.
+	 */
+	ret = rmpadjust((unsigned long)page_address(page),
+				RMP_PG_SIZE_4K, 1 | RMPADJUST_VMSA_PAGE_BIT);
+	if (ret) {
+		pr_emerg("failed to set VMSA page bit: %d\n", ret);
+		if (target_vtl != 0)
+			__free_page(page);
+		return ret;
+	}
+
+	*vmsa_page = page;
+	return 0;
 }
+
+#endif
 
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 {
 	union hv_synic_sint sint;
 
 	sint.as_uint64 = 0;
-	sint.vector = HYPERVISOR_CALLBACK_VECTOR;
+	sint.vector = vmbus_interrupt;
 	sint.masked = false;
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
-	/* Enable intercepts */
-	if (!mshv_vsm_capabilities.intercept_page_available)
+	/*
+	 * Enable intercepts, used when there is no intercept page, or
+	 * for proxy interrupts for SNP.
+	 */
+	if (!mshv_vsm_capabilities.intercept_page_available
+	    || hv_isolation_type_tdx()
+	    || hv_isolation_type_snp())
 		hv_set_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
 			   sint.as_uint64);
 
@@ -252,44 +832,96 @@ static void mshv_vtl_synic_enable_regs(unsigned int cpu)
 static int mshv_vtl_get_vsm_regs(void)
 {
 	struct hv_register_assoc registers[2];
-	int ret, count = 2;
+	int ret, count = 0;
 
-	registers[0].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
-	registers[1].name = HV_REGISTER_VSM_CAPABILITIES;
+	/*
+	 * BUGBUG-ISOLATION: these registers all untrusted on hardware iso platforms.
+	 * Should we even query them? they seem meaningless on hardware iso.
+	 */
+	if (hv_isolation_type_tdx())
+		pr_info("TODO: TDX detected, should skip vsm register query");
+
+	registers[count++].name = HV_REGISTER_VSM_CAPABILITIES;
+	/* Code page offset register is not supported on ARM */
+#ifdef CONFIG_X86_64
+	if (!hv_isolation_type_snp() && !hv_isolation_type_tdx())
+		registers[count++].name = HV_REGISTER_VSM_CODE_PAGE_OFFSETS;
+#endif
 
 	ret = hv_call_get_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 				       count, input_vtl_zero, registers);
 	if (ret)
 		return ret;
 
-	mshv_vsm_page_offsets.as_uint64 = registers[0].value.reg64;
-	mshv_vsm_capabilities.as_uint64 = registers[1].value.reg64;
+	mshv_vsm_capabilities.as_uint64 = registers[0].value.reg64;
+#ifdef CONFIG_X86_64
+	if (hv_isolation_type_snp())
+		mshv_vsm_capabilities.dr6_shared = 0;
+	else if (hv_isolation_type_tdx()) {
+		mshv_vsm_capabilities.dr6_shared = 1;
+	} else {
+		mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
+		pr_debug("%s: VSM code page offsets: %#016llx\n", __func__,
+			 mshv_vsm_page_offsets.as_uint64);
+	}
+#endif
 
 	return ret;
 }
 
-static int mshv_vtl_configure_vsm_partition(struct device *dev)
+static void do_assert_single_proxy_intr(const u32 vector, struct mshv_vtl_run *run)
 {
-	union hv_register_vsm_partition_config config;
-	struct hv_register_assoc reg_assoc;
+	/* See mshv_tdx_handle_simple_icr_write() on how the bank and bit are computed. */
+	const u32 bank = vector >> 5;
+	const u32 masked_irr = BIT(vector & 0x1f) & ~READ_ONCE(run->proxy_irr_blocked[bank]);
 
-	config.as_uint64 = 0;
-	config.default_vtl_protection_mask = HV_MAP_GPA_PERMISSIONS_MASK;
-	config.enable_vtl_protection = 1;
-	config.zero_memory_on_reset = 1;
-	config.intercept_vp_startup = 1;
-	config.intercept_cpuid_unimplemented = 1;
+	/* nb atomic_t cast: See comment in mshv_tdx_handle_simple_icr_write */
+	atomic_or(masked_irr, (atomic_t *)&run->proxy_irr[bank]);
+}
 
-	if (mshv_vsm_capabilities.intercept_page_available) {
-		dev_dbg(dev, "using intercept page\n");
-		config.intercept_page = 1;
+static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
+{
+	struct hv_message *msg;
+	u32 message_type;
+	struct hv_x64_proxy_interrupt_message_payload *proxy;
+	struct mshv_vtl_run *run;
+
+	msg = (struct hv_message *)per_cpu->synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
+	for (;;) {
+		message_type = READ_ONCE(msg->header.message_type);
+		if (message_type == HVMSG_NONE)
+			break;
+
+		if (message_type != HVMSG_X64_PROXY_INTERRUPT_INTERCEPT) {
+			WARN_ONCE(1, "Unexpected message type: %d\n", message_type);
+			vmbus_signal_eom(msg, message_type);
+			continue;
+		}
+
+		proxy = (struct hv_x64_proxy_interrupt_message_payload *)msg->u.payload;
+		run = mshv_vtl_this_run();
+
+		if (proxy->assert_multiple) {
+			for (int i = 0; i < 8; i++) {
+				const u32 masked_irr = ~READ_ONCE(run->proxy_irr_blocked[i]) &
+					READ_ONCE(proxy->u.asserted_irr[i]);
+
+				/*
+				 * nb atomic_t cast: See comment in
+				 * mshv_tdx_handle_simple_icr_write
+				 */
+				atomic_or(masked_irr, (atomic_t *)&run->proxy_irr[i]);
+			}
+		} else {
+			/* A malicious hypervisor might set a vector > 255. */
+			const u32 vector = READ_ONCE(proxy->u.asserted_vector) & 0xff;
+
+			do_assert_single_proxy_intr(vector, run);
+		}
+
+		WRITE_ONCE(run->scan_proxy_irr, 1);
+		vmbus_signal_eom(msg, message_type);
 	}
-
-	reg_assoc.name = HV_REGISTER_VSM_PARTITION_CONFIG;
-	reg_assoc.value.reg64 = config.as_uint64;
-
-	return hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				       1, input_vtl_zero, &reg_assoc);
 }
 
 static void mshv_vtl_vmbus_isr(void)
@@ -303,13 +935,17 @@ static void mshv_vtl_vmbus_isr(void)
 
 	per_cpu = this_cpu_ptr(hv_context.cpu_context);
 	if (smp_processor_id() == 0) {
-		msg = (struct hv_message *)per_cpu->hyp_synic_message_page + VTL2_VMBUS_SINT_INDEX;
+		msg = (struct hv_message *)per_cpu->synic_message_page + VTL2_VMBUS_SINT_INDEX;
 		message_type = READ_ONCE(msg->header.message_type);
 		if (message_type != HVMSG_NONE)
 			tasklet_schedule(&msg_dpc);
 	}
 
-	event_flags = (union hv_synic_event_flags *)per_cpu->hyp_synic_event_page +
+	/* Handle proxied interrupts from the host. */
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
+		mshv_vtl_scan_proxy_interrupts(per_cpu);
+
+	event_flags = (union hv_synic_event_flags *)per_cpu->synic_event_page +
 			VTL2_VMBUS_SINT_INDEX;
 	for_each_set_bit(i, event_flags->flags, HV_EVENT_FLAGS_COUNT) {
 		if (!sync_test_and_clear_bit(i, event_flags->flags))
@@ -324,6 +960,120 @@ static void mshv_vtl_vmbus_isr(void)
 	vmbus_isr();
 }
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+
+struct tdx_extended_field_code {
+	union {
+		u64 as_u64;
+		struct {
+			u64 field_code        : 24;
+			u64 reserved_z0       : 8;
+			u64 field_size        : 2;
+			u64 last_element      : 4;
+			u64 last_field        : 9;
+			u64 reserved_z1       : 3;
+			u64 increment_size    : 1;
+			u64 write_mask_valid  : 1;
+			u64 context_code      : 3;
+			u64 reserved_z2       : 1;
+			u64 class_code        : 6;
+			u64 reserved_z3       : 1;
+			u64 non_arch          : 1;
+		};
+	};
+};
+
+struct vmx_vmcs_field {
+	union {
+		u32 as_u32;
+
+		struct {
+			u32 access_high:1;
+			u32 index:9;
+			u32 type:2;		/* Use VMX_VMCS_FIELD_TYPE_* */
+			u32 reserved_zero:1;
+			u32 field_width:2;	/* Use VMX_VMCS_FIELD_WIDTH_* */
+			u32 reserved:17;
+		};
+	};
+};
+
+#define TDG_VP_WR	10
+
+static u64 tdg_vp_wr(u64 field, u64 value, u64 mask)
+{
+	struct tdx_module_args args = {
+		.rcx = 0,
+		.rdx = field,
+		.r8 = value,
+		.r9 = mask,
+	};
+
+	return __tdcall(TDG_VP_WR, &args);
+}
+
+static void mshv_write_tdx_apic_page(u64 apic_page_gpa)
+{
+    struct tdx_extended_field_code extended_field_code;
+    struct vmx_vmcs_field vmcs_field;
+    u64 status = 0;
+
+    extended_field_code.as_u64 = 0;
+    extended_field_code.field_code = 0x00002012; /* VMX_VMCS_VIRTUAL_APIC_PAGE */
+    extended_field_code.context_code = 2;	     /* TDX_CONTEXT_CODE_VP_SCOPE  */
+    extended_field_code.class_code = 36;	     /* L2_VM1 aka VTL0		   */
+
+    vmcs_field.as_u32 = 0x00002012;
+    extended_field_code.field_size = 3;	     /* TDX_FIELD_SIZE_64_BIT	   */
+
+    /* Issue tdg_vp_wr to set the apic page. */
+    status = tdg_vp_wr(extended_field_code.as_u64, apic_page_gpa,
+		       0xFFFFFFFFFFFFFFFF);
+    pr_debug("set_apic_page gpa: %llx status: %llx\n", apic_page_gpa, status);
+
+    if (status != 0)
+        panic("write tdx apic page failed: %llx\n", status);
+}
+
+static void mshv_vtl_set_tsc_deadline(u64 vm_idx, u64 deadline)
+{
+	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+
+	per_cpu->l2_tsc_deadline_expired[vm_idx - 1] = false;
+
+	if (deadline == per_cpu->l2_tsc_deadline_prev[vm_idx - 1])
+		return;
+
+	tdg_vp_wr(TDVPS_TSC_DEADLINE + vm_idx, deadline, ~0ULL);
+	per_cpu->l2_tsc_deadline_prev[vm_idx - 1] = deadline;
+}
+
+#endif
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+static enum hrtimer_restart mshv_snp_stimer0_timer_fn(struct hrtimer *timer)
+{
+	struct mshv_vtl_per_cpu *per_cpu =
+		container_of(timer, struct mshv_vtl_per_cpu, snp_stimer0_timer);
+	struct mshv_vtl_run *run = READ_ONCE(per_cpu->run);
+
+	if (run) {
+		struct task_struct *thread;
+
+		/* Wake userspace to handle timer delivery. */
+		atomic_or(MSHV_VTL_SNP_STIMER0_EXPIRED,
+			  (atomic_t *)&run->snp_context.stimer0_flags);
+		WRITE_ONCE(run->cancel, 1);
+
+		thread = this_cpu_read(mshv_vtl_thread);
+		if (thread)
+			wake_up_process(thread);
+	}
+
+	return HRTIMER_NORESTART;
+}
+#endif
+
 static int mshv_vtl_alloc_context(unsigned int cpu)
 {
 	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
@@ -332,8 +1082,79 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 	if (!per_cpu->run)
 		return -ENOMEM;
 
-	if (mshv_vsm_capabilities.intercept_page_available)
+	if (hv_isolation_type_tdx()) {
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+		struct page *tdx_apic_page;
+		int vm_idx;
+
+		tdx_apic_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!tdx_apic_page)
+			return -ENOMEM;
+
+		per_cpu->tdx_apic_page = tdx_apic_page;
+
+		/*
+		 * Capture the initial syscall MSRs to be restored after VP.ENTER.
+		 */
+		rdmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+		rdmsrl(MSR_STAR, per_cpu->l1_msr_star);
+		rdmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
+		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+		rdmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
+
+		per_cpu->msrs_are_guest = false;
+
+		/* Enable the apic page. */
+		mshv_write_tdx_apic_page(page_to_phys(tdx_apic_page));
+
+		mshv_vtl_this_run()->tdx_context.l2_tsc_deadline.deadline =
+			MSHV_VTL_TDX_L2_DEADLINE_DISARMED;
+		for (vm_idx = 1; vm_idx <= MSHV_VTL_NUM_L2_VM; vm_idx++)
+			mshv_vtl_set_tsc_deadline(vm_idx,
+						  TDVPS_TSC_DEADLINE_DISARMED);
+		per_cpu->l2_hlt_tsc_deadline = TDVPS_TSC_DEADLINE_DISARMED;
+		mshv_tdx_init_halt_timer();
+#endif
+	} else if (hv_isolation_type_snp()) {
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+		struct page *snp_secure_avic_page;
+		int ret;
+
+		hrtimer_setup(&per_cpu->snp_stimer0_timer,
+			      mshv_snp_stimer0_timer_fn,
+			      CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
+
+		ret = mshv_snp_configure_vmsa_page(0, &per_cpu->vmsa_page);
+		if (ret < 0)
+			return ret;
+
+		if (!cc_platform_has(CC_ATTR_SNP_SECURE_AVIC)) {
+			mshv_vtl_synic_enable_regs(cpu);
+			return 0;
+		}
+
+		snp_secure_avic_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!snp_secure_avic_page)
+			return -ENOMEM;
+
+		/* VMPL 2 for the VTL0 */
+		ret = rmpadjust((unsigned long)page_address(snp_secure_avic_page),
+					RMP_PG_SIZE_4K,
+					2 | RMPADJUST_ENABLE_READ | RMPADJUST_ENABLE_WRITE);
+		if (ret) {
+			pr_err("failed to adjust RMP for the secure AVIC page: %d\n", ret);
+			__free_page(snp_secure_avic_page);
+			return -EINVAL;
+		}
+
+		x2apic_savic_init_backing_page(page_address(snp_secure_avic_page));
+
+		per_cpu->snp_secure_avic_page = snp_secure_avic_page;
+
+#endif
+	} else if (mshv_vsm_capabilities.intercept_page_available) {
 		mshv_vtl_configure_reg_page(per_cpu);
+	}
 
 	mshv_vtl_synic_enable_regs(cpu);
 
@@ -348,6 +1169,7 @@ static int hv_vtl_setup_synic(void)
 
 	/* Use our isr to first filter out packets destined for userspace */
 	hv_setup_vmbus_handler(mshv_vtl_vmbus_isr);
+	hv_setup_percpu_vmbus_handler(mshv_vtl_vmbus_isr);
 
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "hyperv/vtl:online",
 				mshv_vtl_alloc_context, NULL);
@@ -369,42 +1191,256 @@ static void hv_vtl_remove_synic(void)
 
 static int vtl_get_vp_register(struct hv_register_assoc *reg)
 {
+#ifdef CONFIG_X86_64
+	/* TDX & SNP should not run this, checking to be sure. */
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
+		return -EINVAL;
+#endif
+
 	return hv_call_get_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 					1, input_vtl_normal, reg);
 }
 
 static int vtl_set_vp_register(struct hv_register_assoc *reg)
 {
+#ifdef CONFIG_X86_64
+	/* TDX & SNP should not run this, checking to be sure. */
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
+		return -EINVAL;
+#endif
+
 	return hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
 					1, input_vtl_normal, reg);
+}
+
+#define DECRYPTED_MASK	(1ul << 51)
+
+/*
+ * /dev/mshv_vtl_low address_space, captured on first open.
+ * Used by add_vtl0_mem() to zap stale 4K PTEs.
+ */
+static struct address_space *mshv_vtl_low_mapping;
+
+/* Identity token tagged on every mshv_vtl pgmap; only its address matters. */
+static const u8 mshv_vtl_pgmap_token;
+
+/*
+ * List of pgmap-backed VTL0 ranges, published only after devm_memremap_pages()
+ * returns. memremap_pages() makes a pgmap visible to get_dev_pagemap() before
+ * arch_add_memory() populates the vmemmap, so a concurrent fault could resolve
+ * a pfn whose struct page is still backed by an empty vmemmap PMD and oops on
+ * dereference. The driver-owned list is the gate; entries are never removed.
+ */
+static LIST_HEAD(mshv_vtl_low_ranges);
+static DEFINE_SPINLOCK(mshv_vtl_low_ranges_lock);
+
+struct mshv_vtl_low_range {
+	struct list_head list;
+	unsigned long start_pfn;
+	unsigned long end_pfn;	/* exclusive */
+	struct rcu_head rcu;
+};
+
+/*
+ * Ranges whose devm_memremap_pages() failed (e.g. VTL2 OOM). They have no
+ * struct pages, so the huge-fault path maps them 4K (pte_special) instead of a
+ * 2M pfn PMD: a 4K special PTE makes GUP fail gracefully, whereas a memmap-less
+ * 2M PMD would oops in follow_huge_pmd(). Normally empty.
+ */
+static LIST_HEAD(mshv_vtl_low_failed_ranges);
+static DEFINE_SPINLOCK(mshv_vtl_low_failed_lock);
+
+/*
+ * Ranges whose pgmap folios are smaller than a PMD (sub-2M-aligned
+ * registrations, e.g. a RAM-map edge). A 2M/1G huge map over sub-huge folios
+ * makes slow GUP batch refcounts across folios it never referenced (corruption
+ * on unpin), so the huge-fault path serves these 4K. Order-0 still returns a
+ * pinnable page (they are registered), so GUP stays correct. Only tiny RAM-edge
+ * tails hit this, so PageTables stay flat. Normally empty.
+ */
+static LIST_HEAD(mshv_vtl_low_suborder_ranges);
+static DEFINE_SPINLOCK(mshv_vtl_low_suborder_lock);
+
+/* True if [start_pfn, last_pfn) is already covered by a registered range. */
+static bool mshv_vtl_low_range_registered(unsigned long start_pfn,
+					  unsigned long last_pfn)
+{
+	struct mshv_vtl_low_range *r;
+	bool found = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(r, &mshv_vtl_low_ranges, list) {
+		if (start_pfn >= r->start_pfn && last_pfn <= r->end_pfn) {
+			found = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	return found;
+}
+
+/*
+ * True if [start_pfn, end_pfn) intersects any range whose registration failed
+ * (no memmap). The whole span is tested, not just the base pfn: a huge PMD
+ * covers [base, base + PMD) and must fall back to 4K if any pfn in that window
+ * is memmap-less, or GUP would oops walking a struct page that does not exist.
+ */
+static bool mshv_vtl_low_span_failed(unsigned long start_pfn,
+				     unsigned long end_pfn)
+{
+	struct mshv_vtl_low_range *r;
+	bool failed = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(r, &mshv_vtl_low_failed_ranges, list) {
+		if (start_pfn < r->end_pfn && end_pfn > r->start_pfn) {
+			failed = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	return failed;
+}
+
+/*
+ * True if [start_pfn, end_pfn) intersects any registered range whose folios
+ * are smaller than a PMD. Tested across the whole span: a huge PMD over even a
+ * partial sub-PMD-folio tail makes slow GUP mis-batch refcounts across folios.
+ */
+static bool mshv_vtl_low_span_suborder(unsigned long start_pfn,
+				       unsigned long end_pfn)
+{
+	struct mshv_vtl_low_range *r;
+	bool suborder = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(r, &mshv_vtl_low_suborder_ranges, list) {
+		if (start_pfn < r->end_pfn && end_pfn > r->start_pfn) {
+			suborder = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	return suborder;
+}
+
+/*
+ * Record @range as failed, coalescing it with any entry it overlaps or abuts,
+ * so repeated failing registrations cannot grow the list without bound (which
+ * would also slow the per-fault mshv_vtl_low_span_failed() walk). Coalescing
+ * only ever joins failed ranges, so it never marks memmap-backed pfns failed.
+ * Returns true if @range is now owned by the list, false if a concurrent
+ * success registered it meanwhile (the caller frees @range).
+ */
+static bool mshv_vtl_low_failed_add(struct mshv_vtl_low_range *range)
+{
+	struct mshv_vtl_low_range *r, *tmp;
+
+	spin_lock(&mshv_vtl_low_failed_lock);
+	/*
+	 * Skip if a concurrent registration already succeeded: it publishes the
+	 * range and then clears failed markers, so recording one now (after that
+	 * clear) would strand valid memory on the 4K path. The success path
+	 * clears under this same lock, so the check and the add are ordered.
+	 */
+	if (mshv_vtl_low_range_registered(range->start_pfn, range->end_pfn)) {
+		spin_unlock(&mshv_vtl_low_failed_lock);
+		return false;
+	}
+	/* Absorb every entry that overlaps or abuts @range, extending it. */
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_failed_ranges, list) {
+		if (r->end_pfn < range->start_pfn ||
+		    r->start_pfn > range->end_pfn)
+			continue;
+		range->start_pfn = min(range->start_pfn, r->start_pfn);
+		range->end_pfn = max(range->end_pfn, r->end_pfn);
+		list_del_rcu(&r->list);
+		kfree_rcu(r, rcu);
+	}
+	list_add_rcu(&range->list, &mshv_vtl_low_failed_ranges);
+	spin_unlock(&mshv_vtl_low_failed_lock);
+	return true;
+}
+
+/*
+ * Drop any failed-range entry fully covered by [start_pfn, last_pfn). Called
+ * when a range registers successfully so its huge faults resume 2M instead of
+ * the 4K fallback. Freed after a grace period since mshv_vtl_low_span_failed()
+ * walks the list under RCU.
+ */
+static void mshv_vtl_low_failed_clear(unsigned long start_pfn,
+				      unsigned long last_pfn)
+{
+	struct mshv_vtl_low_range *r, *tmp;
+
+	spin_lock(&mshv_vtl_low_failed_lock);
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_failed_ranges, list) {
+		if (r->start_pfn >= start_pfn && r->end_pfn <= last_pfn) {
+			list_del_rcu(&r->list);
+			kfree_rcu(r, rcu);
+		}
+	}
+	spin_unlock(&mshv_vtl_low_failed_lock);
 }
 
 static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 {
 	struct mshv_vtl_ram_disposition vtl0_mem;
+	struct mshv_vtl_low_range *range;
+	struct mshv_vtl_low_range *sub = NULL;
 	struct dev_pagemap *pgmap;
+	unsigned long pfn;
 	void *addr;
+	bool decrypted;
 
 	if (copy_from_user(&vtl0_mem, arg, sizeof(vtl0_mem)))
 		return -EFAULT;
+	/* vtl0_mem.last_pfn is excluded in the pagemap range for VTL0 as per design */
+
+	decrypted = vtl0_mem.start_pfn & DECRYPTED_MASK;
+	vtl0_mem.start_pfn &= ~DECRYPTED_MASK;
+	vtl0_mem.last_pfn &= ~DECRYPTED_MASK;
 	if (vtl0_mem.last_pfn <= vtl0_mem.start_pfn) {
 		dev_err(vtl->module_dev, "range start pfn (%llx) > end pfn (%llx)\n",
 			vtl0_mem.start_pfn, vtl0_mem.last_pfn);
 		return -EFAULT;
 	}
 
+	/*
+	 * Idempotent: a range already registered (e.g. re-registered across a
+	 * servicing save/restore) keeps its existing mapping and pin; don't
+	 * re-memremap or report a spurious failure.
+	 */
+	if (mshv_vtl_low_range_registered(vtl0_mem.start_pfn, vtl0_mem.last_pfn)) {
+		/* Drop any stale failed marker left by a prior racing failure. */
+		mshv_vtl_low_failed_clear(vtl0_mem.start_pfn, vtl0_mem.last_pfn);
+		/*
+		 * Zap any 4K fallback PTEs installed while that marker was present
+		 * so they refault as 2M now that the range is registered; the
+		 * fresh-success path below does the same after publishing.
+		 */
+		if (READ_ONCE(mshv_vtl_low_mapping)) {
+			pgoff_t start = vtl0_mem.start_pfn;
+			pgoff_t nr = vtl0_mem.last_pfn - vtl0_mem.start_pfn;
+
+			unmap_mapping_pages(mshv_vtl_low_mapping, start, nr, true);
+			unmap_mapping_pages(mshv_vtl_low_mapping,
+					    start | DECRYPTED_MASK, nr, true);
+		}
+		return 0;
+	}
+
 	pgmap = kzalloc_obj(*pgmap);
 	if (!pgmap)
 		return -ENOMEM;
 
-	/*
-	 * vtl0_mem.last_pfn is excluded in the pagemap range for VTL0 as per design.
-	 * last_pfn is not reserved or wasted, and reflects 'start_pfn + size' of pagemap range.
-	 */
 	pgmap->ranges[0].start = PFN_PHYS(vtl0_mem.start_pfn);
 	pgmap->ranges[0].end = PFN_PHYS(vtl0_mem.last_pfn) - 1;
 	pgmap->nr_range = 1;
 	pgmap->type = MEMORY_DEVICE_GENERIC;
+	pgmap->owner = (void *)&mshv_vtl_pgmap_token;
+	if (decrypted)
+		pgmap->flags = PGMAP_DECRYPTED;
 
 	/*
 	 * Determine the highest page order that can be used for the given memory range.
@@ -412,17 +1448,137 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	 * Clamp to MAX_FOLIO_ORDER to avoid a WARN in memremap_pages() when the range
 	 * alignment exceeds the maximum supported folio order for this kernel config.
 	 */
-	pgmap->vmemmap_shift = min(count_trailing_zeros(vtl0_mem.start_pfn | vtl0_mem.last_pfn),
-				   MAX_FOLIO_ORDER);
+	pgmap->vmemmap_shift = min_t(unsigned long,
+				    count_trailing_zeros(vtl0_mem.start_pfn | vtl0_mem.last_pfn),
+				    MAX_FOLIO_ORDER);
 	dev_dbg(vtl->module_dev,
 		"Add VTL0 memory: start: 0x%llx, end_pfn: 0x%llx, page order: %lu\n",
 		vtl0_mem.start_pfn, vtl0_mem.last_pfn, pgmap->vmemmap_shift);
 
+	range = kzalloc(sizeof(*range), GFP_KERNEL);
+	if (!range) {
+		kfree(pgmap);
+		return -ENOMEM;
+	}
+
+	/*
+	 * Allocate the sub-PMD marker up front (before devm_memremap_pages, so
+	 * the failure unwind is clean) whenever this range's folios will be
+	 * smaller than a PMD. Publishing it before the range below means a
+	 * sub-PMD range is never briefly - or permanently on -ENOMEM -
+	 * huge-eligible, which would let slow GUP mis-batch refcounts.
+	 */
+	if (pgmap->vmemmap_shift < PMD_ORDER) {
+		sub = kzalloc(sizeof(*sub), GFP_KERNEL);
+		if (!sub) {
+			kfree(range);
+			kfree(pgmap);
+			return -ENOMEM;
+		}
+	}
+
 	addr = devm_memremap_pages(mem_dev, pgmap);
 	if (IS_ERR(addr)) {
 		dev_err(vtl->module_dev, "devm_memremap_pages error: %ld\n", PTR_ERR(addr));
+		kfree(sub);	/* sub-PMD marker is unused on the failure path */
+		/*
+		 * A concurrent registration of the same range already succeeded,
+		 * so the memory is in fact registered: report success rather than
+		 * a spurious error, and do not mark it failed (which forces 4K).
+		 */
+		if (mshv_vtl_low_range_registered(vtl0_mem.start_pfn,
+						  vtl0_mem.last_pfn)) {
+			kfree(range);
+			kfree(pgmap);
+			return 0;
+		}
+		/*
+		 * No memmap for this range. Record it so the huge-fault path maps
+		 * it 4K (GUP-safe) instead of a 2M pfn PMD that would oops if the
+		 * range is later pinned, and zap any 2M a prior CPU fault installed
+		 * so the next access re-faults into the 4K path.
+		 */
+		range->start_pfn = vtl0_mem.start_pfn;
+		range->end_pfn = vtl0_mem.last_pfn;
+		if (!mshv_vtl_low_failed_add(range)) {
+			/*
+			 * failed_add() returns false only when a concurrent
+			 * registration already made this range valid; report
+			 * success and let the winner own the mapping and its zap.
+			 */
+			kfree(range);
+			kfree(pgmap);
+			return 0;
+		}
+		if (READ_ONCE(mshv_vtl_low_mapping)) {
+			pgoff_t start = vtl0_mem.start_pfn;
+			pgoff_t nr = vtl0_mem.last_pfn - vtl0_mem.start_pfn;
+
+			unmap_mapping_pages(mshv_vtl_low_mapping, start, nr, true);
+			unmap_mapping_pages(mshv_vtl_low_mapping,
+					    start | DECRYPTED_MASK, nr, true);
+		}
 		kfree(pgmap);
 		return PTR_ERR(addr);
+	}
+
+	/*
+	 * Hold a permanent reference on every folio in the range. The huge-fault
+	 * path maps VTL0 memory by raw pfn and keeps no per-mapping folio ref, so
+	 * GUP (try_grab_folio) relies on this pin to keep the refcount above zero
+	 * and avoid a transient-zero warning. VTL0 memory lives for the partition
+	 * lifetime, so - like the pgmap itself - these refs are never dropped.
+	 * start_pfn/last_pfn are aligned to vmemmap_shift, so each step is a head.
+	 */
+	for (pfn = vtl0_mem.start_pfn; pfn < vtl0_mem.last_pfn;
+	     pfn += 1UL << pgmap->vmemmap_shift)
+		folio_get(pfn_folio(pfn));
+
+	/*
+	 * Publish the sub-PMD marker (if any) before the range itself, so no
+	 * concurrent 2M fault can install a huge PMD over these sub-PMD folios
+	 * in the window between the range becoming visible and the marker being
+	 * added - which would make slow GUP mis-batch refcounts across folios.
+	 */
+	if (sub) {
+		sub->start_pfn = vtl0_mem.start_pfn;
+		sub->end_pfn = vtl0_mem.last_pfn;
+		spin_lock(&mshv_vtl_low_suborder_lock);
+		list_add_rcu(&sub->list, &mshv_vtl_low_suborder_ranges);
+		spin_unlock(&mshv_vtl_low_suborder_lock);
+	}
+
+	/* Publish only now: vmemmap is populated and struct pages are initialized. */
+	range->start_pfn = vtl0_mem.start_pfn;
+	range->end_pfn = vtl0_mem.last_pfn;
+	spin_lock(&mshv_vtl_low_ranges_lock);
+	list_add_rcu(&range->list, &mshv_vtl_low_ranges);
+	spin_unlock(&mshv_vtl_low_ranges_lock);
+
+	/*
+	 * Now that the range is published, drop any stale failed marker from an
+	 * earlier failed attempt - and any a concurrent failing caller recorded
+	 * before it could observe this registration. Its huge faults resume 2M
+	 * and the unmap below zaps the 4K PTEs left behind. Clearing after
+	 * publish, paired with the registration re-check in
+	 * mshv_vtl_low_failed_add(), closes the race where a marker is added
+	 * just after an earlier clear.
+	 */
+	mshv_vtl_low_failed_clear(vtl0_mem.start_pfn, vtl0_mem.last_pfn);
+
+	/*
+	 * Zap stale pte_special PTEs the 4K fallback installed before this
+	 * range had a pgmap, so the next access re-faults into the pinnable
+	 * page path. Both encrypted (pfn) and decrypted (pfn | DECRYPTED_MASK)
+	 * aliases.
+	 */
+	if (READ_ONCE(mshv_vtl_low_mapping)) {
+		pgoff_t start = vtl0_mem.start_pfn;
+		pgoff_t nr = vtl0_mem.last_pfn - vtl0_mem.start_pfn;
+
+		unmap_mapping_pages(mshv_vtl_low_mapping, start, nr, true);
+		unmap_mapping_pages(mshv_vtl_low_mapping,
+				    start | DECRYPTED_MASK, nr, true);
 	}
 
 	/* Don't free pgmap, since it has to stick around until the memory
@@ -431,6 +1587,58 @@ static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 	 */
 	return 0;
 }
+
+#ifdef CONFIG_X86_64
+static int restore_partition_time_with_cpus_stopped(void *data)
+{
+	struct mshv_partition_time *partition_time = data;
+	struct hv_input_restore_partition_time *input;
+	int result = 0;
+	u64 status;
+
+	/* Save current clock state. No other CPUs are running so no locks are taken. */
+	sched_clock_suspend();
+	timekeeping_suspend();
+	hv_save_sched_clock_state();
+
+	/* Interrupts are disabled, make the hypercall to update the TSC. */
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	input->partition_id = HV_PARTITION_ID_SELF;
+	input->tsc_sequence = partition_time->tsc_sequence;
+	input->reserved = 0;
+	input->reference_time_in_100_ns = partition_time->reference_time_in_100_ns;
+	input->tsc = partition_time->tsc;
+	status = hv_do_hypercall(MSHV_RESTORE_PARTITION_TIME, input, NULL);
+	if (!hv_result_success(status)) {
+		pr_err("HVCALL_RESTORE_PARTITION_TIME failed with %#llx\n", status);
+		result = -EINVAL;
+	}
+
+	/* Restore clock state using current TSC value. */
+	hv_restore_sched_clock_state();
+	timekeeping_resume();
+	sched_clock_resume();
+
+	return result;
+}
+
+static int mshv_restore_partition_time(void __user *arg)
+{
+	unsigned long irq_flags;
+	struct mshv_partition_time partition_time;
+	int ret;
+
+	if (copy_from_user(&partition_time, arg, sizeof(partition_time)))
+		return -EFAULT;
+
+	/* Stop other CPUs, using the current one to restore partition time. */
+	local_irq_save(irq_flags);
+	ret = stop_machine(restore_partition_time_with_cpus_stopped, &partition_time,
+			cpumask_of(smp_processor_id()));
+	local_irq_restore(irq_flags);
+	return ret;
+}
+#endif
 
 static void mshv_vtl_cancel(int cpu)
 {
@@ -512,107 +1720,12 @@ static int mshv_vtl_ioctl_set_poll_file(struct mshv_vtl_set_poll_file __user *us
 	return 0;
 }
 
-/* Static table mapping register names to their corresponding actions */
-static const struct {
-	enum hv_register_name reg_name;
-	int debug_reg_num;  /* -1 if not a debug register */
-	u32 msr_addr;       /* 0 if not an MSR */
-} reg_table[] = {
-	/* Debug registers */
-	{HV_X64_REGISTER_DR0, 0, 0},
-	{HV_X64_REGISTER_DR1, 1, 0},
-	{HV_X64_REGISTER_DR2, 2, 0},
-	{HV_X64_REGISTER_DR3, 3, 0},
-	{HV_X64_REGISTER_DR6, 6, 0},
-	/* MTRR MSRs */
-	{HV_X64_REGISTER_MSR_MTRR_CAP, -1, MSR_MTRRcap},
-	{HV_X64_REGISTER_MSR_MTRR_DEF_TYPE, -1, MSR_MTRRdefType},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE0, -1, MTRRphysBase_MSR(0)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE1, -1, MTRRphysBase_MSR(1)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE2, -1, MTRRphysBase_MSR(2)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE3, -1, MTRRphysBase_MSR(3)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE4, -1, MTRRphysBase_MSR(4)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE5, -1, MTRRphysBase_MSR(5)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE6, -1, MTRRphysBase_MSR(6)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE7, -1, MTRRphysBase_MSR(7)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE8, -1, MTRRphysBase_MSR(8)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASE9, -1, MTRRphysBase_MSR(9)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASEA, -1, MTRRphysBase_MSR(0xa)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASEB, -1, MTRRphysBase_MSR(0xb)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASEC, -1, MTRRphysBase_MSR(0xc)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASED, -1, MTRRphysBase_MSR(0xd)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASEE, -1, MTRRphysBase_MSR(0xe)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_BASEF, -1, MTRRphysBase_MSR(0xf)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK0, -1, MTRRphysMask_MSR(0)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK1, -1, MTRRphysMask_MSR(1)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK2, -1, MTRRphysMask_MSR(2)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK3, -1, MTRRphysMask_MSR(3)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK4, -1, MTRRphysMask_MSR(4)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK5, -1, MTRRphysMask_MSR(5)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK6, -1, MTRRphysMask_MSR(6)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK7, -1, MTRRphysMask_MSR(7)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK8, -1, MTRRphysMask_MSR(8)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASK9, -1, MTRRphysMask_MSR(9)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASKA, -1, MTRRphysMask_MSR(0xa)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASKB, -1, MTRRphysMask_MSR(0xb)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASKC, -1, MTRRphysMask_MSR(0xc)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASKD, -1, MTRRphysMask_MSR(0xd)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASKE, -1, MTRRphysMask_MSR(0xe)},
-	{HV_X64_REGISTER_MSR_MTRR_PHYS_MASKF, -1, MTRRphysMask_MSR(0xf)},
-	{HV_X64_REGISTER_MSR_MTRR_FIX64K00000, -1, MSR_MTRRfix64K_00000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX16K80000, -1, MSR_MTRRfix16K_80000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX16KA0000, -1, MSR_MTRRfix16K_A0000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX4KC0000, -1, MSR_MTRRfix4K_C0000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX4KC8000, -1, MSR_MTRRfix4K_C8000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX4KD0000, -1, MSR_MTRRfix4K_D0000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX4KD8000, -1, MSR_MTRRfix4K_D8000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX4KE0000, -1, MSR_MTRRfix4K_E0000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX4KE8000, -1, MSR_MTRRfix4K_E8000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX4KF0000, -1, MSR_MTRRfix4K_F0000},
-	{HV_X64_REGISTER_MSR_MTRR_FIX4KF8000, -1, MSR_MTRRfix4K_F8000},
-};
 
-static int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set)
+noinline void mshv_vtl_return_tdx(void);
+
+void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 {
-	u64 *reg64;
-	enum hv_register_name gpr_name;
-	int i;
-
-	gpr_name = regs->name;
-	reg64 = &regs->value.reg64;
-
-	/* Search for the register in the table */
-	for (i = 0; i < ARRAY_SIZE(reg_table); i++) {
-		if (reg_table[i].reg_name != gpr_name)
-			continue;
-		if (reg_table[i].debug_reg_num != -1) {
-			/* Handle debug registers */
-			if (gpr_name == HV_X64_REGISTER_DR6 &&
-			    !mshv_vsm_capabilities.dr6_shared)
-				goto hypercall;
-			if (set)
-				native_set_debugreg(reg_table[i].debug_reg_num, *reg64);
-			else
-				*reg64 = native_get_debugreg(reg_table[i].debug_reg_num);
-		} else {
-			/* Handle MSRs */
-			if (set)
-				wrmsrq(reg_table[i].msr_addr, *reg64);
-			else
-				rdmsrq(reg_table[i].msr_addr, *reg64);
-		}
-		return 0;
-	}
-
-hypercall:
-	return 1;
-}
-
-static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
-{
-	struct hv_vp_assist_page *hvp;
-
-	hvp = hv_vp_assist_page[smp_processor_id()];
+	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 
 	/*
 	 * Process signal event direct set in the run page, if any.
@@ -634,6 +1747,129 @@ static void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0)
 	mshv_vtl_return_call(vtl0);
 }
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+/* Request a cache flush via TDG.VP.VMMCALL */
+void mshv_tdx_request_cache_flush(bool wbnoinvd)
+{
+	struct tdx_module_args args = {};
+
+	args.r11 = 0x36; /* WBINVD call code */
+	args.r12 = wbnoinvd ? 1 : 0; /* WBINVD/WBNOINVD indicator */
+	__tdx_hypercall(&args);
+}
+
+static void mshv_vtl_return_tdx_tsc_deadline(struct mshv_vtl_run *vtl_run)
+{
+	struct tdx_vp_context *context = &vtl_run->tdx_context;
+	struct mshv_vtl_per_cpu *per_cpu;
+	u64 vm_idx, deadline;
+
+	/* L2 VM index is encoded in entry_rcx for TDG.VP.ENTER(). */
+	vm_idx = TDG_VP_ENTRY_VM_IDX(vtl_run->tdx_context.entry_rcx);
+	if (!is_tdx_vm_idx_valid(vm_idx))
+		return;
+
+	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	if (!(context->l2_tsc_deadline.update & MSHV_VTL_TDX_L2_DEADLINE_UPDATE)) {
+		if (per_cpu->l2_tsc_deadline_expired[vm_idx - 1])
+			mshv_vtl_set_tsc_deadline(vm_idx, TDVPS_TSC_DEADLINE_DISARMED);
+
+		return;
+	}
+
+	deadline = tsc_deadline_to_tdvps(context->l2_tsc_deadline.deadline);
+	mshv_vtl_set_tsc_deadline(vm_idx, deadline);
+
+	/* Tell the userspace that the kernel consumed the deadline */
+	context->l2_tsc_deadline.update &= ~MSHV_VTL_TDX_L2_DEADLINE_UPDATE;
+}
+
+static void mshv_tdx_tsc_deadline_expired(struct tdx_vp_context *context)
+{
+	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	u64 vm_idx = TDG_VP_ENTRY_VM_IDX(context->entry_rcx);
+
+	if (!is_tdx_vm_idx_valid(vm_idx))
+		return;
+
+	per_cpu->l2_tsc_deadline_expired[vm_idx - 1] = true;
+}
+
+static void mshv_vtl_on_user_return(struct user_return_notifier *urn)
+{
+	struct mshv_vtl_per_cpu *per_cpu
+		= container_of(urn, struct mshv_vtl_per_cpu, mshv_urn);
+
+	per_cpu->msrs_are_guest = false;
+	user_return_notifier_unregister(urn);
+
+	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+	wrmsrl(MSR_STAR, per_cpu->l1_msr_star);
+	wrmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
+	wrmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+	wrmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
+}
+
+void mshv_vtl_return_tdx(void)
+{
+	struct tdx_tdg_vp_enter_exit_info *tdx_exit_info;
+	struct tdx_vp_state *tdx_vp_state;
+	struct mshv_vtl_run *vtl_run;
+	struct mshv_vtl_per_cpu *per_cpu;
+
+	vtl_run = mshv_vtl_this_run();
+	tdx_exit_info = &vtl_run->tdx_context.exit_info;
+	tdx_vp_state = &vtl_run->tdx_context.vp_state;
+	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+
+	mshv_vtl_return_tdx_tsc_deadline(vtl_run);
+
+	/*
+	 * TODO TDX: KVM has some code and paths that seem like there is a way to
+	 * defer TSC_AUX saving until usermode starts. For now, save/restore VTL2's
+	 * view of TSC_AUX across every VP.ENTER call until we can do the same
+	 * thing.
+	*/
+	kernel_fpu_begin_mask(0);
+	fxrstor(&vtl_run->tdx_context.fx_state); // restore FP reg and XMM regs
+	native_write_cr2(tdx_vp_state->cr2);
+
+	/* Restore the lower VTL's syscall registers & MSRs */
+	if (!per_cpu->msrs_are_guest) {
+		wrmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+		wrmsrl(MSR_STAR, tdx_vp_state->msr_star);
+		wrmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
+		wrmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+		wrmsrl(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
+		per_cpu->mshv_urn.on_user_return = mshv_vtl_on_user_return;
+		user_return_notifier_register(&per_cpu->mshv_urn);
+		per_cpu->msrs_are_guest = true;
+	}
+
+	if (tdx_vp_state->msr_xss != per_cpu->xss)
+		wrmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
+
+	__tdg_vp_enter(vtl_run->tdx_context.entry_rcx,
+			virt_to_phys((void *) &vtl_run->tdx_context.l2_enter_guest_state),
+			tdx_exit_info);
+
+	tdx_vp_state->cr2 = native_read_cr2();
+	rdmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
+	per_cpu->xss = tdx_vp_state->msr_xss;
+
+	/* Of the context-switched MSRs, only MSR_KERNEL_GS_BASE is changed
+	   often by guests. Read it back so that user mode doesn't have
+	   to configure an exit on it. The other MSRs will trigger exits
+	   on guest writes. */
+	rdmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+	fxsave(&vtl_run->tdx_context.fx_state);
+	kernel_fpu_end();
+}
+#else
+void mshv_tdx_request_cache_flush(bool wbnoinvd) { }
+noinline void mshv_vtl_return_tdx(void) { }
+#endif
+
 static bool mshv_vtl_process_intercept(void)
 {
 	struct hv_per_cpu_context *mshv_cpu;
@@ -642,7 +1878,7 @@ static bool mshv_vtl_process_intercept(void)
 	u32 message_type;
 
 	mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
-	synic_message_page = mshv_cpu->hyp_synic_message_page;
+	synic_message_page = mshv_cpu->synic_message_page;
 	if (unlikely(!synic_message_page))
 		return true;
 
@@ -657,9 +1893,814 @@ static bool mshv_vtl_process_intercept(void)
 	return false;
 }
 
+enum TDX_HALT_TIMER {
+	TIMER_ARMED,
+	TIMER_NOTARMED,
+};
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+/*
+ * The purpose is to get interrupt on this vCPU to wake up from
+ * L0 VMM HLT emulation.
+ *
+ * The sequence is
+ * - local_irq_save()
+ * - Start the timer if necessary.
+ * - tdx_halt(irq_disabled=false)
+ *   The L0 VMM wakes up vCPU from HLT due to timer interrupt even with
+ *   rflags.if=0.
+ * - Cancel the timer if timer was started.
+ *   The callback isn't be invoked because of rflags.if=0.
+ * - local_irq_restore()
+ */
+static enum hrtimer_restart mshv_tdx_timer_fn(struct hrtimer *timer)
+{
+	return HRTIMER_NORESTART;
+}
+
+static void mshv_tdx_init_halt_timer(void)
+{
+	struct hrtimer *timer = tdx_this_halt_timer();
+
+	hrtimer_setup(timer, mshv_tdx_timer_fn, CLOCK_MONOTONIC,
+		      HRTIMER_MODE_REL_PINNED);
+}
+
+/*
+ * The L1 VMM needs to tell wake up time from HLT emulation because the host
+ * (L0) VMM doesn't have access to TDVPS_TSC_DEADLINE with the production TDX
+ * module.
+ * Set up a timer interrupt instead.
+ */
+static enum TDX_HALT_TIMER mshv_tdx_setup_halt_timer(void)
+{
+	struct tdx_vp_context *context = &mshv_vtl_this_run()->tdx_context;
+	u64 now, deadline = TDVPS_TSC_DEADLINE_DISARMED;
+	struct hrtimer *timer = tdx_this_halt_timer();
+	ktime_t time;
+
+	/* Get the timeout value to wake up from HLT. */
+	if (context->l2_tsc_deadline.update & MSHV_VTL_TDX_L2_DEADLINE_UPDATE)
+		deadline = tsc_deadline_to_tdvps(context->l2_tsc_deadline.deadline);
+	else {
+		struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+		u64 vm_idx = TDG_VP_ENTRY_VM_IDX(context->entry_rcx);
+
+		/*
+		 * If we run L2 vCPU before entering the L0 HLT emulation, we
+		 * may have issued tdg.vp.wr(TSC DEADLINE) and the timer may
+		 * have been expired.
+		 */
+		if (is_tdx_vm_idx_valid(vm_idx) &&
+		    !per_cpu->l2_tsc_deadline_expired[vm_idx - 1])
+			deadline = per_cpu->l2_tsc_deadline_prev[vm_idx - 1];
+	}
+
+	if (deadline == TDVPS_TSC_DEADLINE_DISARMED)
+		return TIMER_NOTARMED;
+
+	time = 0;
+	now = rdtsc();
+	if (deadline > now) {
+		/*
+		 * ktime_t is nsec.
+		 * 1 TSC tick = 1 / (tsc_khz * 1000) sec
+		 *            = 1000 * 1000 / tsc_khz nsec
+		 */
+		time = mul_u64_u64_div_u64(deadline - now, 1000 * 1000, tsc_khz);
+		if (time < 0)
+			time = KTIME_MAX;
+	}
+
+	hrtimer_start(timer, time, HRTIMER_MODE_REL_PINNED);
+	this_cpu_ptr(&mshv_vtl_per_cpu)->l2_hlt_tsc_deadline = deadline;
+	return TIMER_ARMED;
+}
+
+static enum TDX_HALT_TIMER mshv_tdx_halt_timer_pre(bool try_arm)
+{
+	if (!hv_isolation_type_tdx())
+		return TIMER_NOTARMED;
+
+	if (!try_arm)
+		return TIMER_NOTARMED;
+
+	return mshv_tdx_setup_halt_timer();
+}
+
+static void mshv_tdx_halt_timer_post(enum TDX_HALT_TIMER armed)
+{
+	struct mshv_vtl_per_cpu *per_cpu;
+	struct tdx_vp_context *context;
+	struct hrtimer *timer;
+
+	if (armed != TIMER_ARMED)
+		return;
+
+	timer = tdx_this_halt_timer();
+
+	hrtimer_cancel(timer);
+
+	per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	if (per_cpu->l2_hlt_tsc_deadline > rdtsc())
+		return;
+
+	/*
+	 * Emulate timer expiry as if preemption timer expires with
+	 * tdg.vp.enter().
+	 */
+	context = &mshv_vtl_this_run()->tdx_context;
+	context->exit_info.rax = EXIT_REASON_PREEMPTION_TIMER;
+
+	mshv_tdx_tsc_deadline_expired(context);
+
+	context->l2_tsc_deadline.update &= ~MSHV_VTL_TDX_L2_DEADLINE_UPDATE;
+}
+#else
+static enum TDX_HALT_TIMER mshv_tdx_halt_timer_pre(bool try_arm)
+{
+	return TIMER_NOTARMED;
+}
+static void mshv_tdx_halt_timer_post(enum TDX_HALT_TIMER armed) {}
+#endif
+
+static bool in_idle_is_enabled;
+
+static void mshv_vtl_switch_to_vtl0_irqoff(void)
+{
+	struct hv_vp_assist_page *hvp;
+	struct mshv_vtl_run *this_run = mshv_vtl_this_run();
+	struct mshv_vtl_cpu_context *cpu_ctx = &mshv_vtl_this_run()->cpu_context;
+	u32 flags = READ_ONCE(this_run->flags);
+#if defined(CONFIG_SEV_GUEST)
+	union hv_input_vtl target_vtl = READ_ONCE(this_run->target_vtl);
+#endif
+	enum TDX_HALT_TIMER armed;
+
+	trace_mshv_vtl_enter_vtl0(cpu_ctx);
+#ifndef MSHV_VTL_RUN_FLAG_HALTED
+#define MSHV_VTL_RUN_FLAG_HALTED	0ULL
+#endif
+
+	armed = mshv_tdx_halt_timer_pre(flags & MSHV_VTL_RUN_FLAG_HALTED);
+
+	/* A VTL2 TDX kernel doesn't allocate hv_vp_assist_page at the moment */
+	hvp = hv_vp_assist_page ? hv_vp_assist_page[smp_processor_id()] : NULL;
+
+	/*
+	 * Process signal event direct set in the run page, if any.
+	 */
+	if (hvp && mshv_vsm_capabilities.return_action_available) {
+		u32 offset = READ_ONCE(mshv_vtl_this_run()->vtl_ret_action_size);
+
+		WRITE_ONCE(mshv_vtl_this_run()->vtl_ret_action_size, 0);
+
+		/*
+		 * Hypervisor will take care of clearing out the actions
+		 * set in the assist page.
+		 */
+		memcpy(hvp->vtl_ret_actions,
+		       mshv_vtl_this_run()->vtl_ret_actions,
+		       min_t(u32, offset, sizeof(hvp->vtl_ret_actions)));
+	}
+
+	if (hv_isolation_type_tdx()) {
+#if defined(CONFIG_INTEL_TDX_GUEST)
+		/* Read and clear tdx specific flags set by usermode. */
+		u64 tdx_flags = READ_ONCE(mshv_vtl_this_run()->tdx_context.vp_state.flags);
+		mshv_vtl_this_run()->tdx_context.vp_state.flags = 0;
+
+		/*
+		 * Clear RAX to an exit (PENDING_INTERRUPT) that the usermode
+		 * VMM will do nothing, if we are halting.
+		 */
+		mshv_vtl_this_run()->tdx_context.exit_info.rax = 0x112000000000;
+
+		/* Handle any flags set by usermode. */
+		if (unlikely(tdx_flags)) {
+			/* Handle any cache invalidation requests from usermode. */
+			if (tdx_flags & MSHV_VTL_TDX_VP_STATE_FLAG_WBINVD)
+				mshv_tdx_request_cache_flush(false);
+			else if (tdx_flags & MSHV_VTL_TDX_VP_STATE_FLAG_WBNOINVD)
+				mshv_tdx_request_cache_flush(true);
+		}
+
+		if (unlikely(mshv_vtl_this_run()->flags & MSHV_VTL_RUN_FLAG_HALTED)) {
+			tdx_safe_halt();
+		} else {
+			/* Only supports VTL0 */
+			mshv_vtl_return_tdx();
+		}
+
+		mshv_tdx_halt_timer_post(armed);
+
+		return;
+#endif
+	} if (hv_isolation_type_snp()) {
+#if defined(CONFIG_SEV_GUEST)
+		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED))
+			native_safe_halt();
+		else
+			snp_mshv_vtl_return(target_vtl.use_target_vtl ? target_vtl.target_vtl : 0);
+		return;
+#endif
+	} else {
+		mshv_vtl_return(cpu_ctx);
+	}
+
+	if (hvp)
+		trace_mshv_vtl_exit_vtl0(hvp->vtl_entry_reason, cpu_ctx);
+}
+
+static void mshv_vtl_idle(void)
+{
+	struct task_struct *p;
+
+	p = this_cpu_read(mshv_vtl_thread);
+
+	if (p) {
+		/* Return early if we got cancelled. */
+		if (READ_ONCE(mshv_vtl_this_run()->cancel)) {
+			wake_up_process(p);
+			raw_local_irq_enable();
+			return;
+		}
+
+		mshv_vtl_switch_to_vtl0_irqoff();
+
+		/* We are not the vtl thread, it means we need to wake it up */
+		if (current != p) {
+			this_cpu_write(mshv_vtl_thread, NULL);
+			wake_up_process(p);
+		}
+		raw_local_irq_enable();
+	} else {
+		enum TDX_HALT_TIMER armed = mshv_tdx_halt_timer_pre(true);
+
+		hv_vtl_idle();
+
+		mshv_tdx_halt_timer_post(armed);
+	}
+}
+
+/* 0 is fast, 1 is play idle, 2 is idle2vtl0 */
+#define MODE_MASK 0xf
+#define REENTER_SHIFT 4
+
+#define enter_mode(mode) ((mode) & MODE_MASK)
+#define reenter_mode(mode) (((mode) >> REENTER_SHIFT) & MODE_MASK)
+
+/*
+ * Interrupt handling (particularly sending (via ICR writes) and receiving interrupts),
+ * is a hot path on TDX. By performing some of the common functionality entirely in-kernel
+ * we eliminate costly user<->kernel transitions.
+ */
+#ifdef CONFIG_INTEL_TDX_GUEST
+static void mshv_tdx_advance_to_next_instruction(struct tdx_vp_context *context)
+{
+	const u32 instr_length = context->exit_info.r11 >> 32ULL;
+
+	context->l2_enter_guest_state.rip += instr_length;
+}
+
+static void mshv_tdx_clear_exit_reason(struct tdx_vp_context *context)
+{
+	const u64 TDX_PENDING_INTERRUPT = 0x00001120ULL << 32ULL;
+
+	context->exit_info.rax = TDX_PENDING_INTERRUPT;
+}
+
+static bool mshv_tdx_is_simple_icr_write(const struct tdx_vp_context *context)
+{
+	u64 msr_addr;
+	u32 icr_lo;
+	bool fixed;
+	bool edge;
+
+	if (((u32)context->exit_info.rax) != EXIT_REASON_MSR_WRITE)
+		return false;
+
+	msr_addr = context->l2_enter_guest_state.rcx;
+
+	if (msr_addr != (APIC_BASE_MSR + (APIC_ICR >> 4)) && msr_addr != HV_X64_MSR_ICR)
+		return false;
+
+	icr_lo = context->l2_enter_guest_state.rax;
+	fixed = !(icr_lo & (0b111 << 8));
+	edge = !(icr_lo & BIT(15));
+
+	return fixed && edge;
+}
+
+/*
+ * Attempts to handle an ICR write. Returns 0 if successful, other values
+ * indicate user-space should be invoked to gracefully handle the error.
+ */
+static int mshv_tdx_handle_simple_icr_write(struct tdx_vp_context *context)
+{
+	const u32 icr_lo = context->l2_enter_guest_state.rax;
+	const u32 dest = context->l2_enter_guest_state.rdx;
+	struct cpumask local_mask = {};
+	int ret = 0;
+
+	ret = mshv_cpu_mask_for_icr_write(icr_lo, dest, &local_mask);
+	if (ret)
+		return ret;
+	ret = mshv_update_proxy_irr_for_icr_write(icr_lo, &local_mask);
+	if (ret)
+		return ret;
+	mshv_tdx_advance_to_next_instruction(context);
+	mshv_tdx_clear_exit_reason(context);
+
+	return 0;
+}
+
+/*
+ * Checks if exit reason is due:
+ * - An interrupt for the L1
+ * - An exit from idle (same exit code as above)
+ * - An interrupt pending for the L2 while trying to enter L1
+ */
+static bool mshv_tdx_is_intr(const struct tdx_vp_context *context)
+{
+	const u32 TDX_L2_EXIT_PENDING_INTERRUPT = 0x00001102;
+	const u32 TDX_EXIT_PENDING_INTERRUPT = 0x00001120;
+	const u32 tdx_exit = context->exit_info.rax >> 32ULL;
+
+	return tdx_exit == TDX_L2_EXIT_PENDING_INTERRUPT ||
+		tdx_exit == TDX_EXIT_PENDING_INTERRUPT;
+}
+
+static bool mshv_tdx_next_intr_exists(const struct tdx_vp_context *context)
+{
+	const u32 next_intr = (context->exit_info.r10 >> 32ULL);
+
+	return next_intr & BIT(31);
+}
+
+static void mshv_tdx_update_rvi_halt(struct mshv_vtl_run *run)
+{
+	u32 *apic_page_irr = mshv_tdx_vapic_irr();
+	struct tdx_l2_enter_guest_state *enter_state = &run->tdx_context.l2_enter_guest_state;
+
+	enter_state->rvi = 0;
+	for (int i = 7; i >= 0; i--) {
+		if (apic_page_irr[i * 4]) {
+			enter_state->rvi = i * 32 + fls(apic_page_irr[i * 4]) - 1;
+			break;
+		}
+	}
+
+	if (enter_state->rvi)
+		mshv_vtl_offload_resume(run);
+}
+
+static bool mshv_tdx_is_hlt(const struct tdx_vp_context *context)
+{
+	return ((u32)context->exit_info.rax) == EXIT_REASON_HLT;
+}
+
+static bool mshv_tdx_is_idle(const struct tdx_vp_context *context)
+{
+	return ((u32)context->exit_info.rax) == EXIT_REASON_MSR_READ &&
+		(u32)context->l2_enter_guest_state.rcx == HV_X64_MSR_GUEST_IDLE;
+}
+
+static bool mshv_tdx_is_preemption_timer(const struct tdx_vp_context *context)
+{
+	return ((u32)context->exit_info.rax) == EXIT_REASON_PREEMPTION_TIMER;
+}
+
+static void mshv_tdx_handle_hlt_idle(struct tdx_vp_context *context)
+{
+    const u64 VP_WRITE = 10;
+    struct tdx_extended_field_code ext_field_code = {};
+    u64 status;
+
+    ext_field_code.field_code    = GUEST_INTERRUPTIBILITY_INFO;
+    ext_field_code.field_size    = 2;  /* TDX_FIELD_SIZE_32_BIT */
+    ext_field_code.context_code  = 2;  /* TDX_CONTEXT_CODE_VP_SCOPE */
+    ext_field_code.class_code    = 36; /* L2_VM1 (VTL0) */
+
+    struct tdx_module_args args = {
+        .rcx = 0,
+        .rdx = ext_field_code.as_u64,
+        .r8 = 0,
+        .r9 = 1,
+    };
+
+    /* Clear interrupt shadow */
+    status = __tdcall(VP_WRITE, &args);
+
+    if (status != 0)
+        panic("tdcall vmcs write failed with code: %llx", status);
+
+    mshv_tdx_advance_to_next_instruction(context);
+    mshv_tdx_clear_exit_reason(context);
+    mshv_vtl_this_run()->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+}
+
+/*
+ * Try to handle a TDX exit entirely in kernel, to avoid the overhead of a
+ * user<->kernel transition. Currently handles ICR writes, HLT, idle, and interrupt injection.
+ * Returns true if the exit was handled entirely in kernel, and the L2 should be re-entered.
+ * Returns false if the exit must be handled by user-space.
+ */
+static bool mshv_tdx_try_handle_exit(struct mshv_vtl_run *run)
+{
+	struct tdx_vp_context *context = &run->tdx_context;
+	const bool intr_inject = MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT & run->offload_flags;
+	const bool x2apic = MSHV_VTL_OFFLOAD_FLAG_X2APIC & run->offload_flags;
+	bool ret_to_user = true;
+
+	if (mshv_tdx_is_preemption_timer(context)) {
+		mshv_tdx_tsc_deadline_expired(context);
+		return false;
+	}
+
+	if (!intr_inject || mshv_tdx_next_intr_exists(context))
+		return false;
+
+	if (mshv_tdx_is_intr(context)) {
+		ret_to_user = false;
+	} else if (x2apic && mshv_tdx_is_simple_icr_write(context)) {
+		ret_to_user = mshv_tdx_handle_simple_icr_write(context);
+	} else if (mshv_tdx_is_hlt(context)) {
+		ret_to_user = false;
+		mshv_tdx_handle_hlt_idle(context);
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+	} else if (mshv_tdx_is_idle(context)) {
+		ret_to_user = false;
+		mshv_tdx_handle_hlt_idle(context);
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+	}
+
+	return !ret_to_user;
+}
+
+#endif /* CONFIG_INTEL_TDX_GUEST */
+
+#if defined(CONFIG_SEV_GUEST)
+
+static struct page *snp_this_savic_page(void)
+{
+	return *this_cpu_ptr(&mshv_vtl_per_cpu.snp_secure_avic_page);
+}
+
+static struct sev_es_save_area *snp_this_vmsa(void)
+{
+	struct page *vmsa_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page);
+
+	return page_address(vmsa_page);
+}
+
+static u64 mshv_snp_read_vmsa_reg(struct mshv_vtl_run *run,
+				  struct sev_es_save_area *vmsa, size_t offset)
+{
+	u8 byte_index = offset / 64;
+	u8 bit_index = (offset % 64) / 8;
+	u64 value = READ_ONCE(*(u64 *)((u8 *)vmsa + offset));
+
+	if (READ_ONCE(run->snp_context.vmsa_tweak_bitmap[byte_index]) & BIT(bit_index)) {
+		static_assert(offsetof(struct sev_es_save_area, reserved_0x300) == 0x300);
+		value ^= READ_ONCE(*(u64 *)vmsa->reserved_0x300);
+	}
+
+	return value;
+}
+
+static void mshv_snp_write_vmsa_reg(struct mshv_vtl_run *run,
+				    struct sev_es_save_area *vmsa,
+				    size_t offset, u64 value)
+{
+	u8 byte_index = offset / 64;
+	u8 bit_index = (offset % 64) / 8;
+
+	if (READ_ONCE(run->snp_context.vmsa_tweak_bitmap[byte_index]) & BIT(bit_index))
+		value ^= READ_ONCE(*(u64 *)vmsa->reserved_0x300);
+
+	WRITE_ONCE(*(u64 *)((u8 *)vmsa + offset), value);
+}
+
+#define MSHV_STIMER_ENABLE		BIT_ULL(0)
+#define MSHV_STIMER_PERIODIC		BIT_ULL(1)
+#define MSHV_STIMER_AUTO_ENABLE		BIT_ULL(3)
+
+static bool mshv_snp_try_handle_stimer0_count(struct mshv_vtl_run *run,
+					      struct sev_es_save_area *vmsa,
+					      u64 count)
+{
+	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	atomic_t *flags = (atomic_t *)&run->snp_context.stimer0_flags;
+	union hv_input_vtl target_vtl = READ_ONCE(run->target_vtl);
+	u32 old_flags = atomic_read(flags);
+	u64 config;
+	u64 now;
+	u64 delta;
+	u64 ns;
+
+	if ((target_vtl.use_target_vtl && target_vtl.target_vtl > 0) ||
+	    !(old_flags & MSHV_VTL_SNP_STIMER0_CONFIG_VALID))
+		return false;
+
+	if (old_flags & MSHV_VTL_SNP_STIMER0_KERNEL_UPDATE) {
+		hrtimer_cancel(&per_cpu->snp_stimer0_timer);
+		old_flags = atomic_read(flags);
+		if (old_flags & MSHV_VTL_SNP_STIMER0_EXPIRED)
+			return false;
+	}
+
+	config = READ_ONCE(run->snp_context.stimer0_config);
+	now = hv_read_reference_counter();
+
+	WRITE_ONCE(run->snp_context.stimer0_count, count);
+	WRITE_ONCE(run->snp_context.stimer0_programmed_ref_time, now);
+	atomic_set(flags, (old_flags | MSHV_VTL_SNP_STIMER0_KERNEL_UPDATE) &
+			  ~MSHV_VTL_SNP_STIMER0_EXPIRED);
+
+	if (count && ((config & MSHV_STIMER_ENABLE) ||
+		      (config & MSHV_STIMER_AUTO_ENABLE))) {
+		if (config & MSHV_STIMER_PERIODIC)
+			delta = count;
+		else
+			delta = (s64)(count - now) > 0 ? count - now : 0;
+		ns = delta > KTIME_MAX / 100 ? KTIME_MAX : delta * 100;
+		hrtimer_start(&per_cpu->snp_stimer0_timer, ns_to_ktime(ns),
+			      HRTIMER_MODE_REL_PINNED);
+	}
+
+	mshv_snp_write_vmsa_reg(
+		run, vmsa, offsetof(struct sev_es_save_area, rip),
+		mshv_snp_read_vmsa_reg(
+			run, vmsa, offsetof(struct sev_es_save_area, guest_nrip)));
+	return true;
+}
+
+/*
+ * Sets a benign guest error code so that there won't be another
+ * #VMEXIT for the just processed one and marks the VMSA as
+ * runnable.
+ */
+static void mshv_snp_clear_exit_code(struct sev_es_save_area *vmsa, bool int_shadow)
+{
+	if (int_shadow)
+		vmsa->vintr_ctrl |= V_INT_SHADOW_MASK;
+	else
+		vmsa->vintr_ctrl &= ~V_INT_SHADOW_MASK;
+	vmsa->guest_exit_code = SVM_EXIT_INTR;
+	vmsa->vintr_ctrl &= ~V_GUEST_BUSY_MASK;
+}
+
+/*
+ * Determine if this interrupt was handled completely in the kernel.
+ *
+ * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
+ * Returns false if the exit must be handled by user-space.
+ */
+static bool mshv_snp_try_handle_interrupt_entry(struct mshv_vtl_run *run)
+{
+	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
+
+	if (!(run->offload_flags & MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT) ||
+	    READ_ONCE(hvp->vtl_entry_reason) != MSHV_ENTRY_REASON_INTERRUPT)
+		return false;
+
+	mshv_snp_clear_exit_code(snp_this_vmsa(), false);
+	return true;
+}
+
+
+/*
+ * Try to handle the incomplete IPI SEV-SNP exit.
+ *
+ * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
+ * Returns false if the exit must be handled by user-space.
+ */
+static bool mshv_snp_try_handle_incomplete_ipi(struct mshv_vtl_run *run,
+	struct sev_es_save_area *vmsa)
+{
+	u32 icr_lo = vmsa->guest_exit_info_1;
+	u32 dest = vmsa->guest_exit_info_1 >> 32;
+
+	/* Route the INIT, SIPI, NMI to the user mode for now. */
+	if ((icr_lo & APIC_DM_FIXED_MASK) != APIC_DM_FIXED)
+		return false;
+	/* Can handle only edge-triggered interrupts. */
+	if (icr_lo & APIC_INT_LEVELTRIG)
+		return false;
+
+	if (mshv_snp_handle_simple_icr_write(icr_lo, dest))
+		return false;
+
+	return true;
+}
+
+/*
+ * Try to handle an SEV-SNP exit entirely in kernel, to avoid the overhead of a
+ * user<->kernel transition.
+ *
+ * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
+ * Returns false if the exit must be handled by user-space.
+ */
+static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
+{
+	const bool intr_inject = MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT & run->offload_flags;
+	const bool x2apic = MSHV_VTL_OFFLOAD_FLAG_X2APIC & run->offload_flags;
+	struct sev_es_save_area *vmsa;
+
+	if (!intr_inject)
+		return false;
+
+	vmsa = snp_this_vmsa();
+
+	switch (vmsa->guest_exit_code) {
+	case SVM_EXIT_AVIC_INCOMPLETE_IPI:
+		if (x2apic && mshv_snp_try_handle_incomplete_ipi(run, vmsa))
+			goto handled;
+		break;
+	case SVM_EXIT_HLT:
+		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+		goto handled;
+	case SVM_EXIT_IDLE_HLT:
+		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+		goto handled;
+	case SVM_EXIT_INTR:
+		/*
+		 * mshv_snp_clear_exit_code() uses SVM_EXIT_INTR as a benign
+		 * sentinel. If VTL2 was woken from native_safe_halt(), VTL0 did
+		 * not run and the VMSA still contains that sentinel.
+		 */
+		if (run->flags & MSHV_VTL_RUN_FLAG_HALTED)
+			return true;
+		break;
+	case SVM_EXIT_MSR:
+		if (READ_ONCE(hv_vp_assist_page[smp_processor_id()]->vtl_entry_reason) ==
+			    MSHV_ENTRY_REASON_INTERCEPT &&
+		    (u32)mshv_snp_read_vmsa_reg(
+			    run, vmsa, offsetof(struct sev_es_save_area, rcx)) ==
+			    HV_X64_MSR_STIMER0_COUNT &&
+		    (vmsa->guest_exit_info_1 & 1)) {
+			u64 count = (u32)mshv_snp_read_vmsa_reg(
+					    run, vmsa,
+					    offsetof(struct sev_es_save_area, rax)) |
+				((u64)(u32)mshv_snp_read_vmsa_reg(
+					 run, vmsa,
+					 offsetof(struct sev_es_save_area, rdx))
+				 << 32);
+
+			if (mshv_snp_try_handle_stimer0_count(run, vmsa, count))
+				goto handled;
+		} else if ((u32)mshv_snp_read_vmsa_reg(
+			    run, vmsa, offsetof(struct sev_es_save_area, rcx)) ==
+			    HV_X64_MSR_GUEST_IDLE &&
+		    !(vmsa->guest_exit_info_1 & 1)) {
+			u64 next_rip = mshv_snp_read_vmsa_reg(
+				run, vmsa, offsetof(struct sev_es_save_area, guest_nrip));
+
+			/* The guest indicates it's idle by reading this synthetic MSR. */
+			mshv_snp_write_vmsa_reg(
+				run, vmsa, offsetof(struct sev_es_save_area, rax), 0);
+			mshv_snp_write_vmsa_reg(
+				run, vmsa, offsetof(struct sev_es_save_area, rdx), 0);
+			mshv_snp_write_vmsa_reg(
+				run, vmsa, offsetof(struct sev_es_save_area, rip), next_rip);
+
+			run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+			run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+			run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+
+			goto handled;
+		}
+		break;
+	default:
+		break;
+	}
+
+	mshv_vtl_offload_resume(run);
+
+	return false;
+
+handled:
+
+	mshv_snp_clear_exit_code(vmsa, false);
+	return true;
+}
+
+static void mshv_snp_release_stimer0(struct mshv_vtl_run *run)
+{
+	if (!(atomic_read((atomic_t *)&run->snp_context.stimer0_flags) &
+	      MSHV_VTL_SNP_STIMER0_KERNEL_UPDATE))
+		return;
+
+	hrtimer_cancel(&this_cpu_ptr(&mshv_vtl_per_cpu)->snp_stimer0_timer);
+}
+
+static bool mshv_snp_try_handle_intercept(struct mshv_vtl_run *run)
+{
+	struct hv_vp_assist_page *hvp =  hv_vp_assist_page[smp_processor_id()];
+	u32 msg_type = HVMSG_NONE;
+	struct hv_message *msg = NULL;
+	bool is_interrupt = false;
+
+	switch (hvp->vtl_entry_reason) {
+	case MSHV_ENTRY_REASON_INTERRUPT:
+		if (!mshv_vsm_capabilities.intercept_page_available) {
+			struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
+			void *synic_message_page = mshv_cpu->synic_message_page;
+
+			if (likely(synic_message_page)) {
+				msg = (struct hv_message *)synic_message_page +
+					HV_SYNIC_INTERCEPTION_SINT_INDEX;
+				is_interrupt = true;
+			}
+		}
+		break;
+
+	case MSHV_ENTRY_REASON_INTERCEPT:
+		WARN_ON(!mshv_vsm_capabilities.intercept_page_available);
+		msg = (struct hv_message *)hvp->intercept_message;
+		break;
+
+	default:
+		panic("unknown entry reason: %d", hvp->vtl_entry_reason);
+	}
+
+	if (!msg)
+		return true;
+	msg_type = READ_ONCE(msg->header.message_type);
+
+	switch (msg_type) {
+	case HVMSG_NONE:
+		break;
+	case HVMSG_X64_EXCEPTION_INTERCEPT:
+		{
+			struct hv_x64_exception_intercept_message *expt_msg =
+				(struct hv_x64_exception_intercept_message *)msg->u.payload;
+			if (expt_msg->exception_vector != X86_TRAP_VC)
+				return false;
+		}
+		break;
+	case HVMSG_SYNIC_SINT_DELIVERABLE:
+		return false;
+	case HVMSG_X64_HALT:
+		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
+		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
+		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+		break;
+	default:
+		return false;
+	}
+
+	if (is_interrupt)
+		vmbus_signal_eom(msg, msg_type);
+
+	return true;
+}
+#endif /* CONFIG_SEV_GUEST */
+
+/*
+ * Attempts to directly inject the interrupts in the proxy_irr field.
+ * Returns true if an exit to user-space is required.
+ */
+static bool mshv_pull_proxy_irr(struct mshv_vtl_run *run)
+{
+	bool ret = READ_ONCE(run->scan_proxy_irr);
+
+	if (!(run->offload_flags & MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT))
+		return ret;
+
+	if (hv_isolation_type_tdx()) {
+#ifdef CONFIG_INTEL_TDX_GUEST
+		ret = __mshv_pull_proxy_irr(run, tdx_this_apic_page());
+		mshv_tdx_update_rvi_halt(run);
+#endif
+	} else if (hv_isolation_type_snp()) {
+#ifdef CONFIG_SEV_GUEST
+		struct page *savic_page = snp_this_savic_page();
+
+		ret = __mshv_pull_proxy_irr(run, savic_page);
+		mshv_snp_clear_halt_if_irr_pending(run, savic_page);
+#endif
+	}
+
+	return ret;
+}
+
 static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 {
+	u32 mode, enter, reenter;
+
 	preempt_disable();
+	mode = READ_ONCE(mshv_vtl_this_run()->enter_mode);
+	enter = enter_mode(mode);
+	reenter = reenter_mode(mode);
+
 	for (;;) {
 		unsigned long irq_flags;
 		struct hv_vp_assist_page *hvp;
@@ -674,14 +2715,61 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		}
 
 		local_irq_save(irq_flags);
-		if (READ_ONCE(mshv_vtl_this_run()->cancel)) {
+		if (READ_ONCE(mshv_vtl_this_run()->cancel) ||
+		    mshv_pull_proxy_irr(mshv_vtl_this_run())) {
 			local_irq_restore(irq_flags);
 			preempt_enable();
 			return -EINTR;
 		}
 
-		mshv_vtl_return(&mshv_vtl_this_run()->cpu_context);
-		local_irq_restore(irq_flags);
+		if (tick_nohz_full_enabled() || nr_cpu_ids == 1 || !enter) {
+			mshv_vtl_switch_to_vtl0_irqoff();
+			local_irq_restore(irq_flags);
+		} else if (enter == 2 && smp_load_acquire(&in_idle_is_enabled)) {
+			set_current_state(TASK_INTERRUPTIBLE);
+			this_cpu_write(mshv_vtl_thread, current);
+			local_irq_restore(irq_flags);
+
+			schedule_preempt_disabled();
+
+			if (this_cpu_read(mshv_vtl_thread)) {
+				this_cpu_write(mshv_vtl_thread, NULL);
+				continue;
+			}
+		} else { /* play idle */
+			current->flags |= PF_IDLE;
+			/* Enter idle */
+			tick_nohz_idle_enter();
+			/* Stop ticks */
+			tick_nohz_idle_stop_tick();
+
+			ct_idle_enter();
+			mshv_vtl_switch_to_vtl0_irqoff();
+			ct_idle_exit();
+			local_irq_restore(irq_flags);
+
+			tick_nohz_idle_exit();
+
+			current->flags &= ~PF_IDLE;
+		}
+
+		if (hv_isolation_type_tdx()) {
+#ifdef CONFIG_INTEL_TDX_GUEST
+			if (mshv_tdx_try_handle_exit(mshv_vtl_this_run()))
+				continue; /* Exit handled entirely in kernel */
+			else
+				goto done;
+#endif
+		} else if (hv_isolation_type_snp()) {
+#ifdef CONFIG_SEV_GUEST
+			struct mshv_vtl_run *run = mshv_vtl_this_run();
+
+			if (mshv_snp_try_handle_intercept(run) &&
+				(mshv_snp_try_handle_interrupt_entry(run) ||
+			     mshv_snp_try_handle_exit(run)))
+				continue; /* Exit handled entirely in kernel */
+#endif
+		}
 
 		hvp = hv_vp_assist_page[smp_processor_id()];
 		this_cpu_inc(num_vtl0_transitions);
@@ -690,6 +2778,12 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 			if (!mshv_vsm_capabilities.intercept_page_available &&
 			    likely(!mshv_vtl_process_intercept()))
 				goto done;
+
+			/*
+			 * Woken up with nothing to do, switch to the reenter
+			 * mode
+			 */
+			enter = reenter;
 			break;
 
 		case MSHV_ENTRY_REASON_INTERCEPT:
@@ -704,6 +2798,11 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 	}
 
 done:
+#ifdef CONFIG_SEV_GUEST
+	if (hv_isolation_type_snp())
+		mshv_snp_release_stimer0(mshv_vtl_this_run());
+#endif
+
 	preempt_enable();
 
 	return 0;
@@ -716,6 +2815,12 @@ mshv_vtl_ioctl_get_regs(void __user *user_args)
 	struct hv_register_assoc reg;
 	long ret;
 
+#ifdef CONFIG_X86_64
+	/* For SNP, register state maniupulation happens through the VMSA. */
+	if (hv_isolation_type_snp())
+		return -EINVAL;
+#endif
+
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
@@ -727,9 +2832,10 @@ mshv_vtl_ioctl_get_regs(void __user *user_args)
 			   sizeof(reg)))
 		return -EFAULT;
 
-	ret = mshv_vtl_get_set_reg(&reg, false);
+	ret = mshv_vtl_get_set_reg(&reg, false, mshv_vsm_capabilities.dr6_shared);
 	if (!ret)
 		goto copy_args; /* No need of hypercall */
+
 	ret = vtl_get_vp_register(&reg);
 	if (ret)
 		return ret;
@@ -748,6 +2854,12 @@ mshv_vtl_ioctl_set_regs(void __user *user_args)
 	struct hv_register_assoc reg;
 	long ret;
 
+#ifdef CONFIG_X86_64
+	/* For SNP, register state maniupulation happens through the VMSA. */
+	if (hv_isolation_type_snp())
+		return -EINVAL;
+#endif
+
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
@@ -758,13 +2870,784 @@ mshv_vtl_ioctl_set_regs(void __user *user_args)
 	if (copy_from_user(&reg, (void __user *)args.regs_ptr, sizeof(reg)))
 		return -EFAULT;
 
-	ret = mshv_vtl_get_set_reg(&reg, true);
+	ret = mshv_vtl_get_set_reg(&reg, true, mshv_vsm_capabilities.dr6_shared);
 	if (!ret)
 		return ret; /* No need of hypercall */
 	ret = vtl_set_vp_register(&reg);
 
 	return ret;
 }
+
+static void ack_kick(void *cancel_cpu_run)
+{
+	bool cancel = (bool)cancel_cpu_run;
+
+	if (cancel)
+		WRITE_ONCE(mshv_vtl_this_run()->cancel, 1);
+}
+
+static int get_user_cpu_mask(void __user *user_mask_ptr, unsigned long long len,
+			     struct cpumask *new_mask)
+{
+	if (len < cpumask_size())
+		cpumask_clear(new_mask);
+	else if (len > cpumask_size())
+		len = cpumask_size();
+
+	return copy_from_user(new_mask, user_mask_ptr, len) ? -EFAULT : 0;
+}
+
+static inline long mshv_vtl_ioctl_kick_cpu(void __user *user_arg)
+{
+	struct mshv_kick_cpus args = {};
+	struct cpumask cpus = {};
+	long ret;
+	int self;
+	bool wait_for_cpus = false;
+	bool cancel_cpu_run = false;
+
+	ret = copy_from_user(&args, user_arg, sizeof(args)) ? -EFAULT : 0;
+	if (ret)
+		return ret;
+
+	ret = get_user_cpu_mask((void __user *)args.cpu_mask_ptr, args.len, &cpus);
+	if (ret)
+		return ret;
+
+	if (cpumask_empty(&cpus))
+		return 0;
+
+	if (args.flags & MSHV_KICK_CPUS_FLAG_WAIT_FOR_CPUS)
+		wait_for_cpus = true;
+
+	if (args.flags & MSHV_KICK_CPUS_FLAG_CANCEL_CPU_RUN)
+		cancel_cpu_run = true;
+
+	self = get_cpu();
+	cpumask_clear_cpu(self, &cpus);
+
+#if defined(CONFIG_X86_64)
+	if (wait_for_cpus) {
+		smp_call_function_many(&cpus, ack_kick, (void *) cancel_cpu_run, wait_for_cpus);
+	} else {
+		if (cancel_cpu_run) {
+			int cpu;
+
+			for_each_cpu(cpu, &cpus) {
+				/*
+				 * Memory barrier required due to the reschedule vector usage
+				 * below, since we're not waiting for each cpu to acknowledge
+				 * the kick.
+				 */
+				smp_store_release(&mshv_vtl_cpu_run(cpu)->cancel, 1);
+			}
+		}
+
+		__apic_send_IPI_mask(&cpus, RESCHEDULE_VECTOR);
+	}
+#else
+	/*
+	 * On non X64 platforms, there's no simple way to broadcast a reschedule,
+	 * so just always use the generic function.
+	 */
+	smp_call_function_many(&cpus, ack_kick, (void *) cancel_cpu_run, wait_for_cpus);
+#endif
+
+	put_cpu();
+	return 0;
+}
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+
+/*
+ * Issue a TD module call from usermode. Note that currently only tdmodule
+ * calls are supported, not TD.VMCALL.
+ */
+static long mshv_vtl_ioctl_tdcall(void __user *user_tdcall)
+{
+    struct mshv_tdcall tdcall = {};
+    //struct tdx_module_output output = {};
+    struct tdx_module_args args = {};
+    u64 status = 0;
+
+    if (!hv_isolation_type_tdx())
+        return -EINVAL;
+
+    if (copy_from_user(&tdcall, user_tdcall, sizeof(tdcall)))
+        return -EFAULT;
+
+    args.rcx = tdcall.rcx;
+    args.rdx = tdcall.rdx;
+    args.r8 = tdcall.r8;
+    args.r9 = tdcall.r9;
+
+    status = __tdcall_ret(tdcall.rax, &args);
+
+    tdcall.rax = status;
+    tdcall.rcx = args.rcx;
+    tdcall.rdx = args.rdx;
+    tdcall.r8 = args.r8;
+    tdcall.r9 = args.r9;
+    tdcall.r10_out = args.r10;
+    tdcall.r11_out = args.r11;
+
+    return copy_to_user(user_tdcall, &tdcall, sizeof(tdcall)) ? -EFAULT : 0;
+}
+
+static long mshv_vtl_ioctl_read_vmx_cr4_fixed1(void __user *user_arg)
+{
+	u64 value;
+
+	value = native_read_msr(MSR_IA32_VMX_CR4_FIXED1);
+
+	return copy_to_user(user_arg, &value, sizeof(value)) ? -EFAULT : 0;
+}
+
+static int hyperv_vtl_redirected_intr_alloc(struct irq_domain *domain, unsigned int virq,
+					    unsigned int nr_irqs, void *arg)
+{
+	int ret;
+
+	ret = irq_domain_alloc_irqs_parent(domain, virq, nr_irqs, arg);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * The dummy chip does not have irq_set_affinity(). The affinity of an
+	 * IRQ cannot be changed after initialization (see
+	 * __irq_can_set_affinity()).
+	 */
+	irq_set_chip_and_handler(virq, &dummy_irq_chip, handle_simple_irq);
+
+	return 0;
+}
+
+static const struct irq_domain_ops hyperv_vtl_redirected_intr_ops = {
+	.alloc = hyperv_vtl_redirected_intr_alloc,
+	.free = irq_domain_free_irqs_common,
+};
+
+#define REDIRECTED_INTR_NAME_LEN 64
+struct redirected_intr {
+	int irq;
+	int proxy_vector;
+	u32 apic_id;
+	char name[REDIRECTED_INTR_NAME_LEN];
+	struct list_head list;
+};
+
+static struct list_head redirected_intr_list;
+static struct mutex redirected_intr_lock;
+
+static struct irq_domain *redirected_intr_domain;
+static struct fwnode_handle *redirected_intr_fwnode;
+
+static int __init ms_hyperv_init_redirected_intr(void)
+{
+	redirected_intr_fwnode = irq_domain_alloc_named_fwnode("hyperv-redirected-intr");
+	if (!redirected_intr_fwnode)
+		return -ENODEV;
+
+	redirected_intr_domain = irq_domain_create_hierarchy(x86_vector_domain, 0, 0,
+							     redirected_intr_fwnode,
+							     &hyperv_vtl_redirected_intr_ops,
+							     NULL);
+	if (!redirected_intr_domain) {
+		irq_domain_free_fwnode(redirected_intr_fwnode);
+		return -ENODEV;
+	}
+
+	INIT_LIST_HEAD(&redirected_intr_list);
+	mutex_init(&redirected_intr_lock);
+
+	return 0;
+}
+
+static void ms_hyperv_free_redirected_intr(void)
+{
+	struct redirected_intr *rintr, *tmp;
+
+	guard(mutex)(&redirected_intr_lock);
+	if (!redirected_intr_domain)
+		return;
+
+	list_for_each_entry_safe(rintr, tmp, &redirected_intr_list, list) {
+		free_irq(rintr->irq, rintr);
+		list_del(&rintr->list);
+		kfree(rintr);
+	}
+
+	irq_domain_remove(redirected_intr_domain);
+	irq_domain_free_fwnode(redirected_intr_fwnode);
+	redirected_intr_domain = NULL;
+	redirected_intr_fwnode = NULL;
+}
+
+static irqreturn_t handle_single_proxy_intr(int irq, void *data)
+{
+	struct mshv_vtl_run *run = mshv_vtl_this_run();
+	struct redirected_intr *rintr = data;
+
+	/*
+	 * This function is called when the proxy interrupt is triggered.
+	 * We assert that only one proxy interrupt is active at a time.
+	 */
+	do_assert_single_proxy_intr(rintr->proxy_vector, run);
+	WRITE_ONCE(run->scan_proxy_irr, 1);
+
+	apic_eoi();
+
+	return IRQ_HANDLED;
+}
+
+/* must be called with redirected_intr_lock */
+static struct redirected_intr *find_redirect_intr(u32 proxy_vector, u32 apic_id)
+{
+	struct redirected_intr *rintr;
+
+	list_for_each_entry(rintr, &redirected_intr_list, list) {
+		if (rintr->proxy_vector == proxy_vector &&
+		    rintr->apic_id == apic_id)
+			return rintr;
+	}
+
+	return NULL;
+}
+
+static int mshv_vtl_map_redirected_intr(u32 proxy_vector, u32 apic_id)
+{
+	struct irq_affinity_desc affinity_desc = {};
+	struct irq_alloc_info info = {};
+	struct redirected_intr *rintr;
+	int irq, ret, cpu;
+
+	if (proxy_vector > 255)
+		return -EINVAL;
+
+	cpu = get_cpuid(apic_id);
+	if (cpu < 0 || !cpu_online(cpu))
+		return -EINVAL;
+
+	guard(mutex)(&redirected_intr_lock);
+
+	rintr = find_redirect_intr(proxy_vector, apic_id);
+	if (rintr)
+		/* Already mapped. Just return the HW vector we are using. */
+		return irq_cfg(rintr->irq)->vector;
+
+	rintr = kzalloc(sizeof(*rintr), GFP_KERNEL);
+	if (!rintr)
+		return -ENOMEM;
+
+	cpumask_set_cpu(cpu, &affinity_desc.mask);
+
+	/* The x86_vector_domain needs a non-NULL info. */
+	irq = __irq_domain_alloc_irqs(redirected_intr_domain, -1, 1, NUMA_NO_NODE,
+				      &info, false, &affinity_desc);
+	if (irq < 0) {
+		ret = irq;
+		goto out;
+	}
+
+	snprintf(rintr->name, REDIRECTED_INTR_NAME_LEN,
+		 "hyperv-redir-intr-%x.%x", apic_id, proxy_vector);
+	/*
+	 * We do not want the IRQ to be moved to a different CPU. Both user
+	 * space and the hypervisor have agreed on the CPU that the interrupt
+	 * should target.
+	 */
+	ret = request_irq(irq, handle_single_proxy_intr, IRQF_NOBALANCING,
+			  rintr->name, rintr);
+	if (ret)
+		goto out;
+
+	rintr->irq = irq;
+	rintr->proxy_vector = proxy_vector;
+	rintr->apic_id = apic_id;
+	INIT_LIST_HEAD(&rintr->list);
+	list_add(&rintr->list, &redirected_intr_list);
+
+	return irq_cfg(irq)->vector;
+
+out:
+	kfree(rintr);
+	return ret;
+}
+
+static int mshv_vtl_unmap_redirected_intr(u32 hw_vector, u32 apic_id)
+{
+	struct redirected_intr *rintr;
+
+	if (hw_vector  > 255)
+		return -EINVAL;
+
+	guard(mutex)(&redirected_intr_lock);
+	list_for_each_entry(rintr, &redirected_intr_list, list) {
+		unsigned int vector = irq_cfg(rintr->irq)->vector;
+
+		if (vector == hw_vector && rintr->apic_id == apic_id) {
+			free_irq(rintr->irq, rintr);
+			list_del(&rintr->list);
+			kfree(rintr);
+			return 0;
+		}
+	}
+
+	return -ENOENT;
+}
+
+static long mshv_vtl_ioctl_setup_redirected_intr(void __user *user_arg)
+{
+	struct mshv_map_device_intr intr_data;
+	int ret;
+
+	if (copy_from_user(&intr_data, user_arg, sizeof(intr_data)))
+		return (long)-EFAULT;
+
+	/* User space provides the hardware vector to unmap. */
+	if (!intr_data.create_mapping)
+		return (long)mshv_vtl_unmap_redirected_intr(intr_data.vector,
+							    intr_data.apic_id);
+
+	/*
+	 * User space provides the proxy vector it wants to map to a hardware
+	 * vector.
+	 */
+	ret = mshv_vtl_map_redirected_intr(intr_data.vector, intr_data.apic_id);
+	if (ret < 0)
+		return (long)ret;
+
+	/*
+	 * The return value is the hardware vector to which the proxy vector
+	 * is mapped.
+	 */
+	intr_data.vector = ret;
+	ret = copy_to_user(user_arg, &intr_data, sizeof(intr_data)) ? -EFAULT : 0;
+
+	return (long)ret;
+}
+
+#else
+static inline int ms_hyperv_init_redirected_intr(void) { return 0; }
+static inline void ms_hyperv_free_redirected_intr(void) { }
+#endif
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+
+static void __noreturn mshv_sev_es_terminate(unsigned int set, unsigned int reason)
+{
+	native_wrmsrq(MSR_AMD64_SEV_ES_GHCB,
+		      GHCB_SEV_TERM_REASON(set, reason) | GHCB_MSR_TERM_REQ);
+	VMGEXIT();
+
+	while (true)
+		asm volatile("hlt\n" : : : "memory");
+}
+
+struct mshv_vtl_pvalidate_param {
+	bool use_large_page;
+	u8 validate;
+};
+
+static ssize_t mshv_vtl_use_local_page_pvalidate(void *vaddr, void *param)
+{
+	struct mshv_vtl_pvalidate_param *pval = param;
+	u8 rmp_psize = pval->use_large_page ? RMP_PG_SIZE_2M : RMP_PG_SIZE_4K;
+	u8 validate = pval->validate;
+
+	return pvalidate((u64)vaddr, rmp_psize, validate);
+}
+
+struct mshv_vtl_rmpadjust_param {
+	bool use_large_page;
+	u64 attrs;
+};
+
+static ssize_t mshv_vtl_use_local_page_rmpadjust(void *vaddr, void *param)
+{
+	struct mshv_vtl_rmpadjust_param* rmpadj = param;
+	u8 rmp_psize = rmpadj->use_large_page ? RMP_PG_SIZE_2M : RMP_PG_SIZE_4K;
+	u64 attrs = rmpadj->attrs;
+
+	return rmpadjust((u64)vaddr, rmp_psize, attrs);
+}
+
+static long mshv_vtl_ioctl_pvalidate(void __user* pval_user)
+{
+	u64 pfn_end, pfn;
+	long rc;
+	struct mshv_pvalidate pval = {};
+
+	if (!hv_isolation_type_snp())
+		return -EINVAL;
+
+	if (copy_from_user(&pval, pval_user, sizeof(pval)))
+		return -EFAULT;
+
+	if (!pval.page_count)
+		return -ENODATA;
+
+	pr_debug("%s: start_pfn %#llx, page count %#llx, ram %d, validate %d\n",
+			__func__, pval.start_pfn, pval.page_count, pval.ram, pval.validate);
+
+	pfn = pval.start_pfn;
+	pfn_end = pfn + pval.page_count;
+	/* The strategy below is to process as few small pages as possible as that is slow */
+	while (pfn < pfn_end) {
+		struct mshv_vtl_pvalidate_param param;
+		bool use_large_page = IS_ALIGNED(pfn, PAGES_PER_PMD) && (pfn_end - pfn >= PAGES_PER_PMD);
+		u64 count = 0;
+		u64 failed_pfn = -1;
+
+		if (use_large_page) {
+			/* Get the maximum amount of large page in pfn..pfn_end */
+			count = ALIGN_DOWN(pfn_end, PAGES_PER_PMD) - pfn;
+		} else {
+			/*
+			 * If there are some large pages (PAGES_PER_PMD pages) is a large pages,
+			 * process up to the beginning of a large page so that after that
+			 * can process the large pages again. Otherwise, just process the
+			 * small pages.
+			 */
+			if (pfn_end - pfn >= PAGES_PER_PMD)
+				count = ALIGN(pfn, PAGES_PER_PMD) - pfn;
+			else
+				count = pfn_end - pfn;
+		}
+		BUG_ON(!count || count > pval.page_count);
+
+		param.use_large_page = use_large_page;
+		param.validate = pval.validate;
+
+		rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_pvalidate, &param);
+		if (rc == PVALIDATE_FAIL_SIZEMISMATCH && use_large_page) {
+			/*
+			 * The hypervisor indicated that it smashed the large page into 4KiB ones.
+			 * That may happen if and only if large pages are used. Assert that is true,
+			 * as otherwise something fundamental is broken and the processing has to stop
+			 * as the results are undefined.
+			 */
+			BUG_ON(!IS_ALIGNED(pfn, PAGES_PER_PMD) || (pfn_end - pfn < PAGES_PER_PMD));
+			BUG_ON(!IS_ALIGNED(failed_pfn, PAGES_PER_PMD));
+
+			pfn = failed_pfn;
+			count = PAGES_PER_PMD;
+			use_large_page = false;
+			param.use_large_page = false;
+
+			pr_debug("%s: retrying, large_page %d, pfn %#llx, count %#llx\n", __func__, use_large_page, pfn, count);
+			rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_pvalidate, &param);
+		}
+
+		if (WARN(rc, "%s failed for pfn %#llx, ret %ld", __func__, failed_pfn, rc)) {
+			/*
+			 * `sev.h` defines `PVALIDATE_FAIL_NOUPDATE` as `255` in addition to the hardware
+			 * codes. That software error code is returned when the CF is set after the `pvalidate`
+			 * instruction.
+			 * That in and by itself does not mean that there has been an error; the RMP entry might
+			 * just not have been updated as it is already in the requested state. As we don't expect
+			 * overlapping ranges, that is fine.
+			 */
+			if (pval.terminate_on_failure)
+				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PVALIDATE);
+			else
+				break;
+		}
+
+		pfn += count;
+	}
+
+	return rc;
+}
+
+static long mshv_vtl_ioctl_rmpadjust(void __user *rmpa_user)
+{
+	u64 pfn_end, pfn;
+	long rc;
+	struct mshv_rmpadjust rmpa = {};
+
+	if (!hv_isolation_type_snp())
+		return -EINVAL;
+
+	if (copy_from_user(&rmpa, rmpa_user, sizeof(rmpa)))
+		return -EFAULT;
+
+	if (!rmpa.page_count)
+		return -ENODATA;
+
+	pfn = rmpa.start_pfn;
+	pfn_end = pfn + rmpa.page_count;
+	/* The strategy below is to process as few small pages as possible as that is slow */
+	while (pfn < pfn_end) {
+		struct mshv_vtl_rmpadjust_param param;
+		bool use_large_page = IS_ALIGNED(pfn, PAGES_PER_PMD) && (pfn_end - pfn >= PAGES_PER_PMD);
+		u64 count = 0;
+		u64 failed_pfn = -1;
+
+		if (use_large_page) {
+			/* Get the maximum amount of large page in pfn..pfn_end */
+			count = ALIGN_DOWN(pfn_end, PAGES_PER_PMD) - pfn;
+		} else {
+			/*
+			 * If there are some large pages (PAGES_PER_PMD pages) is a large pages,
+			 * process up to the beginning of a large page so that after that
+			 * can process the large pages again. Otherwise, just process the
+			 * small pages.
+			 */
+			if (pfn_end - pfn >= PAGES_PER_PMD)
+				count = ALIGN(pfn, PAGES_PER_PMD) - pfn;
+			else
+				count = pfn_end - pfn;
+		}
+		BUG_ON(!count || count > rmpa.page_count);
+
+		param.use_large_page = use_large_page;
+		param.attrs = rmpa.value;
+
+		rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_rmpadjust, &param);
+		if (rc == PVALIDATE_FAIL_SIZEMISMATCH && use_large_page) {
+			/*
+			 * The hypervisor indicated that it smashed the large page into 4KiB ones.
+			 * That may happen if and only if large pages are used. Assert that is true,
+			 * as otherwise something fundamental is broken and the processing has to stop
+			 * as the results are undefined.
+			 */
+			BUG_ON(!IS_ALIGNED(pfn, PAGES_PER_PMD) || (pfn_end - pfn < PAGES_PER_PMD));
+			BUG_ON(!IS_ALIGNED(failed_pfn, PAGES_PER_PMD));
+
+			pfn = failed_pfn;
+			count = PAGES_PER_PMD;
+			use_large_page = false;
+			param.use_large_page = false;
+
+			pr_debug("%s: retrying, large_page %d, pfn %#llx, count %#llx\n", __func__, use_large_page, pfn, count);
+			rc = mshv_use_local_page(pfn, use_large_page, count, &failed_pfn, mshv_vtl_use_local_page_rmpadjust, &param);
+		}
+
+		if (WARN(rc, "%s failed for pfn %#llx, ret %ld", __func__, failed_pfn, rc)) {
+			/*
+			 * `sev.h` defines `PVALIDATE_FAIL_NOUPDATE` as `255` in addition to the hardware
+			 * codes. That software error code is returned when the CF is set after the `pvalidate`
+			 * instruction.
+			 * That in and by itself does not mean that there has been an error; the RMP entry might
+			 * just not have been updated as it is already in the requested state. As we don't expect
+			 * overlapping ranges, that is fine.
+			 */
+			if (rmpa.terminate_on_failure)
+				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PSC);
+			else
+				break;
+		}
+
+		pfn += count;
+	}
+
+	return rc;
+}
+
+static long mshv_vtl_ioctl_rmpquery(void __user *rmpq_user)
+{
+	u64 pfn_end, pfn;
+	long rc;
+	struct mshv_rmpquery rmpq = {};
+	u64 pages_processed;
+	u64 __user *user_flags_in_out;
+	u64 __user *user_page_size_out;
+
+	if (!hv_isolation_type_snp())
+		return -EINVAL;
+
+	if (copy_from_user(&rmpq, rmpq_user, sizeof(rmpq)))
+		return -EFAULT;
+
+	if (!rmpq.page_count)
+		return -ENODATA;
+
+	pfn = rmpq.start_pfn;
+	pfn_end = pfn + rmpq.page_count;
+	pages_processed = 0;
+	user_flags_in_out = rmpq.flags;
+	user_page_size_out = rmpq.page_size;
+	rc = 0;
+
+	while (pfn < pfn_end) {
+		unsigned long pfns[1] = { pfn };
+		void *vaddr = NULL;
+		u64 page_size = -1;
+		u64 flags = 0;
+
+		if (copy_from_user(&flags, user_flags_in_out, sizeof(flags))) {
+			pr_warn("Failed to copy flags in for pfn %#llx when querying RMP\n", pfn);
+			rc = -EFAULT;
+			break;
+		}
+
+		if (rmpq.ram)
+			vaddr = kmap_local_page(pfn_to_page(pfn));
+		else
+			vaddr = vmap_pfn(pfns, ARRAY_SIZE(pfns), PAGE_KERNEL);
+
+		if (!vaddr) {
+			rc = -EINVAL;
+			break;
+		}
+
+		rc = rmpquery((u64)vaddr, &page_size, &flags);
+		if (rmpq.ram)
+			kunmap_local(vaddr);
+		else
+			vunmap(vaddr);
+		if (rc != 0 && rc != 2) {
+			pr_warn("Bogus status %ld for pfn %#llx when querying RMP\n", rc, pfn);
+			rc = -EINVAL;
+			break;
+		}
+		if (rc == 2) {
+			rc = -EPERM;
+			pr_warn("Current ASID not 0 or the RMP entry is immutable\n");
+		}
+
+		if (rc) {
+			pr_warn("Failed to rmpquery pfn %#llx, ret %ld\n", pfn, rc);
+			if (rmpq.terminate_on_failure)
+				mshv_sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PSC);
+			else
+				break;
+		}
+
+		if (copy_to_user(user_flags_in_out, &flags, sizeof(flags))) {
+			pr_warn("Failed to copy flags out for pfn %#llx when querying RMP\n",
+				pfn);
+			rc = -EFAULT;
+			break;
+		}
+		if (copy_to_user(user_page_size_out, &page_size, sizeof(page_size))) {
+			pr_warn("Failed to copy page size out for pfn %#llx when querying RMP\n",
+				pfn);
+			rc = -EFAULT;
+			break;
+		}
+
+		++pfn;
+		++user_flags_in_out;
+		++user_page_size_out;
+		++pages_processed;
+	}
+
+	return copy_to_user(rmpq.pages_processed, &pages_processed, sizeof(pages_processed)) ?
+		-EFAULT : rc;
+}
+
+static long mshv_vtl_ioctl_invlpgb(void __user *invlpgb_user)
+{
+	struct mshv_invlpgb invlpgb = {};
+
+	if (copy_from_user(&invlpgb, invlpgb_user, sizeof(invlpgb)))
+		return -EFAULT;
+
+	/*
+	 * `invlpgb` might not be supported by an older toolchain.
+	 * Use the raw encoding instead of the mnemonic not to break
+	 * the build on the older systems.
+	*/
+	asm volatile(".byte 0x0F,0x01,0xFE\n\t"
+			:
+			: "a"(invlpgb.rax), "c"(invlpgb.ecx), "d"(invlpgb.edx)
+			: "memory");
+
+	return 0;
+}
+
+static long mshv_vtl_ioctl_tlbsync(void)
+{
+	/*
+	 * `tlbsync` might not be supported by an older toolchain.
+	 * Use the raw encoding instead of the mnemonic not to break
+	 * the build on the older systems.
+	*/
+	asm volatile(".byte 0x0F,0x01,0xFF\n\t"
+			:
+			:
+			: "memory");
+
+	return 0;
+}
+
+static void guest_vsm_vmsa_pfn_this_cpu(void *arg)
+{
+	int cpu;
+	struct page *vmsa_guest_vsm_page;
+	u64 *pfn = arg;
+
+	cpu = get_cpu();
+	vmsa_guest_vsm_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page);
+	if (!vmsa_guest_vsm_page) {
+		if (mshv_snp_configure_vmsa_page(
+				1,
+				per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page, cpu)))
+			*pfn = -ENOMEM;
+		else
+			vmsa_guest_vsm_page = *this_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page);
+	}
+	put_cpu();
+
+	*pfn = vmsa_guest_vsm_page ? page_to_pfn(vmsa_guest_vsm_page) : -ENOMEM;
+}
+
+static long mshv_vtl_ioctl_guest_vsm_vmsa_pfn(void __user *user_arg)
+{
+	u64 pfn;
+	u32 cpu_id;
+	long ret;
+
+	ret = copy_from_user(&cpu_id, user_arg, sizeof(cpu_id)) ? -EFAULT : 0;
+	if (ret)
+		return ret;
+
+	ret = smp_call_function_single(cpu_id, guest_vsm_vmsa_pfn_this_cpu, &pfn, true);
+	if (ret)
+		return ret;
+	ret = (long)pfn;
+	if (ret < 0)
+		return ret;
+
+	ret = copy_to_user(user_arg, &pfn, sizeof(pfn)) ? -EFAULT : 0;
+
+	return ret;
+}
+
+static void secure_avic_vtl0_this_cpu(void *arg)
+{
+	struct page *snp_secure_avic_page;
+	u64 *pfn = arg;
+
+	snp_secure_avic_page = *this_cpu_ptr(&mshv_vtl_per_cpu.snp_secure_avic_page);
+
+	*pfn = snp_secure_avic_page ? page_to_pfn(snp_secure_avic_page) : -EOPNOTSUPP;
+}
+
+static long mshv_vtl_ioctl_secure_avic_vtl0_pfn(void __user *user_arg)
+{
+	u64 pfn;
+	u32 cpu_id;
+	long ret;
+
+	ret = copy_from_user(&cpu_id, user_arg, sizeof(cpu_id)) ? -EFAULT : 0;
+	if (ret)
+		return ret;
+
+	ret = smp_call_function_single(cpu_id, secure_avic_vtl0_this_cpu, &pfn, true);
+	if (ret)
+		return ret;
+	ret = (long)pfn;
+	if (ret < 0)
+		return ret;
+
+	ret = copy_to_user(user_arg, &pfn, sizeof(pfn)) ? -EFAULT : 0;
+
+	return ret;
+}
+#endif
 
 static long
 mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
@@ -788,6 +3671,52 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_ADD_VTL0_MEMORY:
 		ret = mshv_vtl_ioctl_add_vtl0_mem(vtl, (void __user *)arg);
 		break;
+	case MSHV_VTL_KICK_CPU:
+		ret = mshv_vtl_ioctl_kick_cpu((void __user *)arg);
+		break;
+
+#if defined(CONFIG_X86_64)
+	case MSHV_RESTORE_PARTITION_TIME:
+		ret = mshv_restore_partition_time((void __user *)arg);
+		break;
+#endif
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_INTEL_TDX_GUEST)
+	case MSHV_VTL_TDCALL:
+		ret = mshv_vtl_ioctl_tdcall((void __user *)arg);
+		break;
+	case MSHV_VTL_READ_VMX_CR4_FIXED1:
+		ret = mshv_vtl_ioctl_read_vmx_cr4_fixed1((void __user *)arg);
+		break;
+	case MSHV_VTL_MAP_REDIRECTED_DEVICE_INTERRUPT:
+		ret = mshv_vtl_ioctl_setup_redirected_intr((void __user *)arg);
+		break;
+#endif
+
+#if defined(CONFIG_X86_64) && defined(CONFIG_SEV_GUEST)
+	case MSHV_VTL_PVALIDATE:
+		ret = mshv_vtl_ioctl_pvalidate((void __user *)arg);
+		break;
+	case MSHV_VTL_RMPADJUST:
+		ret = mshv_vtl_ioctl_rmpadjust((void __user *)arg);
+		break;
+	case MSHV_VTL_RMPQUERY:
+		ret = mshv_vtl_ioctl_rmpquery((void __user *)arg);
+		break;
+	case MSHV_VTL_INVLPGB:
+		ret = mshv_vtl_ioctl_invlpgb((void __user *)arg);
+		break;
+	case MSHV_VTL_TLBSYNC:
+		ret = mshv_vtl_ioctl_tlbsync();
+		break;
+	case MSHV_VTL_GUEST_VSM_VMSA_PFN:
+		ret = mshv_vtl_ioctl_guest_vsm_vmsa_pfn((void __user *)arg);
+		break;
+	case MSHV_VTL_SECURE_AVIC_VTL0_PFN:
+		ret = mshv_vtl_ioctl_secure_avic_vtl0_pfn((void __user *)arg);
+		break;
+#endif
+
 	default:
 		dev_err(vtl->module_dev, "invalid vtl ioctl: %#x\n", ioctl);
 		ret = -ENOTTY;
@@ -798,7 +3727,7 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 
 static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 {
-	struct page *page;
+	struct page *page = NULL;
 	int cpu = vmf->pgoff & MSHV_PG_OFF_CPU_MASK;
 	int real_off = vmf->pgoff >> MSHV_REAL_OFF_SHIFT;
 
@@ -815,9 +3744,30 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 		if (!mshv_has_reg_page)
 			return VM_FAULT_SIGBUS;
 		page = mshv_vtl_cpu_reg_page(cpu);
+#ifdef CONFIG_X86_64
+	} else if (real_off == MSHV_VMSA_PAGE_OFFSET) {
+		if (!hv_isolation_type_snp())
+			return VM_FAULT_SIGBUS;
+		page = *per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_page, cpu);
+	} else if (real_off == MSHV_VMSA_GUEST_VSM_PAGE_OFFSET) {
+		struct page **page_ptr_ptr;
+		if (!hv_isolation_type_snp())
+			return VM_FAULT_SIGBUS;
+		page_ptr_ptr = per_cpu_ptr(&mshv_vtl_per_cpu.vmsa_guest_vsm_page, cpu);
+		if (!*page_ptr_ptr) {
+			if (mshv_snp_configure_vmsa_page(1, page_ptr_ptr) < 0)
+				return VM_FAULT_SIGBUS;
+		}
+		page = *page_ptr_ptr;
+	} else if (real_off == MSHV_APIC_PAGE_OFFSET) {
+		page = mshv_apic_page(cpu);
+#endif
 	} else {
 		return VM_FAULT_NOPAGE;
 	}
+
+	if (!page)
+		return VM_FAULT_SIGBUS;
 
 	get_page(page);
 	vmf->page = page;
@@ -840,6 +3790,8 @@ static int mshv_vtl_release(struct inode *inode, struct file *filp)
 {
 	struct mshv_vtl *vtl = filp->private_data;
 
+	if (vtl->local_maps)
+		mshv_vtl_teardown_local_maps(vtl->local_maps);
 	kfree(vtl);
 
 	return 0;
@@ -858,7 +3810,7 @@ static void mshv_vtl_synic_mask_vmbus_sint(void *info)
 	const u8 *mask = info;
 
 	sint.as_uint64 = 0;
-	sint.vector = HYPERVISOR_CALLBACK_VECTOR;
+	sint.vector = vmbus_interrupt;
 	sint.masked = (*mask != 0);
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
@@ -874,7 +3826,7 @@ static void mshv_vtl_synic_mask_vmbus_sint(void *info)
 static void mshv_vtl_read_remote(void *buffer)
 {
 	struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
-	struct hv_message *msg = (struct hv_message *)mshv_cpu->hyp_synic_message_page +
+	struct hv_message *msg = (struct hv_message *)mshv_cpu->synic_message_page +
 					VTL2_VMBUS_SINT_INDEX;
 	u32 message_type = READ_ONCE(msg->header.message_type);
 
@@ -1118,7 +4070,8 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 				struct mshv_vtl_hvcall __user *hvcall_user)
 {
 	struct mshv_vtl_hvcall hvcall;
-	void *in, *out;
+	void *in, *out, *percpu_in, *percpu_out;
+	unsigned long flags;
 	int ret;
 
 	if (copy_from_user(&hvcall, hvcall_user, sizeof(struct mshv_vtl_hvcall)))
@@ -1159,13 +4112,18 @@ static int mshv_vtl_hvcall_call(struct mshv_vtl_hvcall_fd *fd,
 		goto free_pages;
 	}
 
-	/*
-	 * The caller supplies output_size, so clear the range copied back to
-	 * userspace in case the hypercall writes fewer bytes than requested.
-	 */
-	memset(out, 0, hvcall.output_size);
+	local_irq_save(flags);
 
-	hvcall.status = hv_do_hypercall(hvcall.control, in, out);
+	percpu_in = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	percpu_out = *this_cpu_ptr(hyperv_pcpu_output_arg);
+	memcpy(percpu_in, in, hvcall.input_size);
+	memset(percpu_out, 0, hvcall.output_size);
+
+	hvcall.status = hv_do_hypercall(hvcall.control, percpu_in, percpu_out);
+
+	memcpy(out, percpu_out, hvcall.output_size);
+
+	local_irq_restore(flags);
 
 	if (copy_to_user((void __user *)hvcall.output_ptr, out, hvcall.output_size)) {
 		ret = -EFAULT;
@@ -1210,6 +4168,18 @@ static struct miscdevice mshv_vtl_hvcall_dev = {
 	.minor = MISC_DYNAMIC_MINOR,
 };
 
+/*
+ * Mirror drivers/dax/device.c: once the fault path publishes folio->mapping
+ * to this inode's address_space, writeback-side helpers (e.g.
+ * folio_mark_dirty() called from bio_set_pages_dirty() after direct I/O into
+ * a GUP'd VTL0 buffer) will dispatch through mapping->a_ops->dirty_folio.
+ * The default empty_aops leaves dirty_folio NULL, so install noop_dirty_folio
+ * to keep that dispatch safe; nothing here participates in real writeback.
+ */
+static const struct address_space_operations mshv_vtl_low_aops = {
+	.dirty_folio	= noop_dirty_folio,
+};
+
 static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 {
 	pid_t pid = task_pid_vnr(current);
@@ -1220,6 +4190,10 @@ static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 
 	if (capable(CAP_SYS_ADMIN)) {
 		filp->private_data = inodep;
+		/* All opens share one inode; first one publishes the address_space. */
+		if (!READ_ONCE(mshv_vtl_low_mapping))
+			cmpxchg(&mshv_vtl_low_mapping, NULL, inodep->i_mapping);
+		inodep->i_mapping->a_ops = &mshv_vtl_low_aops;
 	} else {
 		pr_err("%s: VTL low open failed: CAP_SYS_ADMIN required. task group %d, uid %d",
 		       __func__, pid, uid);
@@ -1231,6 +4205,7 @@ static int mshv_vtl_low_open(struct inode *inodep, struct file *filp)
 
 static bool can_fault(struct vm_fault *vmf, unsigned long size, unsigned long *pfn)
 {
+	unsigned long pgoff = vmf->pgoff & ~DECRYPTED_MASK;
 	unsigned long mask = size - 1;
 	unsigned long start = vmf->address & ~mask;
 	unsigned long end = start + size;
@@ -1240,30 +4215,131 @@ static bool can_fault(struct vm_fault *vmf, unsigned long size, unsigned long *p
 		start >= vmf->vma->vm_start &&
 		end <= vmf->vma->vm_end;
 
+	/* __pfn_to_pfn_t */
 	if (is_valid)
-		*pfn = vmf->pgoff & ~(mask >> PAGE_SHIFT);
+		*pfn = pgoff & ~(mask >> PAGE_SHIFT);
 
 	return is_valid;
 }
 
+/*
+ * Resolve a PFN to a page owned by an mshv_vtl pgmap, or NULL. The range list
+ * is only published after devm_memremap_pages() returns, so a hit here means
+ * the vmemmap is populated and the struct page is safe to dereference.
+ */
+static struct page *mshv_vtl_low_resolve_page(unsigned long pfn)
+{
+	struct mshv_vtl_low_range *r;
+	struct page *page = NULL;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(r, &mshv_vtl_low_ranges, list) {
+		if (pfn >= r->start_pfn && pfn < r->end_pfn) {
+			struct page *p = pfn_to_page(pfn);
+			struct dev_pagemap *pgmap = page_pgmap(p);
+
+			if (pgmap && pgmap->owner == &mshv_vtl_pgmap_token)
+				page = p;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	return page;
+}
+
+/*
+ * Mirror dax_set_mapping(): rmap walkers locate a file-rmapped folio via
+ * folio->mapping/index. ZONE_DEVICE init only fills ->pgmap, so set the
+ * file-mapping fields here before each insert that adds file rmap.
+ * Idempotent: only the head folio carries mapping/index, and once set the
+ * fields persist for the lifetime of the (never-released) pgmap.
+ */
+static void mshv_vtl_low_set_mapping(struct vm_fault *vmf, struct folio *folio,
+				     unsigned long fault_size)
+{
+	if (folio->mapping)
+		return;
+
+	folio->mapping = vmf->vma->vm_file->f_mapping;
+	folio->index = linear_page_index(vmf->vma,
+					 ALIGN_DOWN(vmf->address, fault_size));
+}
+
+/*
+ * Huge (PMD/PUD) VTL0 faults map by raw pfn via vmf_insert_pfn_{pmd,pud}().
+ * This intentionally avoids vmf_insert_folio_{pmd,pud}(), whose file rmap +
+ * RSS bump has no matching teardown here: the zap path skips it because
+ * vma_is_special_huge() is true (VM_MIXEDMAP) while vma_is_dax() is false
+ * (CONFIG_FS_DAX is off), which otherwise leaks the folio ref/rmap and trips
+ * a "Bad rss-counter state" BUG. The pfn mapping carries no such state.
+ * GUP still works: add_vtl0_mem() holds a permanent ref on each pgmap folio,
+ * so try_grab_folio() (reached via follow_huge_pmd) never sees a zero
+ * refcount, avoiding the warning that the plain pfn inserters caused before.
+ */
 static vm_fault_t mshv_vtl_low_huge_fault(struct vm_fault *vmf, unsigned int order)
 {
-	unsigned long pfn = vmf->pgoff;
-	vm_fault_t ret = VM_FAULT_FALLBACK;
+	unsigned long pfn = vmf->pgoff & ~DECRYPTED_MASK;
+	unsigned long pmd_pfns = PMD_SIZE >> PAGE_SHIFT;
+	bool write = vmf->flags & FAULT_FLAG_WRITE;
+	struct page *page;
 
 	switch (order) {
 	case 0:
-		return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
+		page = mshv_vtl_low_resolve_page(pfn);
+		if (!page) {
+			/*
+			 * No pgmap yet: install pte_special so CPU access succeeds.
+			 * The unmap_mapping_pages() in add_vtl0_mem() invalidates this
+			 * PTE on registration so a later GUP-bound access re-faults
+			 * into the pinnable page path below.
+			 */
+			return vmf_insert_mixed(vmf->vma, vmf->address, pfn);
+		}
+		/* Inserter operates on the compound-head folio per PTE; refcounts stay balanced. */
+		mshv_vtl_low_set_mapping(vmf, page_folio(page), PAGE_SIZE);
+		return vmf_insert_page_mkwrite(vmf, page, write);
 
 	case PMD_ORDER:
-		if (can_fault(vmf, PMD_SIZE, &pfn))
-			ret = vmf_insert_pfn_pmd(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
-		return ret;
+		if (!can_fault(vmf, PMD_SIZE, &pfn))
+			return VM_FAULT_FALLBACK;
+		/*
+		 * Test the whole [pfn, pfn + PMD) window, not just the base pfn: a
+		 * range whose registration failed has no memmap, so a 2M PMD that
+		 * overlaps it would oops in follow_huge_pmd(). Serve such windows 4K
+		 * via the order-0 pte_special path where a later pin fails cleanly.
+		 */
+		if (mshv_vtl_low_span_failed(pfn, pfn + pmd_pfns))
+			return VM_FAULT_FALLBACK;
+		/*
+		 * Likewise if any pfn in the window is in a sub-PMD-folio range: a
+		 * 2M map over smaller folios makes slow GUP mis-batch refcounts
+		 * across folios (order-0 returns a pinnable page instead).
+		 */
+		if (mshv_vtl_low_span_suborder(pfn, pfn + pmd_pfns))
+			return VM_FAULT_FALLBACK;
+		/*
+		 * Map 2M by raw pfn whenever the fault is 2M-aligned - do not gate on
+		 * registration. vmf_insert_pfn_pmd() dereferences no struct page, so
+		 * it works before the range is registered and for alias-mapped faults
+		 * whose pfn is not in mshv_vtl_low_ranges. Gating on resolve_page()
+		 * here forced those faults down the order-0 4K path and blew up
+		 * /proc/meminfo PageTables under guest I/O. Unlike vmf_insert_folio_pmd(),
+		 * this holds no per-mapping file rmap/RSS, so the special-huge zap has
+		 * nothing to leak; and add_vtl0_mem() pins each pgmap folio so GUP into
+		 * registered memory keeps try_grab_folio()'s refcount above zero.
+		 */
+		return vmf_insert_pfn_pmd(vmf, pfn, write);
 
+#if defined(CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD)
 	case PUD_ORDER:
-		if (can_fault(vmf, PUD_SIZE, &pfn))
-			ret = vmf_insert_pfn_pud(vmf, pfn, vmf->flags & FAULT_FLAG_WRITE);
-		return ret;
+		/*
+		 * Never map 1G by raw pfn: a 1G PUD over sub-1G pgmap folios makes
+		 * slow GUP batch refcounts across folios it never referenced
+		 * (corruption). 1G saves only one PMD table per 1G vs 2M, so fall
+		 * back and let the core retry at PMD.
+		 */
+		return VM_FAULT_FALLBACK;
+#endif
 
 	default:
 		return VM_FAULT_SIGBUS;
@@ -1282,11 +4358,45 @@ static const struct vm_operations_struct mshv_vtl_low_vm_ops = {
 
 static int mshv_vtl_low_mmap(struct file *filp, struct vm_area_struct *vma)
 {
-	vma->vm_ops = &mshv_vtl_low_vm_ops;
-	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP);
+	/*
+	 * Reject MAP_PRIVATE: the fault path installs PTEs via
+	 * vmf_insert_{page,folio}_{,pmd,pud}() and bypasses core-mm COW, so
+	 * MAP_PRIVATE writes would land on the underlying VTL0/device page
+	 * instead of a private copy. Mirror device-dax (drivers/dax/device.c).
+	 */
+	if ((vma->vm_flags & VM_MAYSHARE) != VM_MAYSHARE)
+		return -EINVAL;
 
+	vma->vm_ops = &mshv_vtl_low_vm_ops;
+	/* VM_MIXEDMAP for pte_special 4K fallback; VM_DONTEXPAND pins size to pgmap. */
+	vm_flags_set(vma, VM_HUGEPAGE | VM_MIXEDMAP | VM_DONTEXPAND);
+
+	if (vma->vm_pgoff & DECRYPTED_MASK)
+		vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
+	else
+		vma->vm_page_prot = pgprot_encrypted(vma->vm_page_prot);
 	return 0;
 }
+
+static ssize_t mshv_vtl_transitions_show(struct device *dev, struct device_attribute *attr, char *buff)
+{
+	int length = 0, cpu;
+
+	length += sysfs_emit_at(buff, length, "cpu#x vtl-transitions\n");
+
+	for_each_online_cpu(cpu)
+		length += sysfs_emit_at(buff, length, "cpu%d %llu\n", cpu, per_cpu(num_vtl0_transitions, cpu));
+
+	return length;
+}
+
+static DEVICE_ATTR_RO(mshv_vtl_transitions);
+
+static struct attribute *mshv_hvcall_client_attrs[] = {
+	&dev_attr_mshv_vtl_transitions.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(mshv_hvcall_client);
 
 static const struct file_operations mshv_vtl_low_file_ops = {
 	.owner		= THIS_MODULE,
@@ -1295,12 +4405,60 @@ static const struct file_operations mshv_vtl_low_file_ops = {
 };
 
 static struct miscdevice mshv_vtl_low = {
+	.groups = mshv_hvcall_client_groups,
 	.name = "mshv_vtl_low",
 	.nodename = "mshv_vtl_low",
 	.fops = &mshv_vtl_low_file_ops,
 	.mode = 0600,
 	.minor = MISC_DYNAMIC_MINOR,
 };
+
+#ifdef CONFIG_X86_64
+static void __init mshv_vtl_init_dev_memory(u64 addr)
+{
+	pgd_t	*pgd;
+	p4d_t	*p4d;
+
+	pgd = pgd_offset_k(addr);
+	if (pgd_none(*pgd)) {
+		void *p = (void *)get_zeroed_page(GFP_KERNEL);
+
+		BUG_ON(!p);
+		pgd_populate(&init_mm, pgd, p);
+	}
+
+	p4d = p4d_offset(pgd, addr);
+	if (p4d_none(*p4d)) {
+		void *p = (void *)get_zeroed_page(GFP_KERNEL);
+
+		BUG_ON(!p);
+		p4d_populate(&init_mm, p4d, p);
+	}
+
+}
+#endif
+
+static int __init mshv_vtl_init_memory(void)
+{
+#ifdef CONFIG_X86_64
+	u64 addr;
+
+	pr_debug("CONFIG_PHYSICAL_START: %#016x\n", CONFIG_PHYSICAL_START);
+	pr_debug("LOAD_PHYSICAL_ADDR: %#016x\n", LOAD_PHYSICAL_ADDR);
+
+	/*
+	 * Add additional PML4 entries to vmmemmap to create struct page*'s
+	 * for the sparse memory model and the memory added above 32TiB.
+	 */
+	BUILD_BUG_ON(IS_ENABLED(CONFIG_KASAN));
+	for (addr = 0xffffea8000000000ULL; addr < 0xfffffc0000000000ULL; addr += 0x8000000000ULL)
+		mshv_vtl_init_dev_memory(addr);
+
+#endif
+	return 0;
+}
+
+extern struct platform_driver mshv_vtl_sidecar;
 
 static int __init mshv_vtl_init(void)
 {
@@ -1324,11 +4482,12 @@ static int __init mshv_vtl_init(void)
 		ret = -ENODEV;
 		goto free_dev;
 	}
-	if (mshv_vtl_configure_vsm_partition(dev)) {
-		dev_emerg(dev, "VSM configuration failed !!\n");
-		ret = -ENODEV;
+
+#ifdef CONFIG_X86_64
+	ret = mshv_create_apicid_to_cpuid_mapping(dev);
+	if (ret)
 		goto free_dev;
-	}
+#endif
 
 	mshv_vtl_return_call_init(mshv_vsm_page_offsets.vtl_return_offset);
 	ret = hv_vtl_setup_synic();
@@ -1361,10 +4520,14 @@ static int __init mshv_vtl_init(void)
 	/*
 	 * "mshv vtl mem dev" device is later used to setup VTL0 memory.
 	 */
+	ret = mshv_vtl_sidecar_init();
+	if (ret)
+		goto free_low;
+
 	mem_dev = kzalloc_obj(*mem_dev);
 	if (!mem_dev) {
 		ret = -ENOMEM;
-		goto free_low;
+		goto free_sidecar;
 	}
 
 	mutex_init(&mshv_vtl_poll_file_lock);
@@ -1377,10 +4540,25 @@ static int __init mshv_vtl_init(void)
 		goto free_mem;
 	}
 
+	ret = ms_hyperv_init_redirected_intr();
+	if (ret)
+		goto free_mem;
+
+	mshv_vtl_init_memory();
+	mshv_vtl_set_idle(mshv_vtl_idle);
+
+	/*
+	 * The idle routine has been set up, we can now mark in-idle mode as
+	 * enabled if in_idle is set.
+	*/
+	smp_store_release(&in_idle_is_enabled, true);
+
 	return 0;
 
 free_mem:
 	kfree(mem_dev);
+free_sidecar:
+	mshv_vtl_sidecar_exit();
 free_low:
 	misc_deregister(&mshv_vtl_low);
 free_hvcall:
@@ -1397,13 +4575,45 @@ free_dev:
 
 static void __exit mshv_vtl_exit(void)
 {
+	struct mshv_vtl_low_range *r, *tmp;
+
+	ms_hyperv_free_redirected_intr();
+	mshv_free_apicid_to_cpuid_mapping();
 	device_del(mem_dev);
 	kfree(mem_dev);
+	mshv_vtl_sidecar_exit();
 	misc_deregister(&mshv_vtl_low);
 	misc_deregister(&mshv_vtl_hvcall_dev);
 	misc_deregister(&mshv_vtl_sint_dev);
 	hv_vtl_remove_synic();
 	misc_deregister(&mshv_dev);
+
+	/*
+	 * /dev/mshv_vtl_low is deregistered above, so no new faults can enter
+	 * mshv_vtl_low_resolve_page(). Unlink each range under its spinlock and
+	 * free it after a grace period so any in-flight RCU reader is done. Do
+	 * not reuse the list node before the grace period (kfree_rcu handles it).
+	 */
+	spin_lock(&mshv_vtl_low_ranges_lock);
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_ranges, list) {
+		list_del_rcu(&r->list);
+		kfree_rcu(r, rcu);
+	}
+	spin_unlock(&mshv_vtl_low_ranges_lock);
+
+	spin_lock(&mshv_vtl_low_failed_lock);
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_failed_ranges, list) {
+		list_del_rcu(&r->list);
+		kfree_rcu(r, rcu);
+	}
+	spin_unlock(&mshv_vtl_low_failed_lock);
+
+	spin_lock(&mshv_vtl_low_suborder_lock);
+	list_for_each_entry_safe(r, tmp, &mshv_vtl_low_suborder_ranges, list) {
+		list_del_rcu(&r->list);
+		kfree_rcu(r, rcu);
+	}
+	spin_unlock(&mshv_vtl_low_suborder_lock);
 }
 
 module_init(mshv_vtl_init);

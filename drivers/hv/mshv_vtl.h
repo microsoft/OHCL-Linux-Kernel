@@ -2,17 +2,154 @@
 #ifndef _MSHV_VTL_H
 #define _MSHV_VTL_H
 
+#include <linux/kernel.h>
 #include <linux/mshv.h>
 #include <linux/types.h>
+#include <asm/mshyperv.h>
+#include <hyperv/hvgdk_mini.h>
+
+#ifdef CONFIG_X86_64
+
+/*
+ * The register values returned from a TDG.VP.ENTER call.
+ * These are readable via mmaping the mshv_vtl driver, and returned on a
+ * run_vp ioctl exit.
+ * See the TDX ABI specification for output operands for TDG.VP.ENTER.
+ */
+struct tdx_tdg_vp_enter_exit_info {
+	u64 rax;
+	u64 rcx;
+	u64 rdx;
+	u64 rsi;
+	u64 rdi;
+	u64 r8;
+	u64 r9;
+	u64 r10;
+	u64 r11;
+	u64 r12;
+	u64 r13;
+};
+
+/*
+ * Register values that must be set by the kernel or flags that must be handled
+ * before entering lower VTLs.
+ */
+struct tdx_vp_state {
+	u64 msr_kernel_gs_base;
+	u64 msr_star;
+	u64 msr_lstar;
+	u64 msr_sfmask;
+	u64 msr_xss;
+	u64 cr2;
+	u64 msr_tsc_aux;
+	u64 flags;
+};
+
+#define MSHV_VTL_TDX_VP_STATE_FLAG_WBINVD BIT(0)
+#define MSHV_VTL_TDX_VP_STATE_FLAG_WBNOINVD BIT(1)
+
+/*
+ * The GPR list for TDG.VP.ENTER.
+ * Made available via mmaping the mshv_vtl driver.
+ * Specified in the TDX specification as L2_ENTER_GUEST_STATE.
+ */
+struct tdx_l2_enter_guest_state {
+	u64 rax;
+	u64 rcx;
+	u64 rdx;
+	u64 rbx;
+	u64 rsp;
+	u64 rbp;
+	u64 rsi;
+	u64 rdi;
+	u64 r8;
+	u64 r9;
+	u64 r10;
+	u64 r11;
+	u64 r12;
+	u64 r13;
+	u64 r14;
+	u64 r15;
+	u64 rflags;
+	u64 rip;
+	u64 ssp;
+	u8 rvi;		/* GUEST_INTERRUPT_STATUS lower bits */
+	u8 svi;		/* GUSET_INTERRUPT_STATUS upper bits */
+	u8 reserved[6];
+};
+
+#define MSHV_VTL_TDX_L2_DEADLINE_DISARMED	(0ULL)
+
+/*
+ * Userspace sets this bit for the kernel to issue TDG.VP.WR(TSC_DEADLINE)
+ * when it changed deadline.
+ * The kernel clears this bits on TDG.VP.WR(TSC_DEADLINE).
+ */
+#define MSHV_VTL_TDX_L2_DEADLINE_UPDATE	BIT(0)
+
+struct tdx_l2_tsc_deadline {
+	__u64 deadline;
+	__u8 update;
+	__u8 pad[7];
+};
+
+/*
+ * This structure must be placed in a larger structure at offset 272 (0x110).
+ * The GPR list for TDX and fx_state for xsave have alignment requirements on the
+ * addresses they are at due to ISA requirements.
+ */
+struct tdx_vp_context {
+	struct tdx_tdg_vp_enter_exit_info exit_info;
+	__u8 pad1[48];
+	struct tdx_vp_state vp_state;
+	__u8 pad2[32];
+	/* Contains the VM index and the TLB flush bit */
+	__u64 entry_rcx;
+	/* Must be on 256 byte boundary. */
+	struct tdx_l2_enter_guest_state l2_enter_guest_state;
+	struct tdx_l2_tsc_deadline l2_tsc_deadline;
+	/* Pad space until the next 256 byte boundary. */
+	__u8 pad3[80];
+	/* Must be 16 byte aligned. */
+	struct fxregs_state fx_state;
+	__u8 pad4[16];
+};
+
+static_assert(offsetof(struct tdx_vp_context, l2_enter_guest_state) + 272 == 512);
+static_assert(sizeof(struct tdx_vp_context) == 1024);
+
+struct snp_vp_context {
+	__u8 vmsa_tweak_bitmap[64];
+	__u64 stimer0_config;
+	__u64 stimer0_count;
+	__u64 stimer0_programmed_ref_time;
+	__u32 stimer0_flags;
+	__u8 pad[932];
+};
+
+static_assert(sizeof(struct snp_vp_context) == 1024);
+
+#define MSHV_VTL_SNP_STIMER0_CONFIG_VALID	BIT(0)
+#define MSHV_VTL_SNP_STIMER0_KERNEL_UPDATE	BIT(1)
+#define MSHV_VTL_SNP_STIMER0_EXPIRED		BIT(2)
+#endif
 
 struct mshv_vtl_run {
 	u32 cancel;
 	u32 vtl_ret_action_size;
-	u32 pad[2];
+	__u32 flags;
+	__u8 scan_proxy_irr;
+	__u8 offload_flags;
+	__u8 pad[1];
+	__u8 enter_mode;
 	char exit_message[MSHV_MAX_RUN_MSG_SIZE];
 	union {
 		struct mshv_vtl_cpu_context cpu_context;
 
+#ifdef CONFIG_X86_64
+		struct tdx_vp_context tdx_context;
+		struct snp_vp_context snp_context;
+#endif
 		/*
 		 * Reserving room for the cpu context to grow and to maintain compatibility
 		 * with user mode.
@@ -20,6 +157,41 @@ struct mshv_vtl_run {
 		char reserved[1024];
 	};
 	char vtl_ret_actions[MSHV_MAX_RUN_MSG_SIZE];
+	__u32 proxy_irr[8];
+	union hv_input_vtl target_vtl;
+	/* Block bitmask of host interrupts */
+	__u32 proxy_irr_blocked[8];
+	/* Bitmask of interrupts that case exits to user-space */
+	__u32 proxy_irr_exit_mask[8];
 };
+
+/* offload_flags possible values */
+/*
+ * vAPIC is enabled, and user-space has requested we accelerate interrupt injection.
+ * This enables HLT and idle handling in kernel. It also allows directly returning to VTL0
+ * from the halted state in certain conditions, and will directly inject proxy_irr into the
+ * vAPIC.
+ */
+#define MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT BIT(0)
+/* Enable X2APIC ICR write handling in kernel */
+#define MSHV_VTL_OFFLOAD_FLAG_X2APIC BIT(1)
+/* Halted due to an unspecified reason. Kernel cannot clear this state. */
+#define MSHV_VTL_OFFLOAD_FLAG_HALT_OTHER BIT(5)
+/* Halted due to HLT. Kernel can clear this state. */
+#define MSHV_VTL_OFFLOAD_FLAG_HALT_HLT BIT(6)
+/* Halted due to guest idle. Kernel can clear this state. */
+#define MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE BIT(7)
+
+#ifdef CONFIG_X86_64
+static_assert(offsetof(struct mshv_vtl_run, tdx_context) == 272);
+u64 __tdg_vp_enter(u64 rcx, u64 rdx,
+		struct tdx_tdg_vp_enter_exit_info *tdg_exit_info);
+#endif
+
+static_assert(sizeof(struct mshv_vtl_run) <= 4096);
+
+#define SEV_GHCB_VERSION        1
+#define SEV_GHCB_FORMAT_BASE        0
+#define SEV_GHCB_FORMAT_VTL_RETURN  2
 
 #endif /* _MSHV_VTL_H */
