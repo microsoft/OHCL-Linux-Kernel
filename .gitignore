@@ -8,6 +8,11 @@
 # command after changing this file, to see if there are
 # any tracked files which get ignored after the change.
 #
+
+/out/
+/build/
+build*.log
+
 # Normal rules (sorted alphabetically)
 #
 .*
@@ -121,6 +126,7 @@ modules.order
 !.mailmap
 !.pylintrc
 !.rustfmt.toml
+!.github
 
 #
 # Generated include files
