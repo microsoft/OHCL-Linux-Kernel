@@ -20,11 +20,14 @@
 #include <linux/types.h>
 #include <linux/arm-smccc.h>
 #include <hyperv/hvhdk.h>
+#include <asm/idle.h>
 
 /*
  * Declare calls to get and set Hyper-V VP register values on ARM64, which
  * requires a hypercall.
  */
+
+struct hv_get_vp_registers_output;
 
 void hv_set_vpreg(u32 reg, u64 value);
 u64 hv_get_vpreg(u32 reg);
@@ -53,6 +56,8 @@ static inline u64 hv_get_non_nested_msr(unsigned int reg)
 	return hv_get_msr(reg);
 }
 
+extern u64 hv_current_partition_id;
+
 /* SMCCC hypercall parameters */
 #define HV_SMCCC_FUNC_NUMBER	1
 #define HV_FUNC_ID	ARM_SMCCC_CALL_VAL(			\
@@ -60,6 +65,43 @@ static inline u64 hv_get_non_nested_msr(unsigned int reg)
 				ARM_SMCCC_SMC_64,		\
 				ARM_SMCCC_OWNER_VENDOR_HYP,	\
 				HV_SMCCC_FUNC_NUMBER)
+
+struct mshv_vtl_cpu_context {
+   /*
+	* NOTE: x18 is managed by the hypervisor. It won't be reloaded from this array.
+	* It is included here for convenience in the common case.
+	*/
+	__u64 x[31];
+	__u64 rsvd;
+	__uint128_t q[32];
+};
+
+void mshv_vtl_return_call(struct mshv_vtl_cpu_context *vtl0);
+void __init hv_vtl_init_platform(void);
+int __init hv_vtl_early_init(void);
+
+static inline void hv_vtl_idle(void)
+{
+	default_idle();
+}
+
+struct hv_register_assoc;
+
+static inline int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
+{
+	return 1;
+}
+static inline void mshv_vtl_return_call_init(u64 vtl_return_offset) {}
+
+#ifdef CONFIG_HYPERV_VTL_MODE
+void __init hv_vtl_init_platform(void);
+int __init hv_vtl_early_init(void);
+void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0);
+#else
+static inline void __init hv_vtl_init_platform(void) {}
+static inline int __init hv_vtl_early_init(void) { return 0; }
+static inline void mshv_vtl_return(struct mshv_vtl_cpu_context *vtl0) {}
+#endif
 
 #include <asm-generic/mshyperv.h>
 
