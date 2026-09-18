@@ -122,10 +122,6 @@ static int hv_cpu_init(unsigned int cpu)
 		return ret;
 
 	/* Allow Hyper-V stimer vector to be injected from Hypervisor. */
-	if (ms_hyperv.misc_features & HV_STIMER_DIRECT_MODE_AVAILABLE)
-		apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, true);
-
-	/* Allow Hyper-V stimer vector to be injected from Hypervisor. */
 	apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, true);
 
 	return hyperv_init_ghcb();
@@ -235,8 +231,7 @@ static int hv_cpu_die(unsigned int cpu)
 		*ghcb_va = NULL;
 	}
 
-	if (ms_hyperv.misc_features & HV_STIMER_DIRECT_MODE_AVAILABLE)
-		apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, false);
+	apic_update_vector(cpu, HYPERV_STIMER0_VECTOR, false);
 
 	hv_common_cpu_die(cpu);
 
@@ -400,21 +395,6 @@ void __init hyperv_init(void)
 
 	if (hv_common_init())
 		return;
-
-	/*
-	 * The VP assist page is useless to a TDX guest: the only use we
-	 * would have for it is lazy EOI, which can not be used with TDX.
-	 */
-	if (hv_isolation_type_tdx())
-		hv_vp_assist_page = NULL;
-	else
-		hv_vp_assist_page = kzalloc_objs(*hv_vp_assist_page, nr_cpu_ids);
-	if (!hv_vp_assist_page) {
-		ms_hyperv.hints &= ~HV_X64_ENLIGHTENED_VMCS_RECOMMENDED;
-
-		if (!hv_isolation_type_tdx())
-			goto common_free;
-	}
 
 	if (cc_platform_has(CC_ATTR_SNP_SECURE_AVIC)) {
 		hv_vp_early_input_arg = (void *)__get_free_pages(

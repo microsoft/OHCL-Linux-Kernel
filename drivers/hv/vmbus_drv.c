@@ -27,6 +27,7 @@
 #include <linux/sched/isolation.h>
 #include <linux/sched/task_stack.h>
 #include <linux/smpboot.h>
+#include <linux/rcupdate.h>
 
 #include <linux/delay.h>
 #include <linux/panic_notifier.h>
@@ -1394,9 +1395,27 @@ void vmbus_isr(void)
 }
 EXPORT_SYMBOL_FOR_MODULES(vmbus_isr, "mshv_vtl");
 
+static void (* __rcu vmbus_percpu_handler)(void);
+
+void hv_setup_percpu_vmbus_handler(void (*handler)(void))
+{
+	rcu_assign_pointer(vmbus_percpu_handler, handler);
+	/* Wait for callers of the previous handler before its module can exit. */
+	synchronize_rcu();
+}
+EXPORT_SYMBOL_FOR_MODULES(hv_setup_percpu_vmbus_handler, "mshv_vtl");
+
 static irqreturn_t vmbus_percpu_isr(int irq, void *dev_id)
 {
-	vmbus_isr();
+	void (*handler)(void);
+
+	rcu_read_lock();
+	handler = rcu_dereference(vmbus_percpu_handler);
+	if (handler)
+		handler();
+	else
+		vmbus_isr();
+	rcu_read_unlock();
 	return IRQ_HANDLED;
 }
 

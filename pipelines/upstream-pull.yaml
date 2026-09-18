@@ -72,4 +72,3 @@ jobs:
         -v
     condition: eq(variables.UPSTREAM_UPDATE_AVAILABLE, 'true')
     displayName: 'Push and File PR'
-

@@ -7,4 +7,3 @@ yum update -y
 yum install -y gcc make diffutils binutils glibc-devel dwarves \
 		kernel-headers flex bison python3-devel \
 		openssl-devel bc awk perl
-

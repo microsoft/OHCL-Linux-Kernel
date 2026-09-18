@@ -55,7 +55,7 @@ stages:
         # Once a valid kernel branch is checked out, we subsequently checkout kernel branch corresponding
         # to System.PullRequest.SourceBranch in msft-lkt's jobs.yaml.
         gitRef: 'product/underhill-main/6.6'
-        
+
   - stage: 'nupkg'
     dependsOn:
     - 'hcl_amd64'

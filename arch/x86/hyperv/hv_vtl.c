@@ -71,18 +71,6 @@ static bool hv_vtl_is_private_mmio_tdx(u64 addr)
 	return mb_addr && within_page(addr, mb_addr);
 }
 
-static inline bool within_page(u64 addr, u64 start)
-{
-	return addr >= start && addr < (start + PAGE_SIZE);
-}
-
-static bool hv_vtl_is_private_mmio_tdx(u64 addr)
-{
-	u64 mb_addr = acpi_get_mp_wakeup_mailbox_paddr();
-
-	return mb_addr && within_page(addr, mb_addr);
-}
-
 void __init hv_vtl_init_platform(void)
 {
 	/*
@@ -446,9 +434,9 @@ int mshv_vtl_get_set_reg(struct hv_register_assoc *regs, bool set, u64 shared)
 
 			/* Handle MSRs */
 			if (set)
-				wrmsrl(reg_table[i].msr_addr, *reg64);
+				wrmsrq(reg_table[i].msr_addr, *reg64);
 			else
-				rdmsrl(reg_table[i].msr_addr, *reg64);
+				rdmsrq(reg_table[i].msr_addr, *reg64);
 		}
 		return 0;
 	}

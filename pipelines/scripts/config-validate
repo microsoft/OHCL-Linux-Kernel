@@ -12,4 +12,3 @@ cp arch/x86/configs/mshv_defconfig .config
 make LC_ALL= ARCH=x86_64 olddefconfig
 
 diff -u arch/x86/configs/mshv_defconfig .config
-

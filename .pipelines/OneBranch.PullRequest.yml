@@ -16,7 +16,7 @@ variables:
   DEBIAN_FRONTEND: noninteractive
 
 resources:
-  repositories: 
+  repositories:
     - repository: templates
       type: git
       name: OneBranch.Pipelines/GovernedTemplates
@@ -63,7 +63,7 @@ extends:
             displayName: 'Restore'
             inputs:
               filePath: '$(Build.SourcesDirectory)/Microsoft/install-deps.sh'
-          
+
           - task: Bash@3
             displayName: 'Build perf'
             inputs:
@@ -105,7 +105,7 @@ extends:
               verbosityPush: 'Detailed'
               packagesToPush: '$(System.ArtifactsDirectory)/**/*.nupkg;!$(System.ArtifactsDirectory)/**/*.tar.gz'
               publishVstsFeed: 'Dev'
-              allowPackageConflicts: true          
+              allowPackageConflicts: true
 
           #- task: Bash@3
           #  displayName: 'Copy Extra Files'
