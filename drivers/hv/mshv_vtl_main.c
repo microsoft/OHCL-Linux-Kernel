@@ -97,6 +97,7 @@ struct mshv_vtl {
 struct mshv_vtl_per_cpu {
 	struct mshv_vtl_run *run;
 	struct page *reg_page;
+	bool online;
 };
 
 /* SYNIC_OVERLAY_PAGE_MSR - internal, identical to hv_synic_simp */
@@ -218,16 +219,18 @@ static struct page *mshv_vtl_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
-static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
+static int mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
 	struct hv_register_assoc reg_assoc = {};
 	union hv_synic_overlay_page_msr overlay = {};
-	struct page *reg_page;
+	struct page *reg_page = per_cpu->reg_page;
+	int ret;
 
-	reg_page = alloc_page(GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL);
+	if (!reg_page)
+		reg_page = alloc_page(GFP_KERNEL | __GFP_ZERO | __GFP_RETRY_MAYFAIL);
 	if (!reg_page) {
 		WARN(1, "failed to allocate register page\n");
-		return;
+		return -ENOMEM;
 	}
 
 	overlay.enabled = 1;
@@ -235,15 +238,18 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 	reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
 	reg_assoc.value.reg64 = overlay.as_uint64;
 
-	if (hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
-				     1, input_vtl_zero, &reg_assoc)) {
+	ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+				       1, input_vtl_zero, &reg_assoc);
+	if (ret) {
 		WARN(1, "failed to setup register page\n");
-		__free_page(reg_page);
-		return;
+		if (!per_cpu->reg_page)
+			__free_page(reg_page);
+		return ret;
 	}
 
 	per_cpu->reg_page = reg_page;
 	mshv_has_reg_page = true;
+	return 0;
 }
 
 static void mshv_vtl_synic_enable_regs(unsigned int cpu)
@@ -341,17 +347,75 @@ static void mshv_vtl_vmbus_isr(void)
 static int mshv_vtl_alloc_context(unsigned int cpu)
 {
 	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	int ret;
 
-	per_cpu->run = (struct mshv_vtl_run *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
+	if (READ_ONCE(mshv_vtl_shutting_down))
+		return per_cpu->run ? 0 : -ESHUTDOWN;
+
+	if (!per_cpu->run)
+		per_cpu->run = (struct mshv_vtl_run *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
 	if (!per_cpu->run)
 		return -ENOMEM;
 
-	if (mshv_vsm_capabilities.intercept_page_available)
-		mshv_vtl_configure_reg_page(per_cpu);
+	if (mshv_vsm_capabilities.intercept_page_available) {
+		ret = mshv_vtl_configure_reg_page(per_cpu);
+		if (ret && per_cpu->reg_page) {
+			if (cpuhp_is_rollback(cpu))
+				panic("Failed to restore VTL register page on CPU %u: %d\n",
+				      cpu, ret);
+			return ret;
+		}
+	}
 
 	mshv_vtl_synic_enable_regs(cpu);
+	WRITE_ONCE(per_cpu->online, true);
 
 	return 0;
+}
+
+static int mshv_vtl_disable_context(unsigned int cpu, bool can_reject)
+{
+	struct mshv_vtl_per_cpu *per_cpu = this_cpu_ptr(&mshv_vtl_per_cpu);
+	struct hv_register_assoc reg_assoc = {};
+	union hv_synic_sint sint = {};
+	unsigned long flags;
+	int ret = 0;
+
+	local_irq_save(flags);
+	if (!per_cpu->online)
+		goto out;
+
+	WRITE_ONCE(per_cpu->online, false);
+	if (!mshv_vsm_capabilities.intercept_page_available) {
+		sint.masked = true;
+		hv_set_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
+			   sint.as_uint64);
+	}
+
+	if (per_cpu->reg_page) {
+		reg_assoc.name = HV_X64_REGISTER_REG_PAGE;
+		ret = hv_call_set_vp_registers(HV_VP_INDEX_SELF, HV_PARTITION_ID_SELF,
+					       1, input_vtl_zero, &reg_assoc);
+	}
+	if (ret && can_reject && !READ_ONCE(mshv_vtl_shutting_down)) {
+		if (!mshv_vtl_configure_reg_page(per_cpu)) {
+			mshv_vtl_synic_enable_regs(cpu);
+			WRITE_ONCE(per_cpu->online, true);
+			local_irq_restore(flags);
+			return ret;
+		}
+	}
+out:
+	local_irq_restore(flags);
+	if (ret)
+		panic("Failed to disable VTL register page on CPU %u: %d\n", cpu, ret);
+
+	return 0;
+}
+
+static int mshv_vtl_offline_context(unsigned int cpu)
+{
+	return mshv_vtl_disable_context(cpu, cpuhp_is_offlining(cpu));
 }
 
 static int mshv_vtl_cpuhp_online;
@@ -364,7 +428,7 @@ static int hv_vtl_setup_synic(void)
 	hv_setup_vmbus_handler(mshv_vtl_vmbus_isr);
 
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "hyperv/vtl:online",
-				mshv_vtl_alloc_context, NULL);
+				mshv_vtl_alloc_context, mshv_vtl_offline_context);
 	if (ret < 0) {
 		hv_setup_vmbus_handler(vmbus_isr);
 		return ret;
@@ -544,7 +608,9 @@ static void mshv_vtl_cleanup_poll_files(void)
 
 	{
 		guard(rwsem_write)(&mshv_vtl_state_lock);
+		cpus_read_lock();
 		WRITE_ONCE(mshv_vtl_shutting_down, true);
+		cpus_read_unlock();
 	}
 
 	for_each_possible_cpu(cpu) {
@@ -564,6 +630,8 @@ static int mshv_vtl_publish_poll_file(struct mshv_vtl_poll_file *poll_file,
 	guard(rwsem_read)(&mshv_vtl_state_lock);
 	if (mshv_vtl_shutting_down)
 		return -ESHUTDOWN;
+	if (!READ_ONCE(per_cpu(mshv_vtl_per_cpu, poll_file->cpu).online))
+		return -ENODEV;
 
 	guard(mutex)(&mshv_vtl_poll_file_lock);
 	*old_file = per_cpu(mshv_vtl_poll_file, poll_file->cpu);
@@ -787,6 +855,12 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		}
 
 		local_irq_save(irq_flags);
+		if (READ_ONCE(mshv_vtl_shutting_down) ||
+		    !this_cpu_read(mshv_vtl_per_cpu.online)) {
+			local_irq_restore(irq_flags);
+			preempt_enable();
+			return -ENODEV;
+		}
 		if (READ_ONCE(mshv_vtl_this_run()->cancel)) {
 			local_irq_restore(irq_flags);
 			preempt_enable();
