@@ -18,6 +18,7 @@
 #include <linux/eventfd.h>
 #include <linux/poll.h>
 #include <linux/file.h>
+#include <linux/rwsem.h>
 #include <linux/vmalloc.h>
 #include <asm/debugreg.h>
 #include <asm/mshyperv.h>
@@ -53,6 +54,8 @@ static bool has_message;
 static struct eventfd_ctx *flag_eventfds[HV_EVENT_FLAGS_COUNT];
 static DEFINE_MUTEX(flag_lock);
 static bool __read_mostly mshv_has_reg_page;
+static DECLARE_RWSEM(mshv_vtl_state_lock);
+static bool mshv_vtl_shutting_down;
 
 /* hvcall code is of type u16, allocate a bitmap of size (1 << 16) to accommodate it */
 #define MAX_BITMAP_SIZE ((U16_MAX + 1) / 8)
@@ -67,13 +70,24 @@ struct mshv_vtl_hvcall_fd {
 	struct miscdevice *dev;
 };
 
-struct mshv_vtl_poll_file {
-	struct file *file;
+struct mshv_vtl_poll_wait {
 	wait_queue_entry_t wait;
 	wait_queue_head_t *wqh;
+	struct mshv_vtl_poll_file *poll_file;
+	struct mshv_vtl_poll_wait *next;
+};
+
+struct mshv_vtl_poll_file {
+	struct file *file;
+	struct mshv_vtl_poll_wait *waiters;
 	poll_table pt;
 	int cpu;
+	int error;
+	atomic_t state;
 };
+
+#define MSHV_VTL_POLL_ACTIVE BIT(0)
+#define MSHV_VTL_POLL_PENDING BIT(1)
 
 struct mshv_vtl {
 	struct device *module_dev;
@@ -95,11 +109,11 @@ union hv_synic_overlay_page_msr {
 	} __packed;
 };
 
-static struct mutex mshv_vtl_poll_file_lock;
+static DEFINE_MUTEX(mshv_vtl_poll_file_lock);
 static union hv_register_vsm_page_offsets mshv_vsm_page_offsets;
 static union hv_register_vsm_capabilities mshv_vsm_capabilities;
 
-static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
+static DEFINE_PER_CPU(struct mshv_vtl_poll_file *, mshv_vtl_poll_file);
 static DEFINE_PER_CPU(unsigned long long, num_vtl0_transitions);
 static DEFINE_PER_CPU(struct mshv_vtl_per_cpu, mshv_vtl_per_cpu);
 
@@ -447,9 +461,35 @@ static void mshv_vtl_cancel(int cpu)
 
 static int mshv_vtl_poll_file_wake(wait_queue_entry_t *wait, unsigned int mode, int sync, void *key)
 {
-	struct mshv_vtl_poll_file *poll_file = container_of(wait, struct mshv_vtl_poll_file, wait);
+	struct mshv_vtl_poll_wait *waiter =
+		container_of(wait, struct mshv_vtl_poll_wait, wait);
+	struct mshv_vtl_poll_file *poll_file = waiter->poll_file;
 
-	mshv_vtl_cancel(poll_file->cpu);
+	/*
+	 * Callbacks can run before the subscription is published. Record
+	 * PENDING so publication handles earlier wakeups; callbacks that
+	 * observe ACTIVE perform the cancellation themselves.
+	 */
+	if (atomic_fetch_or(MSHV_VTL_POLL_PENDING, &poll_file->state) &
+	    MSHV_VTL_POLL_ACTIVE) {
+		if (!READ_ONCE(mshv_vtl_shutting_down))
+			mshv_vtl_cancel(poll_file->cpu);
+	}
+
+	if (key_to_poll(key) & POLLFREE) {
+		/*
+		 * The caller holds the waitqueue lock. Use list_del_init()
+		 * because detach may already have read a non-NULL wqh and
+		 * remove us again.
+		 */
+		list_del_init(&wait->entry);
+		/*
+		 * Publishing NULL pairs with the acquire load in
+		 * mshv_vtl_detach_poll_file() and allows the waiter and its
+		 * owner to be freed. Neither may be accessed after the store.
+		 */
+		smp_store_release(&waiter->wqh, NULL);
+	}
 
 	return 0;
 }
@@ -457,20 +497,124 @@ static int mshv_vtl_poll_file_wake(wait_queue_entry_t *wait, unsigned int mode, 
 static void mshv_vtl_ptable_queue_proc(struct file *file, wait_queue_head_t *wqh, poll_table *pt)
 {
 	struct mshv_vtl_poll_file *poll_file = container_of(pt, struct mshv_vtl_poll_file, pt);
+	struct mshv_vtl_poll_wait *waiter;
 
-	WARN_ON(poll_file->wqh);
-	poll_file->wqh = wqh;
-	add_wait_queue(wqh, &poll_file->wait);
+	if (poll_file->error)
+		return;
+
+	waiter = kzalloc_obj(*waiter);
+	if (!waiter) {
+		poll_file->error = -ENOMEM;
+		return;
+	}
+	waiter->poll_file = poll_file;
+	waiter->wqh = wqh;
+	init_waitqueue_func_entry(&waiter->wait, mshv_vtl_poll_file_wake);
+	add_wait_queue(wqh, &waiter->wait);
+	waiter->next = poll_file->waiters;
+	poll_file->waiters = waiter;
 }
 
-static int mshv_vtl_ioctl_set_poll_file(struct mshv_vtl_set_poll_file __user *user_input)
+static void mshv_vtl_detach_poll_file(struct mshv_vtl_poll_file *poll_file)
 {
-	struct file *file, *old_file;
+	struct mshv_vtl_poll_wait *waiter;
+	wait_queue_head_t *wqh;
+
+	if (!poll_file)
+		return;
+
+	atomic_andnot(MSHV_VTL_POLL_ACTIVE, &poll_file->state);
+	rcu_read_lock();
+	for (waiter = poll_file->waiters; waiter; waiter = waiter->next) {
+		/*
+		 * A NULL published by POLLFREE marks the callback's final
+		 * access to this waiter. Otherwise, RCU protects the queue
+		 * head against early freeing, and remove_wait_queue() takes
+		 * its lock to synchronize with callbacks.
+		 */
+		wqh = smp_load_acquire(&waiter->wqh);
+		if (wqh) {
+			remove_wait_queue(wqh, &waiter->wait);
+			WRITE_ONCE(waiter->wqh, NULL);
+		}
+	}
+	rcu_read_unlock();
+}
+
+static void mshv_vtl_put_poll_file(struct mshv_vtl_poll_file *poll_file)
+{
+	struct mshv_vtl_poll_wait *waiter;
+
+	if (!poll_file)
+		return;
+
+	mshv_vtl_detach_poll_file(poll_file);
+	while (poll_file->waiters) {
+		waiter = poll_file->waiters;
+		poll_file->waiters = waiter->next;
+		kfree(waiter);
+	}
+	fput(poll_file->file);
+	kfree(poll_file);
+}
+
+static void mshv_vtl_cleanup_poll_files(void)
+{
 	struct mshv_vtl_poll_file *poll_file;
+	int cpu;
+
+	{
+		guard(rwsem_write)(&mshv_vtl_state_lock);
+		WRITE_ONCE(mshv_vtl_shutting_down, true);
+	}
+
+	for_each_possible_cpu(cpu) {
+		{
+			guard(mutex)(&mshv_vtl_poll_file_lock);
+			poll_file = per_cpu(mshv_vtl_poll_file, cpu);
+			per_cpu(mshv_vtl_poll_file, cpu) = NULL;
+			mshv_vtl_detach_poll_file(poll_file);
+		}
+		mshv_vtl_put_poll_file(poll_file);
+	}
+}
+
+/*
+ * The state rwsem excludes publication once shutdown begins. The poll-file
+ * mutex serializes replacement, including detaching old callbacks before
+ * activating the new subscription. Preparation stays outside these locks
+ * because vfs_poll() invokes a foreign ->poll() implementation that may block.
+ */
+static int mshv_vtl_publish_poll_file(struct mshv_vtl_poll_file *poll_file,
+				      struct mshv_vtl_poll_file **old_file)
+{
+	guard(rwsem_read)(&mshv_vtl_state_lock);
+	if (mshv_vtl_shutting_down)
+		return -ESHUTDOWN;
+
+	guard(mutex)(&mshv_vtl_poll_file_lock);
+	*old_file = per_cpu(mshv_vtl_poll_file, poll_file->cpu);
+	mshv_vtl_detach_poll_file(*old_file);
+	per_cpu(mshv_vtl_poll_file, poll_file->cpu) = poll_file;
+	if (atomic_fetch_or(MSHV_VTL_POLL_ACTIVE, &poll_file->state) &
+	    MSHV_VTL_POLL_PENDING)
+		mshv_vtl_cancel(poll_file->cpu);
+
+	return 0;
+}
+
+static int
+mshv_vtl_ioctl_set_poll_file(struct mshv_vtl_set_poll_file __user *user_input)
+{
+	struct file *file;
+	struct mshv_vtl_poll_file *poll_file, *old_file;
 	struct mshv_vtl_set_poll_file input;
+	int ret;
 
 	if (copy_from_user(&input, user_input, sizeof(input)))
 		return -EFAULT;
+	if (READ_ONCE(mshv_vtl_shutting_down))
+		return -ESHUTDOWN;
 
 	if (input.cpu >= num_possible_cpus() || !cpu_online(input.cpu))
 		return -EINVAL;
@@ -479,35 +623,33 @@ static int mshv_vtl_ioctl_set_poll_file(struct mshv_vtl_set_poll_file __user *us
 	 * CPU is expected to remain online after above cpu_online() check.
 	 */
 
-	file = NULL;
 	file = fget(input.fd);
 	if (!file)
 		return -EBADFD;
 
-	poll_file = per_cpu_ptr(&mshv_vtl_poll_file, READ_ONCE(input.cpu));
-	if (!poll_file)
-		return -EINVAL;
-
-	mutex_lock(&mshv_vtl_poll_file_lock);
-
-	if (poll_file->wqh)
-		remove_wait_queue(poll_file->wqh, &poll_file->wait);
-	poll_file->wqh = NULL;
-
-	old_file = poll_file->file;
+	poll_file = kzalloc_obj(*poll_file);
+	if (!poll_file) {
+		fput(file);
+		return -ENOMEM;
+	}
 	poll_file->file = file;
 	poll_file->cpu = input.cpu;
-
-	if (file) {
-		init_waitqueue_func_entry(&poll_file->wait, mshv_vtl_poll_file_wake);
-		init_poll_funcptr(&poll_file->pt, mshv_vtl_ptable_queue_proc);
-		vfs_poll(file, &poll_file->pt);
+	atomic_set(&poll_file->state, 0);
+	init_poll_funcptr(&poll_file->pt, mshv_vtl_ptable_queue_proc);
+	vfs_poll(file, &poll_file->pt);
+	if (poll_file->error) {
+		ret = poll_file->error;
+		mshv_vtl_put_poll_file(poll_file);
+		return ret;
 	}
 
-	mutex_unlock(&mshv_vtl_poll_file_lock);
+	ret = mshv_vtl_publish_poll_file(poll_file, &old_file);
+	if (ret) {
+		mshv_vtl_put_poll_file(poll_file);
+		return ret;
+	}
 
-	if (old_file)
-		fput(old_file);
+	mshv_vtl_put_poll_file(old_file);
 
 	return 0;
 }
@@ -1367,8 +1509,6 @@ static int __init mshv_vtl_init(void)
 		goto free_low;
 	}
 
-	mutex_init(&mshv_vtl_poll_file_lock);
-
 	device_initialize(mem_dev);
 	dev_set_name(mem_dev, "mshv vtl mem dev");
 	ret = device_add(mem_dev);
@@ -1390,6 +1530,7 @@ free_sint:
 free_synic:
 	hv_vtl_remove_synic();
 free_dev:
+	mshv_vtl_cleanup_poll_files();
 	misc_deregister(&mshv_dev);
 
 	return ret;
@@ -1397,6 +1538,7 @@ free_dev:
 
 static void __exit mshv_vtl_exit(void)
 {
+	mshv_vtl_cleanup_poll_files();
 	device_del(mem_dev);
 	kfree(mem_dev);
 	misc_deregister(&mshv_vtl_low);
