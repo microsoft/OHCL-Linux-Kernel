@@ -88,6 +88,32 @@ static DEFINE_PER_CPU(struct cpuhp_cpu_state, cpuhp_state) = {
 };
 
 #ifdef CONFIG_SMP
+/**
+ * cpuhp_is_rollback - Test whether a callback is undoing a CPU transition
+ * @cpu: CPU whose hotplug callback is running
+ *
+ * Only valid inside an ONLINE-section hotplug callback for @cpu. Single
+ * callbacks for state installation or removal are not CPU transitions.
+ *
+ * Return: true during CPU-transition rollback, false otherwise.
+ */
+bool cpuhp_is_rollback(unsigned int cpu)
+{
+	struct cpuhp_cpu_state *st = per_cpu_ptr(&cpuhp_state, cpu);
+
+	return st->rollback && !st->single;
+}
+EXPORT_SYMBOL_GPL(cpuhp_is_rollback);
+
+/* Only valid inside an ONLINE-section hotplug callback for this CPU. */
+bool cpuhp_is_offlining(unsigned int cpu)
+{
+	struct cpuhp_cpu_state *st = per_cpu_ptr(&cpuhp_state, cpu);
+
+	return current == st->thread && !st->single && !st->rollback && !st->bringup;
+}
+EXPORT_SYMBOL_GPL(cpuhp_is_offlining);
+
 cpumask_t cpus_booted_once_mask;
 #endif
 
