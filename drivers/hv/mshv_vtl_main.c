@@ -13,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/miscdevice.h>
 #include <linux/anon_inodes.h>
+#include <linux/cpu.h>
 #include <linux/cpuhotplug.h>
 #include <linux/count_zeros.h>
 #include <linux/entry-virt.h>
@@ -103,7 +104,6 @@ static wait_queue_head_t fd_wait_queue;
 static bool has_message;
 static struct eventfd_ctx *flag_eventfds[HV_EVENT_FLAGS_COUNT];
 static DEFINE_MUTEX(flag_lock);
-static bool __read_mostly mshv_has_reg_page;
 
 /* hvcall code is of type u16, allocate a bitmap of size (1 << 16) to accommodate it */
 #define MAX_BITMAP_SIZE ((U16_MAX + 1) / 8)
@@ -279,6 +279,23 @@ static long mshv_tdx_vtl_ioctl_check_extension(u32 arg)
 	}
 }
 
+static bool mshv_vtl_has_reg_pages(void)
+{
+	bool has_reg_pages = true;
+	int cpu;
+
+	cpus_read_lock();
+	for_each_online_cpu(cpu) {
+		if (!per_cpu(mshv_vtl_per_cpu, cpu).reg_page) {
+			has_reg_pages = false;
+			break;
+		}
+	}
+	cpus_read_unlock();
+
+	return has_reg_pages;
+}
+
 static long
 mshv_ioctl_check_extension(void __user *user_arg)
 {
@@ -291,7 +308,7 @@ mshv_ioctl_check_extension(void __user *user_arg)
 	case MSHV_CAP_CORE_API_STABLE:
 		return 0;
 	case MSHV_CAP_REGISTER_PAGE:
-		return mshv_has_reg_page;
+		return mshv_vtl_has_reg_pages();
 	case MSHV_CAP_VTL_RETURN_ACTION:
 		return mshv_vsm_capabilities.return_action_available;
 	case MSHV_CAP_DR6_SHARED:
@@ -751,7 +768,6 @@ static void mshv_vtl_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 		}
 	} else {
 		per_cpu->reg_page = reg_page;
-		mshv_has_reg_page = true;
 	}
 }
 
@@ -3738,8 +3754,6 @@ static vm_fault_t mshv_vtl_fault(struct vm_fault *vmf)
 	if (real_off == MSHV_RUN_PAGE_OFFSET) {
 		page = virt_to_page(mshv_vtl_cpu_run(cpu));
 	} else if (real_off == MSHV_REG_PAGE_OFFSET) {
-		if (!mshv_has_reg_page)
-			return VM_FAULT_SIGBUS;
 		page = mshv_vtl_cpu_reg_page(cpu);
 #ifdef CONFIG_X86_64
 	} else if (real_off == MSHV_VMSA_PAGE_OFFSET) {
