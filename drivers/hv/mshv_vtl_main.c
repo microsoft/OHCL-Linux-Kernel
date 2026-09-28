@@ -98,6 +98,7 @@ static __always_inline void mshv_vtl_smap_restore(unsigned long flags)
 #endif
 
 static struct device *mem_dev;
+static bool __read_mostly mshv_vtl_ready;
 
 static struct tasklet_struct msg_dpc;
 static wait_queue_head_t fd_wait_queue;
@@ -337,8 +338,18 @@ mshv_dev_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	return -ENOTTY;
 }
 
+static int mshv_dev_open(struct inode *inode, struct file *filp)
+{
+	/* Pairs with the release in mshv_vtl_init(). */
+	if (!smp_load_acquire(&mshv_vtl_ready))
+		return -ENODEV;
+
+	return 0;
+}
+
 static const struct file_operations mshv_dev_fops = {
 	.owner		= THIS_MODULE,
+	.open		= mshv_dev_open,
 	.unlocked_ioctl	= mshv_dev_ioctl,
 	.llseek		= noop_llseek,
 };
@@ -4561,6 +4572,9 @@ static int __init mshv_vtl_init(void)
 	 * enabled if in_idle is set.
 	*/
 	smp_store_release(&in_idle_is_enabled, true);
+
+	/* Publish completed initialization before allowing device opens. */
+	smp_store_release(&mshv_vtl_ready, true);
 
 	return 0;
 
