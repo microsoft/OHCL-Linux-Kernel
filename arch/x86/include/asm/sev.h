@@ -521,7 +521,6 @@ static inline int pvalidate(unsigned long vaddr, bool rmp_psize, bool validate)
 
 struct snp_guest_request_ioctl;
 
-void snp_mshv_vtl_return(u8 input_vtl);
 void setup_ghcb(void);
 void snp_register_ghcb_early(unsigned long paddr);
 void early_snp_set_memory_private(unsigned long vaddr, unsigned long paddr,
@@ -667,7 +666,7 @@ static inline enum es_result savic_unregister_gpa(u64 *gpa) { return ES_UNSUPPOR
 static inline void savic_ghcb_msr_write(u32 reg, u64 value) { }
 static inline u64 savic_ghcb_msr_read(u32 reg) { return 0; }
 static inline void snp_update_svsm_ca(void) { }
-static inline void snp_mshv_vtl_return(u8 input_vtl) { }
+static inline void snp_mshv_vtl_return(u8 target_vtl) { }
 
 #endif	/* CONFIG_AMD_MEM_ENCRYPT */
 
