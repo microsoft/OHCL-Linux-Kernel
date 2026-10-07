@@ -20,5 +20,6 @@ struct kexec_sha_region {
  */
 extern struct kexec_sha_region purgatory_sha_regions[KEXEC_SEGMENT_MAX];
 extern u8 purgatory_sha256_digest[SHA256_DIGEST_SIZE];
+extern u8 purgatory_skip_digest;
 
 #endif

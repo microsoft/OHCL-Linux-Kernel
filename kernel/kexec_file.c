@@ -865,6 +865,135 @@ int kexec_add_buffer(struct kexec_buf *kbuf)
 }
 
 /* Calculate and store the digest of segments */
+#ifdef CONFIG_KEXEC_VERIFY_DIGEST_IN_KERNEL
+static void kexec_save_digest(struct kimage *image, unsigned int nr,
+			      const u8 *digest)
+{
+	unsigned int k;
+	void *addr;
+
+	image->purgatory_skip_digest = 0;
+	if (image->type != KEXEC_TYPE_DEFAULT || image->preserve_context)
+		return;
+
+	for (k = 0; k < nr; k++) {
+		const struct kexec_segment *seg =
+			&image->segment[image->digest_segments[k]];
+
+		if (!PAGE_ALIGNED(seg->mem) || !PAGE_ALIGNED(seg->memsz))
+			return;
+	}
+
+	addr = kexec_purgatory_get_symbol_addr(image, "purgatory_skip_digest");
+	if (IS_ERR(addr))
+		return;
+
+	memcpy(image->digest, digest, SHA256_DIGEST_SIZE);
+	image->nr_digest_segments = nr;
+	image->purgatory_skip_digest = (unsigned long)addr;
+}
+
+/* Hash the segment's staged pages in destination order. */
+static bool kexec_hash_segment(struct kimage *image, unsigned int idx,
+			       struct sha256_ctx *sctx)
+{
+	const struct kexec_segment *seg = &image->segment[idx];
+	unsigned long dest = 0, next = seg->mem, end = seg->mem + seg->memsz;
+	kimage_entry_t *ptr, entry;
+
+	if (image->segment_cma[idx]) {
+		sha256_update(sctx, page_address(image->segment_cma[idx]),
+			      seg->memsz);
+		return true;
+	}
+
+	for_each_kimage_entry(image, ptr, entry) {
+		if (entry & IND_DESTINATION) {
+			dest = entry & PAGE_MASK;
+		} else if (entry & IND_SOURCE) {
+			if (dest == next && next < end) {
+				void *va = kmap_local_page(boot_pfn_to_page(entry >> PAGE_SHIFT));
+
+				sha256_update(sctx, va, PAGE_SIZE);
+				kunmap_local(va);
+				next += PAGE_SIZE;
+			}
+			dest += PAGE_SIZE;
+		}
+	}
+
+	return next == end;
+}
+
+/* Write a byte at load address @addr in the staged segment pages. */
+static bool kexec_poke_staged_byte(struct kimage *image, unsigned long addr,
+				   u8 val)
+{
+	unsigned long dest = 0, page = addr & PAGE_MASK;
+	kimage_entry_t *ptr, entry;
+	unsigned int i;
+
+	for (i = 0; i < image->nr_segments; i++) {
+		const struct kexec_segment *seg = &image->segment[i];
+
+		if (image->segment_cma[i] && addr >= seg->mem &&
+		    addr - seg->mem < seg->memsz) {
+			*((u8 *)page_address(image->segment_cma[i]) +
+			  (addr - seg->mem)) = val;
+			return true;
+		}
+	}
+
+	for_each_kimage_entry(image, ptr, entry) {
+		if (entry & IND_DESTINATION) {
+			dest = entry & PAGE_MASK;
+		} else if (entry & IND_SOURCE) {
+			if (dest == page) {
+				u8 *va = kmap_local_page(boot_pfn_to_page(entry >> PAGE_SHIFT));
+
+				va[offset_in_page(addr)] = val;
+				kunmap_local(va);
+				return true;
+			}
+			dest += PAGE_SIZE;
+		}
+	}
+
+	return false;
+}
+
+/*
+ * Called after devices are shut down. On success the purgatory skips its
+ * own unaccelerated check; on any failure it performs that check as usual.
+ */
+void kexec_file_verify_digest(struct kimage *image)
+{
+	u8 digest[SHA256_DIGEST_SIZE];
+	struct sha256_ctx sctx;
+	unsigned int k;
+
+	if (!image->file_mode || !image->purgatory_skip_digest)
+		return;
+
+	sha256_init(&sctx);
+	for (k = 0; k < image->nr_digest_segments; k++) {
+		if (!kexec_hash_segment(image, image->digest_segments[k], &sctx))
+			goto fallback;
+	}
+	sha256_final(&sctx, digest);
+
+	if (!memcmp(digest, image->digest, sizeof(digest)) &&
+	    kexec_poke_staged_byte(image, image->purgatory_skip_digest, 1))
+		return;
+
+fallback:
+	pr_warn("segment digest not verified in kernel, purgatory will check it\n");
+}
+#else
+static inline void kexec_save_digest(struct kimage *image, unsigned int nr,
+				     const u8 *digest) { }
+#endif
+
 static int kexec_calculate_store_digests(struct kimage *image)
 {
 	struct sha256_ctx sctx;
@@ -930,6 +1059,9 @@ static int kexec_calculate_store_digests(struct kimage *image)
 
 		sha_regions[j].start = ksegment->mem;
 		sha_regions[j].len = ksegment->memsz;
+#ifdef CONFIG_KEXEC_VERIFY_DIGEST_IN_KERNEL
+		image->digest_segments[j] = i;
+#endif
 		j++;
 	}
 
@@ -942,6 +1074,8 @@ static int kexec_calculate_store_digests(struct kimage *image)
 
 	ret = kexec_purgatory_get_set_symbol(image, "purgatory_sha256_digest",
 					     digest, SHA256_DIGEST_SIZE, 0);
+	if (!ret)
+		kexec_save_digest(image, j, digest);
 out_free_sha_regions:
 	vfree(sha_regions);
 	return ret;

@@ -46,6 +46,19 @@ config KEXEC_FILE
 	  for kernel and initramfs as opposed to list of segments as
 	  accepted by kexec system call.
 
+config KEXEC_VERIFY_DIGEST_IN_KERNEL
+	bool "Verify kexec_file segment digests before leaving the old kernel"
+	depends on KEXEC_FILE && X86_64
+	help
+	  After devices are shut down for a kexec reboot, check the loaded
+	  segments against the purgatory digest using the kernel's
+	  accelerated SHA-256 library. On a match, the purgatory skips its
+	  slower, unaccelerated check. On any mismatch or error, the
+	  purgatory performs its normal check. Only corruption during the
+	  final relocation copy goes unchecked.
+
+	  If unsure, say N.
+
 config KEXEC_SIG
 	bool "Verify kernel signature during kexec_file_load() syscall"
 	depends on ARCH_SUPPORTS_KEXEC_SIG

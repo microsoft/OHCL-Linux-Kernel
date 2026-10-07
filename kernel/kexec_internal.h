@@ -15,6 +15,11 @@ void kimage_terminate(struct kimage *image);
 int kimage_is_destination_range(struct kimage *image,
 				unsigned long start, unsigned long end);
 
+#define for_each_kimage_entry(image, ptr, entry) \
+	for (ptr = &image->head; (entry = *ptr) && !(entry & IND_DONE); \
+		ptr = (entry & IND_INDIRECTION) ? \
+			boot_phys_to_virt((entry & PAGE_MASK)) : ptr + 1)
+
 /*
  * Whatever is used to serialize accesses to the kexec_crash_image needs to be
  * NMI safe, as __crash_kexec() can happen during nmi_panic(), so here we use a
@@ -39,6 +44,12 @@ extern size_t kexec_purgatory_size;
 #else /* CONFIG_KEXEC_FILE */
 static inline void kimage_file_post_load_cleanup(struct kimage *image) { }
 #endif /* CONFIG_KEXEC_FILE */
+
+#ifdef CONFIG_KEXEC_VERIFY_DIGEST_IN_KERNEL
+void kexec_file_verify_digest(struct kimage *image);
+#else
+static inline void kexec_file_verify_digest(struct kimage *image) { }
+#endif
 
 struct kexec_buf;
 

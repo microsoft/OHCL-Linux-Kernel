@@ -29,6 +29,10 @@ extern note_buf_t __percpu *crash_notes;
 #include <linux/prandom.h>
 #endif
 
+#ifdef CONFIG_KEXEC_VERIFY_DIGEST_IN_KERNEL
+#include <crypto/sha2.h>
+#endif
+
 #ifdef CONFIG_KEXEC_CORE
 #include <linux/list.h>
 #include <linux/compat.h>
@@ -405,6 +409,15 @@ struct kimage {
 
 	/* Force carrying over the DTB from the current boot */
 	bool force_dtb;
+
+#ifdef CONFIG_KEXEC_VERIFY_DIGEST_IN_KERNEL
+	/* Purgatory digest inputs, rechecked in kernel_kexec() */
+	u8 digest[SHA256_DIGEST_SIZE];
+	u8 digest_segments[KEXEC_SEGMENT_MAX];
+	unsigned int nr_digest_segments;
+	/* Load address of purgatory_skip_digest, or 0 if unused */
+	unsigned long purgatory_skip_digest;
+#endif
 #endif
 
 #ifdef CONFIG_CRASH_HOTPLUG

@@ -21,6 +21,8 @@ u8 purgatory_sha256_digest[SHA256_DIGEST_SIZE] __section(".kexec-purgatory");
 
 struct kexec_sha_region purgatory_sha_regions[KEXEC_SEGMENT_MAX] __section(".kexec-purgatory");
 
+u8 purgatory_skip_digest __section(".kexec-purgatory");
+
 static int verify_sha256_digest(void)
 {
 	struct kexec_sha_region *ptr, *end;
@@ -44,6 +46,10 @@ static int verify_sha256_digest(void)
 void purgatory(void)
 {
 	int ret;
+
+	/* Set only after the old kernel verified the same digest. */
+	if (purgatory_skip_digest)
+		return;
 
 	ret = verify_sha256_digest();
 	if (ret) {
