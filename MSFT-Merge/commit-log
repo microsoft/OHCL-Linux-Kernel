@@ -119,7 +119,6 @@ c630cc37901b   2026-08-14		x86/apic/savic: get GPA for SAVIC page using per_cpu_
 Patch series in progress
 ------------------------
 6fd11a76911a   2024-04-17		PCI: Add a mutex to protect the global list pci_domain_busn_res_list (Status: Sent V1; Approx LOC: 25; Reference: https://lore.kernel.org/lkml/20240419015302.13871-1-decui@microsoft.com/; Testing: Tested on AH24) [Dexuan]
-995392d1b714   2024-01-22		Drivers: hv: Add connection id support (Status: In review; Approx LOC: 8; Testing: Tested on AH27) [Hardik]
 31a427ddeaf1   2025-02-11		vfio/pci: Continue to refactor vfio_pci_core_do_io_rw (Status: In review; Approx LOC: 30; Reference: https://lore.kernel.org/all/20240425165604.899447-4-gbayer@linux.ibm.com/) [Gerd Bayer (IBM)]
 3dcb6050cf8b   2024-05-17		drivers/vmbus: Enhance Interrupt Management (Status: In review; Approx LOC: 850; Reference: [PATCH v2 00/15] Add arm64 support in MSHV_VTL - Naman Jain) [Naman]
 e3d9aa18101a   2024-05-17		drivers/hv: Enable MSHV_VTL_MODE for arm64 [-]
@@ -132,3 +131,13 @@ f1bc8fdb27b1   2025-12-04		Fix x86 compilation errors [-]
 cff21e6cb023   2025-04-22		hv: mshv: vtl: Allow aarch64 to use the Hyper-V VTL register page when available. (#53) [-]
 f701d02a32b1   2024-06-05		hyperv/arm64: Use PSCI to start processors. [-]
 f6c55e5bec93   2023-02-16		x86/build: Only align ENTRY_TEXT to PMD_SIZE on x86 if PTI or SRSO is enabled. (Status: In review v4; Approx LOC: 10) [Hamza]
+
+
+Retired / superseded OOT commits
+--------------------------------
+995392d1b714   2024-01-22		Drivers: hv: Add connection id support [Hardik]
+	Status: RETIRED - superseded by upstream
+	Revert: 1fad9da94612
+	Replacement: ceb19f46e475 (6.18 stable); 92d059312802 (mainline)
+	Upgrade policy: Never replay the original or its revert.
+	Backport the replacement only if the target base lacks an equivalent fix.
