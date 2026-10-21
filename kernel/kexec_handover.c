@@ -621,27 +621,32 @@ static void __init kho_reserve_scratch(void)
 
 	/*
 	 * reserve scratch area in low memory for lowmem allocations in the
-	 * next kernel
+	 * next kernel. Skip it if it is empty, for example when there is no
+	 * low memory at all.
 	 */
 	size = scratch_size_lowmem;
-	addr = memblock_phys_alloc_range(size, CMA_MIN_ALIGNMENT_BYTES, 0,
-					 ARCH_LOW_ADDRESS_LIMIT);
-	if (!addr)
-		goto err_free_scratch_desc;
+	if (size) {
+		addr = memblock_phys_alloc_range(size, CMA_MIN_ALIGNMENT_BYTES,
+						 0, ARCH_LOW_ADDRESS_LIMIT);
+		if (!addr)
+			goto err_free_scratch_desc;
 
-	kho_scratch[i].addr = addr;
-	kho_scratch[i].size = size;
-	i++;
+		kho_scratch[i].addr = addr;
+		kho_scratch[i].size = size;
+		i++;
+	}
 
 	/* reserve large contiguous area for allocations without nid */
 	size = scratch_size_global;
-	addr = memblock_phys_alloc(size, CMA_MIN_ALIGNMENT_BYTES);
-	if (!addr)
-		goto err_free_scratch_areas;
+	if (size) {
+		addr = memblock_phys_alloc(size, CMA_MIN_ALIGNMENT_BYTES);
+		if (!addr)
+			goto err_free_scratch_areas;
 
-	kho_scratch[i].addr = addr;
-	kho_scratch[i].size = size;
-	i++;
+		kho_scratch[i].addr = addr;
+		kho_scratch[i].size = size;
+		i++;
+	}
 
 	/*
 	 * Loop over nodes that have both memory and are online. Skip
@@ -649,6 +654,9 @@ static void __init kho_reserve_scratch(void)
 	 */
 	for_each_node_state(nid, N_MEMORY) {
 		size = scratch_size_node(nid);
+		if (!size)
+			continue;
+
 		addr = memblock_alloc_range_nid(size, CMA_MIN_ALIGNMENT_BYTES,
 						0, MEMBLOCK_ALLOC_ACCESSIBLE,
 						nid, true);
@@ -660,6 +668,14 @@ static void __init kho_reserve_scratch(void)
 		i++;
 	}
 
+	/*
+	 * Areas that needed no scratch were skipped, so fewer areas than
+	 * initially estimated may have been reserved.
+	 */
+	if (!i)
+		goto err_free_scratch_desc;
+
+	kho_scratch_cnt = i;
 	return;
 
 err_free_scratch_areas:
