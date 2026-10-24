@@ -218,6 +218,7 @@ static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
 static DEFINE_PER_CPU(unsigned long long, num_vtl0_transitions);
 static DEFINE_PER_CPU(struct mshv_vtl_per_cpu, mshv_vtl_per_cpu);
 static DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
+static DEFINE_PER_CPU(bool, mshv_vtl_lower_vtl_ran);
 
 static const union hv_input_vtl input_vtl_zero;
 static const union hv_input_vtl input_vtl_normal = {
@@ -852,9 +853,11 @@ static int mshv_vtl_get_vsm_regs(void)
 
 	mshv_vsm_capabilities.as_uint64 = registers[0].value.reg64;
 #ifdef CONFIG_X86_64
-	if (hv_isolation_type_snp())
+	if (hv_isolation_type_snp()) {
 		mshv_vsm_capabilities.dr6_shared = 0;
-	else if (hv_isolation_type_tdx()) {
+		mshv_vsm_capabilities.intercept_page_available = 0;
+		mshv_vsm_capabilities.return_action_available = 0;
+	} else if (hv_isolation_type_tdx()) {
 		mshv_vsm_capabilities.dr6_shared = 1;
 	} else {
 		mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
@@ -2041,7 +2044,7 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 
 	armed = mshv_tdx_halt_timer_pre(flags & MSHV_VTL_RUN_FLAG_HALTED);
 
-	/* A VTL2 TDX kernel doesn't allocate hv_vp_assist_page at the moment */
+	/* Hardware-isolated guests don't allocate hv_vp_assist_page. */
 	hvp = hv_vp_assist_page ? hv_vp_assist_page[smp_processor_id()] : NULL;
 
 	/*
@@ -2095,10 +2098,12 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 #endif
 	} if (hv_isolation_type_snp()) {
 #if defined(CONFIG_SEV_GUEST)
-		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED))
+		if (unlikely(flags & MSHV_VTL_RUN_FLAG_HALTED)) {
 			native_safe_halt();
-		else
+		} else {
+			this_cpu_write(mshv_vtl_lower_vtl_ran, true);
 			snp_mshv_vtl_return(target_vtl.use_target_vtl ? target_vtl.target_vtl : 0);
+		}
 		return;
 #endif
 	} else {
@@ -2451,25 +2456,6 @@ static void mshv_snp_clear_exit_code(struct sev_es_save_area *vmsa, bool int_sha
 }
 
 /*
- * Determine if this interrupt was handled completely in the kernel.
- *
- * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
- * Returns false if the exit must be handled by user-space.
- */
-static bool mshv_snp_try_handle_interrupt_entry(struct mshv_vtl_run *run)
-{
-	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
-
-	if (!(run->offload_flags & MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT) ||
-	    READ_ONCE(hvp->vtl_entry_reason) != MSHV_ENTRY_REASON_INTERRUPT)
-		return false;
-
-	mshv_snp_clear_exit_code(snp_this_vmsa(), false);
-	return true;
-}
-
-
-/*
  * Try to handle the incomplete IPI SEV-SNP exit.
  *
  * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
@@ -2501,7 +2487,7 @@ static bool mshv_snp_try_handle_incomplete_ipi(struct mshv_vtl_run *run,
  * Returns true if the exit was handled entirely in kernel, and the VMPL should be re-entered.
  * Returns false if the exit must be handled by user-space.
  */
-static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
+static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run, bool lower_vtl_ran)
 {
 	const bool intr_inject = MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT & run->offload_flags;
 	const bool x2apic = MSHV_VTL_OFFLOAD_FLAG_X2APIC & run->offload_flags;
@@ -2511,6 +2497,8 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 		return false;
 
 	vmsa = snp_this_vmsa();
+	if (!lower_vtl_ran)
+		goto handled;
 
 	switch (vmsa->guest_exit_code) {
 	case SVM_EXIT_AVIC_INCOMPLETE_IPI:
@@ -2528,19 +2516,10 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run)
 		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
 		goto handled;
 	case SVM_EXIT_INTR:
-		/*
-		 * mshv_snp_clear_exit_code() uses SVM_EXIT_INTR as a benign
-		 * sentinel. If VTL2 was woken from native_safe_halt(), VTL0 did
-		 * not run and the VMSA still contains that sentinel.
-		 */
-		if (run->flags & MSHV_VTL_RUN_FLAG_HALTED)
-			return true;
-		break;
+		goto handled;
 	case SVM_EXIT_MSR:
-		if (READ_ONCE(hv_vp_assist_page[smp_processor_id()]->vtl_entry_reason) ==
-			    MSHV_ENTRY_REASON_INTERCEPT &&
-		    (u32)mshv_snp_read_vmsa_reg(
-			    run, vmsa, offsetof(struct sev_es_save_area, rcx)) ==
+		if ((u32)mshv_snp_read_vmsa_reg(run, vmsa,
+						offsetof(struct sev_es_save_area, rcx)) ==
 			    HV_X64_MSR_STIMER0_COUNT &&
 		    (vmsa->guest_exit_info_1 & 1)) {
 			u64 count = (u32)mshv_snp_read_vmsa_reg(
@@ -2598,38 +2577,17 @@ static void mshv_snp_release_stimer0(struct mshv_vtl_run *run)
 	hrtimer_cancel(&this_cpu_ptr(&mshv_vtl_per_cpu)->snp_stimer0_timer);
 }
 
-static bool mshv_snp_try_handle_intercept(struct mshv_vtl_run *run)
+static bool mshv_snp_try_handle_synic_message(u64 exit_code)
 {
-	struct hv_vp_assist_page *hvp =  hv_vp_assist_page[smp_processor_id()];
+	struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
+	void *synic_message_page = mshv_cpu->synic_message_page;
 	u32 msg_type = HVMSG_NONE;
-	struct hv_message *msg = NULL;
-	bool is_interrupt = false;
+	struct hv_message *msg;
 
-	switch (hvp->vtl_entry_reason) {
-	case MSHV_ENTRY_REASON_INTERRUPT:
-		if (!mshv_vsm_capabilities.intercept_page_available) {
-			struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
-			void *synic_message_page = mshv_cpu->synic_message_page;
-
-			if (likely(synic_message_page)) {
-				msg = (struct hv_message *)synic_message_page +
-					HV_SYNIC_INTERCEPTION_SINT_INDEX;
-				is_interrupt = true;
-			}
-		}
-		break;
-
-	case MSHV_ENTRY_REASON_INTERCEPT:
-		WARN_ON(!mshv_vsm_capabilities.intercept_page_available);
-		msg = (struct hv_message *)hvp->intercept_message;
-		break;
-
-	default:
-		panic("unknown entry reason: %d", hvp->vtl_entry_reason);
-	}
-
-	if (!msg)
+	if (unlikely(!synic_message_page))
 		return true;
+
+	msg = (struct hv_message *)synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
 	msg_type = READ_ONCE(msg->header.message_type);
 
 	switch (msg_type) {
@@ -2646,16 +2604,14 @@ static bool mshv_snp_try_handle_intercept(struct mshv_vtl_run *run)
 	case HVMSG_SYNIC_SINT_DELIVERABLE:
 		return false;
 	case HVMSG_X64_HALT:
-		run->flags |= MSHV_VTL_RUN_FLAG_HALTED;
-		run->offload_flags &= ~MSHV_VTL_OFFLOAD_FLAG_HALT_IDLE;
-		run->offload_flags |= MSHV_VTL_OFFLOAD_FLAG_HALT_HLT;
+		if (exit_code != SVM_EXIT_HLT && exit_code != SVM_EXIT_IDLE_HLT)
+			return false;
 		break;
 	default:
 		return false;
 	}
 
-	if (is_interrupt)
-		vmbus_signal_eom(msg, msg_type);
+	vmbus_signal_eom(msg, msg_type);
 
 	return true;
 }
@@ -2718,6 +2674,8 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 			preempt_enable();
 			return -EINTR;
 		}
+		if (hv_isolation_type_snp())
+			this_cpu_write(mshv_vtl_lower_vtl_ran, false);
 
 		if (tick_nohz_full_enabled() || nr_cpu_ids == 1 || !enter) {
 			mshv_vtl_switch_to_vtl0_irqoff();
@@ -2760,11 +2718,15 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 		} else if (hv_isolation_type_snp()) {
 #ifdef CONFIG_SEV_GUEST
 			struct mshv_vtl_run *run = mshv_vtl_this_run();
+			bool lower_vtl_ran = this_cpu_read(mshv_vtl_lower_vtl_ran);
+			u64 exit_code = READ_ONCE(snp_this_vmsa()->guest_exit_code);
 
-			if (mshv_snp_try_handle_intercept(run) &&
-				(mshv_snp_try_handle_interrupt_entry(run) ||
-			     mshv_snp_try_handle_exit(run)))
+			if (mshv_snp_try_handle_exit(run, lower_vtl_ran) &&
+			    mshv_snp_try_handle_synic_message(exit_code))
 				continue; /* Exit handled entirely in kernel */
+
+			mshv_vtl_process_intercept();
+			goto done;
 #endif
 		}
 
