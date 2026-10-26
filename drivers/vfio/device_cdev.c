@@ -92,11 +92,13 @@ static int vfio_df_check_token(struct vfio_device *device,
 long vfio_df_ioctl_bind_iommufd(struct vfio_device_file *df,
 				struct vfio_device_bind_iommufd __user *arg)
 {
-	const u32 VALID_FLAGS = VFIO_DEVICE_BIND_FLAG_TOKEN;
+	const u32 VALID_FLAGS = VFIO_DEVICE_BIND_FLAG_TOKEN |
+			       VFIO_DEVICE_BIND_FLAG_KEEP_ALIVE;
 	struct vfio_device *device = df->device;
 	struct vfio_device_bind_iommufd bind;
 	unsigned long minsz;
 	u32 user_size;
+	bool was_keep_alive;
 	int ret;
 
 	static_assert(__same_type(arg->out_devid, df->devid));
@@ -125,7 +127,7 @@ long vfio_df_ioctl_bind_iommufd(struct vfio_device_file *df,
 
 	mutex_lock(&device->dev_set->lock);
 	/* one device cannot be bound twice */
-	if (df->access_granted) {
+	if (df->access_granted || device->open_count) {
 		ret = -EINVAL;
 		goto out_unlock;
 	}
@@ -149,6 +151,10 @@ long vfio_df_ioctl_bind_iommufd(struct vfio_device_file *df,
 	 */
 	vfio_df_get_kvm_safe(df);
 
+	was_keep_alive = device->keep_alive;
+	if (bind.flags & VFIO_DEVICE_BIND_FLAG_KEEP_ALIVE)
+		device->keep_alive = true;
+
 	ret = vfio_df_open(df);
 	if (ret)
 		goto out_put_kvm;
@@ -170,6 +176,7 @@ long vfio_df_ioctl_bind_iommufd(struct vfio_device_file *df,
 out_close_device:
 	vfio_df_close(df);
 out_put_kvm:
+	device->keep_alive = was_keep_alive;
 	vfio_device_put_kvm(device);
 	iommufd_ctx_put(df->iommufd);
 	df->iommufd = NULL;

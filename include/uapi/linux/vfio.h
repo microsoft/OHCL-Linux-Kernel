@@ -925,12 +925,25 @@ struct vfio_device_feature {
  * be provided the same token as VFIO_DEVICE_FEATURE_PCI_VF_TOKEN provided to
  * the PF.
  *
+ * VFIO_DEVICE_BIND_FLAG_KEEP_ALIVE sets the device's keep-alive state before
+ * the driver opens it. For vfio-pci, this skips clearing bus mastering and
+ * the initial function reset, allowing userspace to restore an already-running
+ * device after servicing. This takes effect before the device is enabled by
+ * the bind operation.
+ *
+ * The flag does not preserve the iommufd context or IOAS across servicing and
+ * does not change device-close behavior. Userspace must ensure that the
+ * device's existing DMA buffers remain valid. Omitting the flag leaves any
+ * existing keep-alive state unchanged. A failed bind restores the previous
+ * keep-alive state.
+ *
  * Return: 0 on success, -errno on failure.
  */
 struct vfio_device_bind_iommufd {
 	__u32		argsz;
 	__u32		flags;
 #define VFIO_DEVICE_BIND_FLAG_TOKEN (1 << 0)
+#define VFIO_DEVICE_BIND_FLAG_KEEP_ALIVE (1 << 1)
 	__s32		iommufd;
 	__u32		out_devid;
 	__aligned_u64	token_uuid_ptr;
