@@ -299,15 +299,16 @@ static inline struct pt_table_p *table_alloc_top(struct pt_common *common,
 						 gfp_t gfp)
 {
 	struct pt_iommu *iommu_table = iommu_from_common(common);
+	struct pt_table_p *table_mem;
+	size_t size = log2_to_int(pt_top_memsize_lg2(common, top_of_table));
 
 	/*
 	 * Top doesn't need the free list or otherwise, so it technically
 	 * doesn't need to use iommu pages. Use the API anyhow as the top is
 	 * usually not smaller than PAGE_SIZE to keep things simple.
 	 */
-	return iommu_alloc_pages_node_sz(
-		iommu_table->nid, gfp,
-		log2_to_int(pt_top_memsize_lg2(common, top_of_table)));
+	table_mem = iommu_alloc_pages_node_sz(iommu_table->nid, gfp, size);
+	return table_mem ?: ERR_PTR(-ENOMEM);
 }
 
 /* Allocate an interior table */
@@ -318,11 +319,12 @@ static inline struct pt_table_p *table_alloc(const struct pt_state *parent_pts,
 		iommu_from_common(parent_pts->range->common);
 	struct pt_state child_pts =
 		pt_init(parent_pts->range, parent_pts->level - 1, NULL);
+	struct pt_table_p *table_mem;
+	size_t size = log2_to_int(pt_num_items_lg2(&child_pts) +
+				 ilog2(PT_ITEM_WORD_SIZE));
 
-	return iommu_alloc_pages_node_sz(
-		iommu_table->nid, gfp,
-		log2_to_int(pt_num_items_lg2(&child_pts) +
-			    ilog2(PT_ITEM_WORD_SIZE)));
+	table_mem = iommu_alloc_pages_node_sz(iommu_table->nid, gfp, size);
+	return table_mem ?: ERR_PTR(-ENOMEM);
 }
 
 static inline int pt_iommu_new_table(struct pt_state *pts,
@@ -582,8 +584,10 @@ static int increase_top(struct pt_iommu *iommu_table, struct pt_range *range,
 		new_level = pts.level;
 		table_mem = table_alloc_top(
 			common, _pt_top_set(NULL, pts.level), map->attrs.gfp);
-		if (IS_ERR(table_mem))
-			return PTR_ERR(table_mem);
+		if (IS_ERR(table_mem)) {
+			ret = PTR_ERR(table_mem);
+			goto err_free;
+		}
 		iommu_pages_list_add(&free_list, table_mem);
 
 		/* The new table links to the lower table always at index 0 */
