@@ -2103,6 +2103,7 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 		} else {
 			this_cpu_write(mshv_vtl_lower_vtl_ran, true);
 			snp_mshv_vtl_return(target_vtl.use_target_vtl ? target_vtl.target_vtl : 0);
+			this_cpu_inc(num_vtl0_transitions);
 		}
 		return;
 #endif
@@ -2497,6 +2498,11 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run, bool lower_vtl_ra
 		return false;
 
 	vmsa = snp_this_vmsa();
+	/*
+	 * native_safe_halt() may wake without entering the lower VTL. In that
+	 * case the VMSA still contains the benign SVM_EXIT_INTR sentinel left
+	 * by the previous handled exit.
+	 */
 	if (!lower_vtl_ran)
 		goto handled;
 
@@ -2598,22 +2604,27 @@ static bool mshv_snp_try_handle_synic_message(u64 exit_code)
 			struct hv_x64_exception_intercept_message *expt_msg =
 				(struct hv_x64_exception_intercept_message *)msg->u.payload;
 			if (expt_msg->exception_vector != X86_TRAP_VC)
-				return false;
+				goto to_user;
 		}
 		break;
 	case HVMSG_SYNIC_SINT_DELIVERABLE:
-		return false;
+		goto to_user;
 	case HVMSG_X64_HALT:
 		if (exit_code != SVM_EXIT_HLT && exit_code != SVM_EXIT_IDLE_HLT)
-			return false;
+			goto to_user;
 		break;
 	default:
-		return false;
+		goto to_user;
 	}
 
 	vmbus_signal_eom(msg, msg_type);
 
 	return true;
+
+to_user:
+	memcpy(mshv_vtl_this_run()->exit_message, msg, sizeof(*msg));
+	vmbus_signal_eom(msg, msg_type);
+	return false;
 }
 #endif /* CONFIG_SEV_GUEST */
 
@@ -2721,11 +2732,10 @@ static int mshv_vtl_ioctl_return_to_lower_vtl(void)
 			bool lower_vtl_ran = this_cpu_read(mshv_vtl_lower_vtl_ran);
 			u64 exit_code = READ_ONCE(snp_this_vmsa()->guest_exit_code);
 
-			if (mshv_snp_try_handle_exit(run, lower_vtl_ran) &&
-			    mshv_snp_try_handle_synic_message(exit_code))
+			if (!mshv_snp_try_handle_exit(run, lower_vtl_ran))
+				mshv_vtl_process_intercept();
+			else if (mshv_snp_try_handle_synic_message(exit_code))
 				continue; /* Exit handled entirely in kernel */
-
-			mshv_vtl_process_intercept();
 			goto done;
 #endif
 		}
