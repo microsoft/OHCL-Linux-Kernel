@@ -16,14 +16,20 @@
 static const char iommu_dev_path[] = "/dev/iommu";
 static const char *cdev_path;
 
-static int vfio_device_bind_iommufd_ioctl(int cdev_fd, int iommufd)
+static int bind_with_flags(int cdev_fd, int iommufd, u32 flags)
 {
 	struct vfio_device_bind_iommufd bind_args = {
 		.argsz = sizeof(bind_args),
+		.flags = flags,
 		.iommufd = iommufd,
 	};
 
 	return ioctl(cdev_fd, VFIO_DEVICE_BIND_IOMMUFD, &bind_args);
+}
+
+static int vfio_device_bind_iommufd_ioctl(int cdev_fd, int iommufd)
+{
+	return bind_with_flags(cdev_fd, iommufd, 0);
 }
 
 static int vfio_device_get_info_ioctl(int cdev_fd)
@@ -82,6 +88,30 @@ TEST_F(vfio_cdev, bind)
 {
 	ASSERT_EQ(0, vfio_device_bind_iommufd_ioctl(self->cdev_fd, self->iommufd));
 	ASSERT_EQ(0, vfio_device_get_info_ioctl(self->cdev_fd));
+}
+
+TEST_F(vfio_cdev, bind_keep_alive)
+{
+	ASSERT_EQ(0, bind_with_flags(self->cdev_fd, self->iommufd,
+				     VFIO_DEVICE_BIND_FLAG_KEEP_ALIVE));
+	ASSERT_EQ(0, vfio_device_get_info_ioctl(self->cdev_fd));
+}
+
+TEST_F(vfio_cdev, bind_keep_alive_bad_iommufd_retry)
+{
+	ASSERT_NE(0, bind_with_flags(self->cdev_fd, -2, VFIO_DEVICE_BIND_FLAG_KEEP_ALIVE));
+	ASSERT_EQ(EINVAL, errno);
+	ASSERT_NE(0, vfio_device_get_info_ioctl(self->cdev_fd));
+	ASSERT_EQ(0, bind_with_flags(self->cdev_fd, self->iommufd,
+				     VFIO_DEVICE_BIND_FLAG_KEEP_ALIVE));
+	ASSERT_EQ(0, vfio_device_get_info_ioctl(self->cdev_fd));
+}
+
+TEST_F(vfio_cdev, bind_unknown_flags_fails)
+{
+	ASSERT_NE(0, bind_with_flags(self->cdev_fd, self->iommufd, 1U << 31));
+	ASSERT_EQ(EINVAL, errno);
+	ASSERT_EQ(0, vfio_device_bind_iommufd_ioctl(self->cdev_fd, self->iommufd));
 }
 
 TEST_F(vfio_cdev, get_info_without_bind_fails)
