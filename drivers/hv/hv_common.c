@@ -397,10 +397,9 @@ int __init hv_common_init(void)
 		hv_vp_index[i] = VP_INVAL;
 
 	/*
-	 * The VP assist page is useless to a TDX guest: the only use we
-	 * would have for it is lazy EOI, which can not be used with TDX.
+	 * The VP assist page cannot be trusted by hardware-isolated guests.
 	 */
-	if (hv_isolation_type_tdx())
+	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
 		hv_vp_assist_page = NULL;
 	else {
 		hv_vp_assist_page = kcalloc(nr_cpu_ids,
