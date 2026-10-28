@@ -893,6 +893,9 @@ static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 			break;
 
 		if (message_type != HVMSG_X64_PROXY_INTERRUPT_INTERCEPT) {
+			/* SNP exit dispatch consumes non-proxy messages. */
+			if (hv_isolation_type_snp())
+				break;
 			WARN_ONCE(1, "Unexpected message type: %d\n", message_type);
 			vmbus_signal_eom(msg, message_type);
 			continue;
@@ -1874,8 +1877,12 @@ static bool mshv_vtl_process_intercept(void)
 {
 	struct hv_per_cpu_context *mshv_cpu;
 	void *synic_message_page;
+	struct hv_message *exit_msg;
 	struct hv_message *msg;
 	u32 message_type;
+
+	exit_msg = (struct hv_message *)mshv_vtl_this_run()->exit_message;
+	WRITE_ONCE(exit_msg->header.message_type, HVMSG_NONE);
 
 	mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
 	synic_message_page = mshv_cpu->synic_message_page;
@@ -1887,7 +1894,7 @@ static bool mshv_vtl_process_intercept(void)
 	if (message_type == HVMSG_NONE)
 		return true;
 
-	memcpy(mshv_vtl_this_run()->exit_message, msg, sizeof(*msg));
+	memcpy(exit_msg, msg, sizeof(*msg));
 	vmbus_signal_eom(msg, message_type);
 
 	return false;
@@ -2492,9 +2499,11 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run, bool lower_vtl_ra
 {
 	const bool intr_inject = MSHV_VTL_OFFLOAD_FLAG_INTR_INJECT & run->offload_flags;
 	const bool x2apic = MSHV_VTL_OFFLOAD_FLAG_X2APIC & run->offload_flags;
+	union hv_input_vtl target_vtl = READ_ONCE(run->target_vtl);
 	struct sev_es_save_area *vmsa;
 
-	if (!intr_inject)
+	// secure AVIC is never enabled on VTL 1
+	if (target_vtl.use_target_vtl && target_vtl.target_vtl > 0)
 		return false;
 
 	vmsa = snp_this_vmsa();
@@ -2505,6 +2514,8 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run, bool lower_vtl_ra
 	 */
 	if (!lower_vtl_ran)
 		goto handled;
+	if (!intr_inject)
+		return false;
 
 	switch (vmsa->guest_exit_code) {
 	case SVM_EXIT_AVIC_INCOMPLETE_IPI:
