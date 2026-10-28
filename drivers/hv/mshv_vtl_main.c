@@ -859,6 +859,8 @@ static int mshv_vtl_get_vsm_regs(void)
 		mshv_vsm_capabilities.return_action_available = 0;
 	} else if (hv_isolation_type_tdx()) {
 		mshv_vsm_capabilities.dr6_shared = 1;
+		mshv_vsm_capabilities.intercept_page_available = 0;
+		mshv_vsm_capabilities.return_action_available = 0;
 	} else {
 		mshv_vsm_page_offsets.as_uint64 = registers[1].value.reg64;
 		pr_debug("%s: VSM code page offsets: %#016llx\n", __func__,
@@ -2502,7 +2504,7 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run, bool lower_vtl_ra
 	union hv_input_vtl target_vtl = READ_ONCE(run->target_vtl);
 	struct sev_es_save_area *vmsa;
 
-	// secure AVIC is never enabled on VTL 1
+	/* Kernel exit offloads are supported only for VTL 0. */
 	if (target_vtl.use_target_vtl && target_vtl.target_vtl > 0)
 		return false;
 
@@ -2512,10 +2514,10 @@ static bool mshv_snp_try_handle_exit(struct mshv_vtl_run *run, bool lower_vtl_ra
 	 * case the VMSA still contains the benign SVM_EXIT_INTR sentinel left
 	 * by the previous handled exit.
 	 */
-	if (!lower_vtl_ran)
-		goto handled;
 	if (!intr_inject)
 		return false;
+	if (!lower_vtl_ran)
+		goto handled;
 
 	switch (vmsa->guest_exit_code) {
 	case SVM_EXIT_AVIC_INCOMPLETE_IPI:
