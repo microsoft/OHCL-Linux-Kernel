@@ -203,7 +203,7 @@ static void hv_machine_shutdown(void)
 	 * corrupts the old VP Assist Pages and can crash the kexec kernel.
 	 */
 	if (kexec_in_progress)
-		cpuhp_remove_state(CPUHP_AP_HYPERV_ONLINE);
+		hv_kexec_cpu_die();
 
 	/* The function calls stop_other_cpus(). */
 	native_machine_shutdown();

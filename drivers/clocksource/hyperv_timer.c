@@ -17,6 +17,7 @@
 #include <linux/clocksource.h>
 #include <linux/sched_clock.h>
 #include <linux/mm.h>
+#include <linux/cpu.h>
 #include <linux/cpuhotplug.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
@@ -351,6 +352,11 @@ void hv_stimer_legacy_cleanup(unsigned int cpu)
 }
 EXPORT_SYMBOL_GPL(hv_stimer_legacy_cleanup);
 
+static void hv_stimer_cleanup_local(void *unused)
+{
+	(void)hv_stimer_cleanup(smp_processor_id());
+}
+
 /*
  * Do a global cleanup of clockevents for the cases of kexec and
  * vmbus exit
@@ -371,7 +377,18 @@ void hv_stimer_global_cleanup(void)
 		return;
 
 	if (direct_mode_enabled) {
-		cpuhp_remove_state(CPUHP_AP_HYPERV_TIMER_STARTING);
+		/*
+		 * hv_stimer_cleanup() is a STARTING-section teardown callback,
+		 * so it is already required to run with interrupts disabled on
+		 * the CPU being cleaned up. Run it on every online CPU with one
+		 * IPI broadcast rather than letting cpuhp_remove_state() wake
+		 * each CPU's hotplug thread and wait for it in turn, which takes
+		 * tens of microseconds per CPU on the kexec path.
+		 */
+		cpus_read_lock();
+		cpuhp_remove_state_nocalls_cpuslocked(CPUHP_AP_HYPERV_TIMER_STARTING);
+		on_each_cpu(hv_stimer_cleanup_local, NULL, 1);
+		cpus_read_unlock();
 		hv_remove_stimer0_irq();
 		stimer0_irq = -1;
 	}

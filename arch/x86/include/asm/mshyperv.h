@@ -171,6 +171,7 @@ void clear_hv_tscchange_cb(void);
 void hv_save_sched_clock_state(void);
 void hv_restore_sched_clock_state(void);
 void hyperv_stop_tsc_emulation(void);
+void hv_kexec_cpu_die(void);
 int hyperv_flush_guest_mapping(u64 as);
 int hyperv_flush_guest_mapping_range(u64 as,
 		hyperv_fill_flush_list_func fill_func, void *data);

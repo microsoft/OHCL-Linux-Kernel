@@ -29,6 +29,7 @@
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/kernel.h>
+#include <linux/cpu.h>
 #include <linux/cpuhotplug.h>
 #include <linux/syscore_ops.h>
 #include <clocksource/hyperv_timer.h>
@@ -259,6 +260,41 @@ static int hv_cpu_die(unsigned int cpu)
 
 	return 0;
 }
+
+#ifdef CONFIG_KEXEC_CORE
+static void hv_cpu_die_local(void *unused)
+{
+	hv_cpu_die(smp_processor_id());
+}
+
+/*
+ * Run hv_cpu_die() on every online CPU before kexec, so the hypervisor stops
+ * writing to the old kernel's per-CPU pages, such as the VP assist page.
+ */
+void hv_kexec_cpu_die(void)
+{
+	/*
+	 * hv_cpu_die() may sleep to unmap the GHCB page, or to unmap or
+	 * re-encrypt the VP assist page. Keep the serial hotplug teardown in
+	 * those configurations.
+	 */
+	if (hv_ghcb_pg || hv_root_partition() ||
+	    (!ms_hyperv.paravisor_present &&
+	     (hv_isolation_type_snp() || hv_isolation_type_tdx()))) {
+		cpuhp_remove_state(CPUHP_AP_HYPERV_ONLINE);
+		return;
+	}
+
+	/*
+	 * Otherwise run it on every online CPU with one IPI broadcast rather
+	 * than waking each CPU's hotplug thread and waiting for it in turn.
+	 */
+	cpus_read_lock();
+	cpuhp_remove_state_nocalls_cpuslocked(CPUHP_AP_HYPERV_ONLINE);
+	on_each_cpu(hv_cpu_die_local, NULL, 1);
+	cpus_read_unlock();
+}
+#endif /* CONFIG_KEXEC_CORE */
 
 static int __init hv_pci_init(void)
 {

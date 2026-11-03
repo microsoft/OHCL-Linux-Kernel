@@ -2882,13 +2882,40 @@ static struct platform_driver vmbus_platform_driver = {
 	}
 };
 
+static void hv_kexec_synic_cleanup(void *unused)
+{
+	/*
+	 * VMBus is disconnected and the stimers are already cleaned up, so
+	 * hv_synic_cleanup() goes straight to disabling the SynIC and neither
+	 * sleeps nor fails.
+	 */
+	WARN_ON_ONCE(hv_synic_cleanup(smp_processor_id()));
+}
+
 static void hv_kexec_handler(void)
 {
 	hv_stimer_global_cleanup();
 	vmbus_initiate_unload(false);
 	/* Make sure conn_state is set as hv_synic_cleanup checks for it */
 	mb();
-	cpuhp_remove_state(hyperv_cpuhp_online);
+
+	/*
+	 * hv_synic_cleanup() unmaps the SynIC pages, which may sleep, when a
+	 * paravisor or the root partition provides them.
+	 */
+	if (ms_hyperv.paravisor_present || hv_root_partition()) {
+		cpuhp_remove_state(hyperv_cpuhp_online);
+		return;
+	}
+
+	/*
+	 * Otherwise run it on every online CPU with one IPI broadcast rather
+	 * than waking each CPU's hotplug thread and waiting for it in turn.
+	 */
+	cpus_read_lock();
+	cpuhp_remove_state_nocalls_cpuslocked(hyperv_cpuhp_online);
+	on_each_cpu(hv_kexec_synic_cleanup, NULL, 1);
+	cpus_read_unlock();
 };
 
 static void hv_crash_handler(struct pt_regs *regs)
