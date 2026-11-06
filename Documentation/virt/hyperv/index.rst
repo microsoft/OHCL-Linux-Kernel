@@ -13,3 +13,4 @@ Hyper-V Enlightenments
    vpci
    hibernation
    coco
+   mshv-vtl-stats

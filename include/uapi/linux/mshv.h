@@ -330,6 +330,24 @@ struct mshv_vtl_set_poll_file {
 	__u32 fd;
 };
 
+#define MSHV_VTL_STATS_STATE_UNKNOWN	0
+#define MSHV_VTL_STATS_STATE_VTL2		1
+#define MSHV_VTL_STATS_STATE_LOWER_VTL	2
+
+struct mshv_vtl_stats {
+	__u32 cpu;	/* Input: Linux CPU number; all other fields are output. */
+	__u32 state;
+	__u64 entry_count;
+	__u64 exit_count;
+	__u64 last_entry_ns;
+	__u64 last_exit_ns;
+	__u64 lower_vtl_total_ns;
+	__u64 lower_vtl_max_ns;
+	__u64 vtl2_total_ns;
+	__u64 vtl2_max_ns;
+	__u64 snapshot_ns;
+};
+
 struct mshv_vtl_hvcall_setup {
 	__u64 bitmap_array_size; /* stores number of bytes */
 	__u64 allow_bitmap_ptr;
@@ -441,6 +459,7 @@ struct mshv_partition_time {
 #define MSHV_GET_VP_REGISTERS		_IOWR(MSHV_IOCTL, 0x05, struct mshv_vp_registers)
 #define MSHV_SET_VP_REGISTERS		_IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
 #define MSHV_VTL_KICK_CPU		_IOW(MSHV_IOCTL, 0x38, struct mshv_kick_cpus)
+#define MSHV_VTL_GET_STATS	_IOWR(MSHV_IOCTL, 0x41, struct mshv_vtl_stats)
 
 /* For x86-64 SEV-SNP only */
 #define MSHV_VTL_PVALIDATE	_IOW(MSHV_IOCTL, 0x28, struct mshv_pvalidate)

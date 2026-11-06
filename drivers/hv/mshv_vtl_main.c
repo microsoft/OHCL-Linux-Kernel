@@ -23,6 +23,8 @@
 #include <linux/pagemap.h>
 #include <linux/user-return-notifier.h>
 #include <linux/vmalloc.h>
+#include <linux/spinlock.h>
+#include <linux/timekeeping.h>
 #include <asm/boot.h>
 #include <linux/tick.h>
 #include <asm/pgalloc.h>
@@ -216,6 +218,16 @@ static union hv_register_vsm_capabilities mshv_vsm_capabilities;
 
 static DEFINE_PER_CPU(struct mshv_vtl_poll_file, mshv_vtl_poll_file);
 static DEFINE_PER_CPU(unsigned long long, num_vtl0_transitions);
+
+struct mshv_vtl_cpu_stats {
+	raw_spinlock_t lock;
+	struct mshv_vtl_stats stats;
+};
+
+static DEFINE_PER_CPU(struct mshv_vtl_cpu_stats, mshv_vtl_stats) = {
+	.lock = __RAW_SPIN_LOCK_UNLOCKED(mshv_vtl_stats.lock),
+};
+
 static DEFINE_PER_CPU(struct mshv_vtl_per_cpu, mshv_vtl_per_cpu);
 static DEFINE_PER_CPU(struct task_struct *, mshv_vtl_thread);
 #if defined(CONFIG_SEV_GUEST)
@@ -2037,6 +2049,36 @@ static void mshv_tdx_halt_timer_post(enum TDX_HALT_TIMER armed) {}
 
 static bool in_idle_is_enabled;
 
+static void mshv_vtl_record_transition(bool entering)
+{
+	struct mshv_vtl_cpu_stats *cpu_stats = this_cpu_ptr(&mshv_vtl_stats);
+	struct mshv_vtl_stats *stats = &cpu_stats->stats;
+	u64 now, elapsed;
+
+	raw_spin_lock(&cpu_stats->lock);
+	now = ktime_get_ns();
+
+	if (entering) {
+		if (stats->state == MSHV_VTL_STATS_STATE_VTL2) {
+			elapsed = now - stats->last_exit_ns;
+			stats->vtl2_total_ns += elapsed;
+			stats->vtl2_max_ns = max(stats->vtl2_max_ns, elapsed);
+		}
+		stats->entry_count++;
+		stats->last_entry_ns = now;
+		stats->state = MSHV_VTL_STATS_STATE_LOWER_VTL;
+	} else {
+		elapsed = now - stats->last_entry_ns;
+		stats->lower_vtl_total_ns += elapsed;
+		stats->lower_vtl_max_ns = max(stats->lower_vtl_max_ns, elapsed);
+		stats->exit_count++;
+		stats->last_exit_ns = now;
+		stats->state = MSHV_VTL_STATS_STATE_VTL2;
+	}
+
+	raw_spin_unlock(&cpu_stats->lock);
+}
+
 static void mshv_vtl_switch_to_vtl0_irqoff(void)
 {
 	struct hv_vp_assist_page *hvp;
@@ -2100,7 +2142,9 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 		} else {
 			/* Only supports VTL0 */
 			trace_mshv_vtl_enter_vtl0(cpu_ctx);
+			mshv_vtl_record_transition(true);
 			mshv_vtl_return_tdx();
+			mshv_vtl_record_transition(false);
 			/* CVMs do not provide a VP assist page entry reason. */
 			trace_mshv_vtl_exit_vtl0(0, cpu_ctx);
 		}
@@ -2116,7 +2160,9 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 		} else {
 			this_cpu_write(mshv_vtl_lower_vtl_ran, true);
 			trace_mshv_vtl_enter_vtl0(cpu_ctx);
+			mshv_vtl_record_transition(true);
 			snp_mshv_vtl_return(target_vtl.use_target_vtl ? target_vtl.target_vtl : 0);
+			mshv_vtl_record_transition(false);
 			trace_mshv_vtl_exit_vtl0(0, cpu_ctx);
 			this_cpu_inc(num_vtl0_transitions);
 		}
@@ -2124,7 +2170,9 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 #endif
 	} else {
 		trace_mshv_vtl_enter_vtl0(cpu_ctx);
+		mshv_vtl_record_transition(true);
 		mshv_vtl_return(cpu_ctx);
+		mshv_vtl_record_transition(false);
 	}
 
 	if (hvp)
@@ -3677,6 +3725,29 @@ static long mshv_vtl_ioctl_secure_avic_vtl0_pfn(void __user *user_arg)
 }
 #endif
 
+static long mshv_vtl_ioctl_get_stats(struct mshv_vtl_stats __user *user_stats)
+{
+	struct mshv_vtl_cpu_stats *cpu_stats;
+	struct mshv_vtl_stats stats;
+	unsigned long flags;
+	u32 cpu;
+
+	if (get_user(cpu, &user_stats->cpu))
+		return -EFAULT;
+	if (cpu >= nr_cpu_ids || !cpu_possible(cpu))
+		return -EINVAL;
+
+	cpu_stats = per_cpu_ptr(&mshv_vtl_stats, cpu);
+	if (!raw_spin_trylock_irqsave(&cpu_stats->lock, flags))
+		return -EAGAIN;
+	stats = cpu_stats->stats;
+	stats.cpu = cpu;
+	stats.snapshot_ns = ktime_get_ns();
+	raw_spin_unlock_irqrestore(&cpu_stats->lock, flags);
+
+	return copy_to_user(user_stats, &stats, sizeof(stats)) ? -EFAULT : 0;
+}
+
 static long
 mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
@@ -3701,6 +3772,9 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;
 	case MSHV_VTL_KICK_CPU:
 		ret = mshv_vtl_ioctl_kick_cpu((void __user *)arg);
+		break;
+	case MSHV_VTL_GET_STATS:
+		ret = mshv_vtl_ioctl_get_stats((void __user *)arg);
 		break;
 
 #if defined(CONFIG_X86_64)
