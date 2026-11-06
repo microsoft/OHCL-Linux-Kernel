@@ -2048,7 +2048,6 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 #endif
 	enum TDX_HALT_TIMER armed;
 
-	trace_mshv_vtl_enter_vtl0(cpu_ctx);
 #ifndef MSHV_VTL_RUN_FLAG_HALTED
 #define MSHV_VTL_RUN_FLAG_HALTED	0ULL
 #endif
@@ -2100,7 +2099,10 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 			tdx_safe_halt();
 		} else {
 			/* Only supports VTL0 */
+			trace_mshv_vtl_enter_vtl0(cpu_ctx);
 			mshv_vtl_return_tdx();
+			/* CVMs do not provide a VP assist page entry reason. */
+			trace_mshv_vtl_exit_vtl0(0, cpu_ctx);
 		}
 
 		mshv_tdx_halt_timer_post(armed);
@@ -2113,12 +2115,15 @@ static void mshv_vtl_switch_to_vtl0_irqoff(void)
 			native_safe_halt();
 		} else {
 			this_cpu_write(mshv_vtl_lower_vtl_ran, true);
+			trace_mshv_vtl_enter_vtl0(cpu_ctx);
 			snp_mshv_vtl_return(target_vtl.use_target_vtl ? target_vtl.target_vtl : 0);
+			trace_mshv_vtl_exit_vtl0(0, cpu_ctx);
 			this_cpu_inc(num_vtl0_transitions);
 		}
 		return;
 #endif
 	} else {
+		trace_mshv_vtl_enter_vtl0(cpu_ctx);
 		mshv_vtl_return(cpu_ctx);
 	}
 
