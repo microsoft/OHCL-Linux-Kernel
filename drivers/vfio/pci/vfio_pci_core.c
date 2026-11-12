@@ -509,20 +509,19 @@ int vfio_pci_core_enable(struct vfio_pci_core_device *vdev)
 			return ret;
 	}
 
-	/* Don't allow our initial saved state to include busmaster */
 	if (vdev->vdev.keep_alive) {
-		pci_master_bios_init(pdev);
-		/* Required to enable device's BARs */
-		ret = pci_enable_device(pdev);
-		if (ret)
-			goto out_power;
+		/* Preserve hardware state while updating PCI core bookkeeping. */
+		pci_read_config_word(pdev, PCI_COMMAND, &cmd);
+		pdev->is_busmaster = !!(cmd & PCI_COMMAND_MASTER);
 	} else {
 		pci_clear_master(pdev);
+	}
 
-		ret = pci_enable_device(pdev);
-		if (ret)
-			goto out_power;
+	ret = pci_enable_device(pdev);
+	if (ret)
+		goto out_power;
 
+	if (!vdev->vdev.keep_alive) {
 		/* If reset fails because of the device lock, fail this path entirely */
 		ret = pci_try_reset_function(pdev);
 		if (ret == -EAGAIN)
