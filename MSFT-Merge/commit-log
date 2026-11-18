@@ -114,6 +114,10 @@ cd5ba8810623   2026-08-14		x86/apic/savic: ipi needs to convert apicid to cpuid 
 c630cc37901b   2026-08-14		x86/apic/savic: get GPA for SAVIC page using per_cpu_ptr_to_phys [Brian Perkins <brian.perkins@microsoft.com>]
 4b8508170a0d   2026-08-20		x86/tdx: Release private memory before private->shared conversion [Dexuan Cui <decui@microsoft.com>]
 944498152d6f   2026-08-18		Drivers: hv: mshv_vtl: restore 2M VTL0 low mappings to bound PageTables [Naman Jain <namjain@linux.microsoft.com>]
+6b4692f829cf   2026-07-17		Drivers: hv: vmbus: add VTL2 redirect connection ID (Backport: ceb19f46e475 (6.18 stable); Upstream: 92d059312802) [Hardik Garg <hargar@linux.microsoft.com>]
+c64edce78dfe   2026-08-31		x86/init: Initialize wall clock in get_rtc_noop() (Cherry-picked from latest-stable: 40f7a9e31999) [Naman Jain <namjain@linux.microsoft.com>]
+1314bb81233d   2026-10-27		Drivers: hv: mshv_vtl: Remove SNP VP assist page dependency [Jenna Goddard <jennagoddard@microsoft.com>]
+ed0291c0f52c   2026-11-02		Remove VP assist page for SNP VMs (Merge of 1314bb81233d) [Hardik Garg <hargar@microsoft.com>]
 
 
 Patch series in progress
@@ -138,6 +142,6 @@ Retired / superseded OOT commits
 995392d1b714   2024-01-22		Drivers: hv: Add connection id support [Hardik]
 	Status: RETIRED - superseded by upstream
 	Revert: 1fad9da94612
-	Replacement: ceb19f46e475 (6.18 stable); 92d059312802 (mainline)
+	Replacement: 6b4692f829cf (local backport); ceb19f46e475 (6.18 stable); 92d059312802 (mainline)
 	Upgrade policy: Never replay the original or its revert.
 	Backport the replacement only if the target base lacks an equivalent fix.
