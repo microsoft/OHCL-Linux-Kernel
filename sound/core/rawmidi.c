@@ -782,7 +782,7 @@ int snd_rawmidi_input_params(struct snd_rawmidi_substream *substream,
 		substream->framing = framing;
 		substream->clock_type = clock_type;
 	}
-	return 0;
+	return err;
 }
 EXPORT_SYMBOL(snd_rawmidi_input_params);
 
@@ -1784,14 +1784,14 @@ static void snd_rawmidi_proc_info_read(struct snd_info_entry *entry,
  */
 
 static const struct file_operations snd_rawmidi_f_ops = {
-	.owner =	THIS_MODULE,
-	.read =		snd_rawmidi_read,
-	.write =	snd_rawmidi_write,
-	.open =		snd_rawmidi_open,
-	.release =	snd_rawmidi_release,
-	.poll =		snd_rawmidi_poll,
-	.unlocked_ioctl =	snd_rawmidi_ioctl,
-	.compat_ioctl =	snd_rawmidi_ioctl_compat,
+	.owner		=	THIS_MODULE,
+	.read		=	snd_rawmidi_read,
+	.write		=	snd_rawmidi_write,
+	.open		=	snd_rawmidi_open,
+	.release	=	snd_rawmidi_release,
+	.poll		=	snd_rawmidi_poll,
+	.unlocked_ioctl	=	snd_rawmidi_ioctl,
+	.compat_ioctl	=	snd_rawmidi_ioctl_compat,
 };
 
 static int snd_rawmidi_alloc_substreams(struct snd_rawmidi *rmidi,
