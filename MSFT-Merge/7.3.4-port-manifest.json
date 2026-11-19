@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-19T06:41:35.549Z",
+  "generatedAt": "2026-11-19T06:42:43.992Z",
   "status": "DRAFT - source-reconciled and standard x86/ARM64 build-tested; not boot/runtime/CVM validated",
   "draftBranch": "draft/openhcl-7.3.4-oot-port",
   "baseTag": "v7.3.4",
