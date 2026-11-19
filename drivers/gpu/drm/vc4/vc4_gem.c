@@ -639,12 +639,13 @@ vc4_queue_submit(struct drm_device *dev, struct vc4_exec_info *exec,
 	fence->seqno = exec->seqno;
 	exec->fence = &fence->base;
 
+	/* The job can complete and drop exec->fence as soon as job_lock is
+	 * released, so hold our own reference.
+	 */
 	if (out_sync)
-		drm_syncobj_replace_fence(out_sync, exec->fence);
+		dma_fence_get(&fence->base);
 
 	vc4_attach_fences(exec);
-
-	drm_exec_fini(exec_ctx);
 
 	list_add_tail(&exec->head, &vc4->bin_job_list);
 
@@ -661,6 +662,13 @@ vc4_queue_submit(struct drm_device *dev, struct vc4_exec_info *exec,
 	}
 
 	spin_unlock_irqrestore(&vc4->job_lock, irqflags);
+
+	drm_exec_fini(exec_ctx);
+
+	if (out_sync) {
+		drm_syncobj_replace_fence(out_sync, &fence->base);
+		dma_fence_put(&fence->base);
+	}
 
 	return 0;
 }
@@ -877,10 +885,16 @@ vc4_complete_exec(struct drm_device *dev, struct vc4_exec_info *exec)
 		drm_gem_object_put(&bo->base.base);
 	}
 
-	/* Free up the allocation of any bin slots we used. */
+	/* Free up the allocation of any bin slots we used. Jobs that ran to
+	 * completion had their slots released in vc4_irq_finish_render_job().
+	 * Only jobs that never completed still have slots to be released here.
+	 */
 	spin_lock_irqsave(&vc4->job_lock, irqflags);
 	vc4->bin_alloc_used &= ~exec->bin_slots;
 	spin_unlock_irqrestore(&vc4->job_lock, irqflags);
+
+	/* Let anyone waiting on the binner pool retry. */
+	wake_up_all(&vc4->job_wait_queue);
 
 	/* Release the reference on the binner BO if needed. */
 	if (exec->bin_bo_used)
