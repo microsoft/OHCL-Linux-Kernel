@@ -895,7 +895,7 @@ static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 	struct hv_x64_proxy_interrupt_message_payload *proxy;
 	struct mshv_vtl_run *run;
 
-	msg = (struct hv_message *)per_cpu->synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
+	msg = (struct hv_message *)per_cpu->hyp_synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
 	for (;;) {
 		message_type = READ_ONCE(msg->header.message_type);
 		if (message_type == HVMSG_NONE)
@@ -1108,11 +1108,11 @@ static int mshv_vtl_alloc_context(unsigned int cpu)
 		/*
 		 * Capture the initial syscall MSRs to be restored after VP.ENTER.
 		 */
-		rdmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
-		rdmsrl(MSR_STAR, per_cpu->l1_msr_star);
-		rdmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
-		rdmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
-		rdmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
+		rdmsrq(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+		rdmsrq(MSR_STAR, per_cpu->l1_msr_star);
+		rdmsrq(MSR_LSTAR, per_cpu->l1_msr_lstar);
+		rdmsrq(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+		rdmsrq(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
 
 		per_cpu->msrs_are_guest = false;
 
@@ -1855,11 +1855,11 @@ static void mshv_vtl_on_user_return(struct user_return_notifier *urn)
 	per_cpu->msrs_are_guest = false;
 	user_return_notifier_unregister(urn);
 
-	wrmsrl(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
-	wrmsrl(MSR_STAR, per_cpu->l1_msr_star);
-	wrmsrl(MSR_LSTAR, per_cpu->l1_msr_lstar);
-	wrmsrl(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
-	wrmsrl(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
+	wrmsrq(MSR_KERNEL_GS_BASE, per_cpu->l1_msr_kernel_gs_base);
+	wrmsrq(MSR_STAR, per_cpu->l1_msr_star);
+	wrmsrq(MSR_LSTAR, per_cpu->l1_msr_lstar);
+	wrmsrq(MSR_SYSCALL_MASK, per_cpu->l1_msr_sfmask);
+	wrmsrq(MSR_TSC_AUX, per_cpu->l1_msr_tsc_aux);
 }
 
 void mshv_vtl_return_tdx(void)
@@ -1888,32 +1888,32 @@ void mshv_vtl_return_tdx(void)
 
 	/* Restore the lower VTL's syscall registers & MSRs */
 	if (!per_cpu->msrs_are_guest) {
-		wrmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
-		wrmsrl(MSR_STAR, tdx_vp_state->msr_star);
-		wrmsrl(MSR_LSTAR, tdx_vp_state->msr_lstar);
-		wrmsrl(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
-		wrmsrl(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
+		wrmsrq(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+		wrmsrq(MSR_STAR, tdx_vp_state->msr_star);
+		wrmsrq(MSR_LSTAR, tdx_vp_state->msr_lstar);
+		wrmsrq(MSR_SYSCALL_MASK, tdx_vp_state->msr_sfmask);
+		wrmsrq(MSR_TSC_AUX, tdx_vp_state->msr_tsc_aux);
 		per_cpu->mshv_urn.on_user_return = mshv_vtl_on_user_return;
 		user_return_notifier_register(&per_cpu->mshv_urn);
 		per_cpu->msrs_are_guest = true;
 	}
 
 	if (tdx_vp_state->msr_xss != per_cpu->xss)
-		wrmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
+		wrmsrq(MSR_IA32_XSS, tdx_vp_state->msr_xss);
 
 	__tdg_vp_enter(vtl_run->tdx_context.entry_rcx,
 			virt_to_phys((void *) &vtl_run->tdx_context.l2_enter_guest_state),
 			tdx_exit_info);
 
 	tdx_vp_state->cr2 = native_read_cr2();
-	rdmsrl(MSR_IA32_XSS, tdx_vp_state->msr_xss);
+	rdmsrq(MSR_IA32_XSS, tdx_vp_state->msr_xss);
 	per_cpu->xss = tdx_vp_state->msr_xss;
 
 	/* Of the context-switched MSRs, only MSR_KERNEL_GS_BASE is changed
 	   often by guests. Read it back so that user mode doesn't have
 	   to configure an exit on it. The other MSRs will trigger exits
 	   on guest writes. */
-	rdmsrl(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
+	rdmsrq(MSR_KERNEL_GS_BASE, tdx_vp_state->msr_kernel_gs_base);
 	fxsave(&vtl_run->tdx_context.fx_state);
 	kernel_fpu_end();
 }
@@ -2646,7 +2646,7 @@ static void mshv_snp_release_stimer0(struct mshv_vtl_run *run)
 /* Proxy interrupt messages are consumed by the ISR; others need the run loop. */
 static bool mshv_snp_synic_message_pending(void)
 {
-	void *synic_message_page = this_cpu_ptr(hv_context.cpu_context)->synic_message_page;
+	void *synic_message_page = this_cpu_ptr(hv_context.cpu_context)->hyp_synic_message_page;
 	struct hv_message *msg;
 	u32 msg_type;
 
@@ -2663,7 +2663,7 @@ static bool mshv_snp_try_handle_synic_message(struct mshv_vtl_run *run,
 {
 	struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
 	union hv_input_vtl target_vtl = READ_ONCE(run->target_vtl);
-	void *synic_message_page = mshv_cpu->synic_message_page;
+	void *synic_message_page = mshv_cpu->hyp_synic_message_page;
 	u32 msg_type = HVMSG_NONE;
 	struct hv_message *msg;
 
