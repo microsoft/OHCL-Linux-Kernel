@@ -245,8 +245,10 @@ mshv_ioctl_create_vtl(void __user *user_arg, struct device *module_dev)
 
 	if (hv_isolation_type_snp()) {
 		local_maps = mshv_vtl_setup_local_maps();
-		if (!local_maps)
+		if (!local_maps) {
+			kfree(vtl);
 			return -ENOMEM;
+		}
 	}
 
 	fd = get_unused_fd_flags(O_CLOEXEC);
