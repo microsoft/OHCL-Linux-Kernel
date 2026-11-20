@@ -370,6 +370,8 @@ struct smu_table_context {
 	void                            *boot_overdrive_table;
 	void				*user_overdrive_table;
 
+	uint32_t			user_od_feature_mask;
+
 	uint32_t			gpu_metrics_table_size;
 	void				*gpu_metrics_table;
 };
@@ -598,6 +600,9 @@ struct smu_context {
 	long *custom_profile_params;
 	bool pm_enabled;
 	bool is_apu;
+
+	/* Power dependency link from an integrated xHCI controller to the GPU */
+	struct device_link		*usb_power_link;
 
 	uint32_t smc_driver_if_version;
 	uint32_t smc_fw_if_version;
@@ -1521,6 +1526,13 @@ struct pptable_funcs {
 	 */
 	ssize_t (*get_xcp_metrics)(struct smu_context *smu, int xcp_id,
 				   void *table);
+	/**
+	 * @set_power_dep: Create or destroy a power dependency link
+	 * from an integrated xHCI controller to the GPU so that the GPU is
+	 * resumed before the USB controller during PM resume. @enable is true
+	 * to create the link and false to tear it down.
+	 */
+	int (*set_power_dep)(struct smu_context *smu, bool enable);
 };
 
 typedef enum {
