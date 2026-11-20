@@ -5,7 +5,7 @@
  * Copyright 2008-2011	Luis R. Rodriguez <mcgrof@qca.qualcomm.com>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright      2017  Intel Deutschland GmbH
- * Copyright (C) 2018 - 2025 Intel Corporation
+ * Copyright (C) 2018 - 2026 Intel Corporation
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -690,6 +690,9 @@ static bool valid_rule(const u8 *data, unsigned int size, u16 rule_ptr)
 
 	/* mandatory fields */
 	if (rule->len < offsetofend(struct fwdb_rule, max_bw))
+		return false;
+	/* the rule must lie entirely within the database */
+	if ((u8 *)rule + rule->len > data + size)
 		return false;
 	if (rule->len >= offsetofend(struct fwdb_rule, wmm_ptr)) {
 		u32 wmm_ptr = be16_to_cpu(rule->wmm_ptr) << 2;
@@ -1605,6 +1608,8 @@ static u32 map_regdom_flags(u32 rd_flags)
 		channel_flags |= IEEE80211_CHAN_ALLOW_6GHZ_VLP_AP;
 	if (rd_flags & NL80211_RRF_ALLOW_20MHZ_ACTIVITY)
 		channel_flags |= IEEE80211_CHAN_ALLOW_20MHZ_ACTIVITY;
+	if (rd_flags & NL80211_RRF_NO_UHR)
+		channel_flags |= IEEE80211_CHAN_NO_UHR;
 	return channel_flags;
 }
 
