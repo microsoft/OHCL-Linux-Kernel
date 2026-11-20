@@ -890,7 +890,7 @@ static void mshv_vtl_scan_proxy_interrupts(struct hv_per_cpu_context *per_cpu)
 	struct hv_x64_proxy_interrupt_message_payload *proxy;
 	struct mshv_vtl_run *run;
 
-	msg = (struct hv_message *)per_cpu->synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
+	msg = (struct hv_message *)per_cpu->hyp_synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
 	for (;;) {
 		message_type = READ_ONCE(msg->header.message_type);
 		if (message_type == HVMSG_NONE)
@@ -942,7 +942,7 @@ static void mshv_vtl_vmbus_isr(void)
 
 	per_cpu = this_cpu_ptr(hv_context.cpu_context);
 	if (smp_processor_id() == 0) {
-		msg = (struct hv_message *)per_cpu->synic_message_page + VTL2_VMBUS_SINT_INDEX;
+		msg = (struct hv_message *)per_cpu->hyp_synic_message_page + VTL2_VMBUS_SINT_INDEX;
 		message_type = READ_ONCE(msg->header.message_type);
 		if (message_type != HVMSG_NONE)
 			tasklet_schedule(&msg_dpc);
@@ -952,7 +952,7 @@ static void mshv_vtl_vmbus_isr(void)
 	if (hv_isolation_type_tdx() || hv_isolation_type_snp())
 		mshv_vtl_scan_proxy_interrupts(per_cpu);
 
-	event_flags = (union hv_synic_event_flags *)per_cpu->synic_event_page +
+	event_flags = (union hv_synic_event_flags *)per_cpu->hyp_synic_event_page +
 			VTL2_VMBUS_SINT_INDEX;
 	for_each_set_bit(i, event_flags->flags, HV_EVENT_FLAGS_COUNT) {
 		if (!sync_test_and_clear_bit(i, event_flags->flags))
@@ -1880,7 +1880,7 @@ noinline void mshv_vtl_return_tdx(void) { }
 static bool mshv_vtl_process_intercept(void)
 {
 	struct hv_per_cpu_context *mshv_cpu;
-	void *synic_message_page;
+	void *hyp_synic_message_page;
 	struct hv_message *exit_msg;
 	struct hv_message *msg;
 	u32 message_type;
@@ -1889,11 +1889,11 @@ static bool mshv_vtl_process_intercept(void)
 	WRITE_ONCE(exit_msg->header.message_type, HVMSG_NONE);
 
 	mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
-	synic_message_page = mshv_cpu->synic_message_page;
-	if (unlikely(!synic_message_page))
+	hyp_synic_message_page = mshv_cpu->hyp_synic_message_page;
+	if (unlikely(!hyp_synic_message_page))
 		return true;
 
-	msg = (struct hv_message *)synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
+	msg = (struct hv_message *)hyp_synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
 	message_type = READ_ONCE(msg->header.message_type);
 	if (message_type == HVMSG_NONE)
 		return true;
@@ -2601,14 +2601,14 @@ static void mshv_snp_release_stimer0(struct mshv_vtl_run *run)
 /* Proxy interrupt messages are consumed by the ISR; others need the run loop. */
 static bool mshv_snp_synic_message_pending(void)
 {
-	void *synic_message_page = this_cpu_ptr(hv_context.cpu_context)->synic_message_page;
+	void *hyp_synic_message_page = this_cpu_ptr(hv_context.cpu_context)->hyp_synic_message_page;
 	struct hv_message *msg;
 	u32 msg_type;
 
-	if (unlikely(!synic_message_page))
+	if (unlikely(!hyp_synic_message_page))
 		return false;
 
-	msg = (struct hv_message *)synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
+	msg = (struct hv_message *)hyp_synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
 	msg_type = READ_ONCE(msg->header.message_type);
 	return msg_type != HVMSG_NONE && msg_type != HVMSG_X64_PROXY_INTERRUPT_INTERCEPT;
 }
@@ -2618,17 +2618,17 @@ static bool mshv_snp_try_handle_synic_message(struct mshv_vtl_run *run,
 {
 	struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
 	union hv_input_vtl target_vtl = READ_ONCE(run->target_vtl);
-	void *synic_message_page = mshv_cpu->synic_message_page;
+	void *hyp_synic_message_page = mshv_cpu->hyp_synic_message_page;
 	u32 msg_type = HVMSG_NONE;
 	struct hv_message *msg;
 
 	WRITE_ONCE(((struct hv_message *)run->exit_message)->header.message_type,
 		   HVMSG_NONE);
 
-	if (unlikely(!synic_message_page))
+	if (unlikely(!hyp_synic_message_page))
 		return true;
 
-	msg = (struct hv_message *)synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
+	msg = (struct hv_message *)hyp_synic_message_page + HV_SYNIC_INTERCEPTION_SINT_INDEX;
 	msg_type = READ_ONCE(msg->header.message_type);
 	if (msg_type == HVMSG_X64_PROXY_INTERRUPT_INTERCEPT)
 		return true;
@@ -3848,7 +3848,7 @@ static void mshv_vtl_synic_mask_vmbus_sint(const u8 *mask)
 static void mshv_vtl_read_remote(void *buffer)
 {
 	struct hv_per_cpu_context *mshv_cpu = this_cpu_ptr(hv_context.cpu_context);
-	struct hv_message *msg = (struct hv_message *)mshv_cpu->synic_message_page +
+	struct hv_message *msg = (struct hv_message *)mshv_cpu->hyp_synic_message_page +
 					VTL2_VMBUS_SINT_INDEX;
 	u32 message_type = READ_ONCE(msg->header.message_type);
 
