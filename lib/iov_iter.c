@@ -4,6 +4,7 @@
 #include <linux/fault-inject-usercopy.h>
 #include <linux/uio.h>
 #include <linux/pagemap.h>
+#include <linux/memremap.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
@@ -1968,7 +1969,7 @@ ssize_t iov_iter_extract_bvecs(struct iov_iter *iter, struct bio_vec *bv,
 		unsigned int nr_to_add;
 
 		if (*nr_vecs > 0 &&
-		    !zone_device_pages_have_same_pgmap(bv[*nr_vecs - 1].bv_page,
+		    !zone_device_pages_compatible(bv[*nr_vecs - 1].bv_page,
 				pages[i]))
 			break;
 
