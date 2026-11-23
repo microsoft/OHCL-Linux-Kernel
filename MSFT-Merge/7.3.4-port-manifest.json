@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-11-19T06:42:43.992Z",
-  "status": "DRAFT - standard x64, CVM-x64 (TDX/SEV-SNP) and ARM64 builds pass; no boot/runtime validation",
+  "status": "DRAFT - three kernel build variants pass; six selected x64 WHP VMM tests and packaged-kernel boot control pass; native/hardware/broader validation pending",
   "draftBranch": "draft/openhcl-7.3.4-oot-port",
   "baseTag": "v7.3.4",
   "baseCommit": "7595a62d45ee1a2297eafa5f2ef5d0a45142d84d",
@@ -15,7 +15,9 @@
     "cleanApplies": 130,
     "resolvedConflictCommits": 21,
     "sourceMergeObjects": 18,
-    "supplementalCodeCommits": 4
+    "supplementalCodeCommits": 4,
+    "selectedRuntimeVmmTestsPassed": 6,
+    "packagedKernelControlBootTestsPassed": 1
   },
   "sourceCommits": [
     {
@@ -3623,11 +3625,10 @@
     "Tracked build configurations match exact pinned source, not build-generated changes"
   ],
   "limitations": [
-    "No boot, runtime, Hyper-V/OpenHCL integration, guest servicing, stress or performance tests.",
     "The supplied openhcl-kernel Nix snapshot consumes prebuilt 6.18.37.6-iommufd-cdev-v2 release assets. It is not modified and those separate iommufd-cdev branch changes are not part of this main-6.18 inventory.",
     "Historical inherited whitespace in pipeline/template files is recorded, not silently rewritten.",
-    "All three supported configurations now compile, including TDX/SNP/SAVIC-enabled CVM-x64, but no hardware execution or boot tests have been run.",
-    "Generated 7.3.4 preemption defaults differ from 6.18; this was explicitly accepted for later configuration review."
+    "Generated 7.3.4 preemption defaults differ from 6.18; this was explicitly accepted for later configuration review.",
+    "Six selected non-confidential x64 WHP VMM tests now pass, including basic three-cycle same-version servicing; native Hyper-V, TDX/SNP/SAVIC hardware, ARM64 runtime, cross-version servicing, long-duration stress and performance remain unvalidated."
   ],
   "configurationRefresh": {
     "timestamp": "2026-11-23T09:05:15.485Z",
@@ -4381,5 +4382,115 @@
     ],
     "currentStackEntries": 157,
     "promotionPolicy": "The branch metadata names the actual local draft. Update it when promoting to a product branch; no remote branch or PR was created."
+  },
+  "runtimeValidation": {
+    "timestamp": "2026-11-23T10:05:50.286Z",
+    "evidence": "../../runtime-validation/results.json",
+    "report": "MSFT-Merge/7.3.4-openvmm-runtime-report.md",
+    "openvmmMain": "bf353460ff70e4a65627bb7003bed2cad1ce121f",
+    "openvmmRunnerFix": "dd164fd14c593f19cc554b582b3227de8922ee2d",
+    "openvmmFixBranch": "validation/openhcl-7.3.4-vmm-runner",
+    "kernelSha256": "c70e31b415f6734d6db819593dd7569cc20bcde4f3afd6db3958aa6329e0704b",
+    "backend": "Windows Hypervisor Platform from WSL; emulated OpenHCL VTL2 and VTL0",
+    "vtl2Kernel": "7.3.4-microsoft-hcl+",
+    "vtl0GuestKernel": "6.18.33",
+    "controlPackage": "6.18.37.7",
+    "manualTargetReachedUserspace": true,
+    "manualControlReachedUserspace": true,
+    "matchingUserspaceAndBootshim": {
+      "openvmm_hcl": "e97e1abd1f73c7940c431f1c2d366ffd2c2e6c65c26f0c3108c51b26b425875f",
+      "openhcl_boot": "6148a5b48cc6b4272ed2a369f7b6d06fdb538bfe90c9b23de6724cf00a2164b0"
+    },
+    "selectedVmmTests": [
+      {
+        "name": "multiarch::openvmm_openhcl_linux_x64_boot",
+        "result": "PASS",
+        "evidence": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/runtime-validation/test-evidence/upgraded/multiarch__openvmm_openhcl_linux_x64_boot",
+        "pipetteHandshake": true,
+        "cleanTeardown": true
+      },
+      {
+        "name": "x86_64::openvmm_openhcl_linux_x64_boot_alias_map",
+        "result": "PASS",
+        "evidence": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/runtime-validation/test-evidence/upgraded/x86_64__openvmm_openhcl_linux_x64_boot_alias_map",
+        "pipetteHandshake": true,
+        "cleanTeardown": true
+      },
+      {
+        "name": "x86_64::openhcl_linux_direct::openvmm_openhcl_linux_x64_mana_nic",
+        "result": "PASS",
+        "evidence": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/runtime-validation/test-evidence/upgraded/x86_64__openhcl_linux_direct__openvmm_openhcl_linux_x64_mana_nic",
+        "pipetteHandshake": true,
+        "cleanTeardown": true
+      },
+      {
+        "name": "x86_64::storage::openvmm_openhcl_linux_x64_storvsp",
+        "result": "PASS",
+        "evidence": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/runtime-validation/test-evidence/upgraded/x86_64__storage__openvmm_openhcl_linux_x64_storvsp",
+        "pipetteHandshake": true,
+        "cleanTeardown": true
+      },
+      {
+        "name": "multiarch::openvmm_openhcl_linux_x64_reboot",
+        "result": "PASS",
+        "evidence": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/runtime-validation/test-evidence/upgraded/multiarch__openvmm_openhcl_linux_x64_reboot",
+        "pipetteHandshake": true,
+        "cleanTeardown": true
+      },
+      {
+        "name": "multiarch::openhcl_servicing::openvmm_openhcl_linux_x64_basic_servicing",
+        "result": "PASS",
+        "evidence": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/runtime-validation/test-evidence/upgraded/multiarch__openhcl_servicing__openvmm_openhcl_linux_x64_basic_servicing",
+        "pipetteHandshake": true,
+        "cleanTeardown": true
+      }
+    ],
+    "baselineBoot": "PASS",
+    "runnerValidation": {
+      "check": "PASS - both modified packages",
+      "clippyAllTargets": "PASS - both modified packages",
+      "documentation": "PASS - no-deps docs for both modified packages",
+      "unitTests": "42 passed, 1 skipped; includes custom kernel/modules CLI regression test",
+      "formatting": "PASS - cargo xtask fmt --fix, including lints and generated pipelines",
+      "customIntegration": "Previously blocked custom-kernel VMM boot test passes after recipe fix",
+      "baselineIntegration": "Same runner still passes packaged-kernel control"
+    },
+    "issues": [
+      {
+        "kind": "Invocation",
+        "problem": "Archived kernel-only directory lacked kernel_build_metadata.json",
+        "resolution": "Use complete original kernel build-output package; no source fix."
+      },
+      {
+        "kind": "Invocation",
+        "problem": "First VMM filter used conceptual recipe name instead of registered test name",
+        "resolution": "Discovered registered names; reran exact test via supported Flowey runner."
+      },
+      {
+        "kind": "OpenVMM main tooling defect",
+        "problem": "Custom kernel converted well-known recipe output into LocalOnlyCustom; artifact staging rejected its enum variant before VM creation.",
+        "resolution": "Preserve recipe identity and use existing LocalKernel package override; require paired kernel/modules arguments.",
+        "fix": "dd164fd14c593f19cc554b582b3227de8922ee2d"
+      },
+      {
+        "kind": "Environment",
+        "problem": "Long WSL UNC output path exceeded AF_UNIX SUN_LEN before VM creation",
+        "resolution": "Use short Windows output directories through supported --dir; no source workaround."
+      },
+      {
+        "kind": "Target-upstream diagnostic",
+        "problem": "7.3.4 adds Hyper-V synthetic-timer -EINVAL fallback warning absent in packaged control.",
+        "resolution": "Traced to upstream be0cfab740e58 removing legacy synthetic-timer delivery and explicitly retaining LAPIC fallback. No suppression or speculative kernel patch."
+      }
+    ],
+    "confirmedKernelFunctionalRegressions": [],
+    "kernelRuntimeFixesAdded": [],
+    "limits": [
+      "Six selected non-confidential x64 WHP VMM tests, not the full suite.",
+      "Packaged 6.18.37.7 is the control, not a separately rebuilt current OHCL main branch.",
+      "No real Hyper-V VTL, TDX, SNP, Secure AVIC hardware, ARM64 runtime, or sidecar-specific stress validation.",
+      "Same-version basic servicing has three restarts; no cross-version servicing or long-duration/performance qualification.",
+      "Generated 7.3.4 scheduling defaults are retained; no performance equivalence claim."
+    ]
   }
 }
