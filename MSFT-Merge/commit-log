@@ -1,7 +1,7 @@
 OpenHCL downstream commit stack for Linux 7.3.4
-Branch: draft/openhcl-7.3.4-oot-port
+Branch: user/namjain/openhcl-7.3.4-dev-validation-20261123
 Upstream base: 7595a62d45ee1a2297eafa5f2ef5d0a45142d84d (v7.3.4)
-Inventory cut-off: 5c1bad5ad47a826eda1c0242d4a23fbaa13765e8
+Inventory cut-off: a2df575e69264ca8b5efb6f0cb242cfa7886cd7d
 Order: oldest first; current destination IDs, not old 6.18 source IDs.
 Includes runtime patches, build/configuration integration, and follow-up fixes.
 Tracking-only commits are not extra runtime patches; find the current tracking
@@ -166,6 +166,7 @@ a503ebdaa1d8   2026-11-19    hyperv: adapt ported VTL code to current MSR and Sy
 6ff96af2dc81   2026-11-19    x86/mm: guard decrypted BSS gap freeing by AMD encryption support [Naman Jain <namjain@linux.microsoft.com>]
 41bf5aa0dad3   2026-11-23    x86/sev: select EFI unaccepted-memory support only with EFI_STUB [Naman Jain <namjain@linux.microsoft.com>]
 5c1bad5ad47a   2026-11-23    Microsoft: refresh final 7.3.4 kernel configuration variants [Naman Jain <namjain@linux.microsoft.com>]
+a2df575e6926   2026-11-23    iov_iter: allow compatible device pgmaps in extracted bvecs [Naman Jain <namjain@linux.microsoft.com>]
 
 Original source identity for the replayed entries
 ------------------------------------------------

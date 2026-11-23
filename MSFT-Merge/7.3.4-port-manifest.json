@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-11-19T06:42:43.992Z",
-  "status": "DRAFT - three kernel build variants pass; six selected x64 WHP VMM tests and packaged-kernel boot control pass; native/hardware/broader validation pending",
+  "status": "DRAFT - supplemental cross-pgmap direct-I/O fix pending fresh compilation and CI; previously recorded build/runtime results apply to the earlier code",
+  "validationBranch": "user/namjain/openhcl-7.3.4-dev-validation-20261123",
   "draftBranch": "draft/openhcl-7.3.4-oot-port",
   "baseTag": "v7.3.4",
   "baseCommit": "7595a62d45ee1a2297eafa5f2ef5d0a45142d84d",
@@ -15,7 +16,7 @@
     "cleanApplies": 130,
     "resolvedConflictCommits": 21,
     "sourceMergeObjects": 18,
-    "supplementalCodeCommits": 4,
+    "supplementalCodeCommits": 5,
     "selectedRuntimeVmmTestsPassed": 6,
     "packagedKernelControlBootTestsPassed": 1
   },
@@ -2510,6 +2511,11 @@
       "subject": "block: bio: Allow zone device pages from different pgmaps in separate bvecs",
       "outcome": "Skipped - upstream coverage",
       "reason": "Two upstream block fixes cover this downstream change with a stronger implementation: zone_device_pages_compatible() permits compatible pgmaps in separate bvecs, while same-pgmap guards prevent segment coalescing. Upstream additionally protects P2PDMA and bio-integrity cases.",
+      "runtimeFollowUp": {
+        "sha": "a2df575e69264ca8b5efb6f0cb242cfa7886cd7d",
+        "status": "Fix candidate; fresh build and CI pending",
+        "rationale": "The historical bio_add_page coverage is present, but the newer direct-I/O iterator path bypasses it and retained a stricter same-pgmap stop condition. Reuse the compatible-pgmap predicate in iov_iter_extract_bvecs while retaining separate bvecs and the PCI P2PDMA provider constraint."
+      },
       "upstream": [
         "13920e4b7b784b40cf4519ff1f0f3e513476a499",
         "41c665aae2b5dbecddddcc8ace344caf630cc7a4"
@@ -3572,6 +3578,17 @@
       "paths": [
         "arch/x86/mm/init_64.c"
       ]
+    },
+    {
+      "sha": "a2df575e69264ca8b5efb6f0cb242cfa7886cd7d",
+      "subject": "iov_iter: allow compatible device pgmaps in extracted bvecs",
+      "rationale": "Restore direct-I/O extraction across multiple MEMORY_DEVICE_GENERIC pgmaps after upstream open-coding and iterator-library refactoring bypassed the relaxed bio_add_folio path used by the final 6.18 source. Share the existing compatible-pgmap predicate rather than duplicating it; preserve separate folios/bvecs and PCI P2PDMA same-provider restrictions. No kernel configuration/default changes.",
+      "paths": [
+        "include/linux/memremap.h",
+        "block/blk.h",
+        "lib/iov_iter.c"
+      ],
+      "validation": "Kernel checkpatch: zero errors/warnings/checks. Prescribed compilation and full CI/runtime regression retest pending."
     }
   ],
   "buildResults": [
@@ -4366,7 +4383,7 @@
     "noRuntimeTests": true
   },
   "bookkeepingMigration": {
-    "targetBranch": "draft/openhcl-7.3.4-oot-port",
+    "targetBranch": "user/namjain/openhcl-7.3.4-dev-validation-20261123",
     "branchMetadataFile": "MSFT-Merge/config.json",
     "targetCommitLog": "MSFT-Merge/commit-log",
     "recreatedSourceEntries": [
@@ -4380,8 +4397,8 @@
       "9f7a9d9ace1df8dc1dcc7c14c96fc90bc5ad5b1c",
       "05e9f8e6162edfbb93c97601cc75896dbecb9161"
     ],
-    "currentStackEntries": 157,
-    "promotionPolicy": "The branch metadata names the actual local draft. Update it when promoting to a product branch; no remote branch or PR was created."
+    "currentStackEntries": 158,
+    "promotionPolicy": "MSFT-Merge/config.json identifies the logical product/underhill-main/7.3 packaging family. The user validation branch is separate from product promotion; its supplemental runtime fix requires fresh build and runtime validation."
   },
   "runtimeValidation": {
     "timestamp": "2026-11-23T10:05:50.286Z",
