@@ -1,14 +1,29 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-11-19T06:42:43.992Z",
-  "status": "DRAFT - supplemental cross-pgmap direct-I/O fix pending fresh compilation and CI; previously recorded build/runtime results apply to the earlier code",
+  "status": "DRAFT - supplemental direct-I/O fix validated; all supported kernel builds, full requested OpenVMM campaign and native ARM64 pass; broader production/hardware qualification remains open",
   "validationBranch": "user/namjain/openhcl-7.3.4-dev-validation-20261123",
   "draftBranch": "draft/openhcl-7.3.4-oot-port",
   "baseTag": "v7.3.4",
   "baseCommit": "7595a62d45ee1a2297eafa5f2ef5d0a45142d84d",
   "sourceBranch": "product/hcl-main/6.18",
   "sourceTip": "05e9f8e6162edfbb93c97601cc75896dbecb9161",
-  "testedCodeTip": "6ff96af2dc81db7b68ad2f8fa1f9345ae247ac23",
+  "testedCodeTip": "c4aa13848c3d9f2299d6f55844c8983ffe56c9eb",
+  "latestValidation": {
+    "functionalFix": "a2df575e69264ca8b5efb6f0cb242cfa7886cd7d",
+    "codeSnapshot": "c4aa13848c3d9f2299d6f55844c8983ffe56c9eb",
+    "supportedKernelBuilds": ["x64", "cvm-x64", "arm64"],
+    "configurationInputsUnchanged": true,
+    "fullRequestedOpenVmmCampaign": "passed",
+    "directIoRegression": "6.18 reference passes; unfixed 7.3.4 fails; fixed 7.3.4 passes full 100 MiB direct write/read/compare on AMD and Intel",
+    "nativeArm64": "passed",
+    "qualificationLimits": [
+      "Post-fix standard x64 native validation was blocked before runtime by deployment infrastructure",
+      "Complete confidential-platform attestation and SNP-specific hardware coverage are not established",
+      "Validation-only size baselines are not production size approval",
+      "Broad stress, performance and cross-version servicing remain unqualified"
+    ]
+  },
   "summary": {
     "sourceLeafCommits": 196,
     "applied": 151,
@@ -2513,7 +2528,7 @@
       "reason": "Two upstream block fixes cover this downstream change with a stronger implementation: zone_device_pages_compatible() permits compatible pgmaps in separate bvecs, while same-pgmap guards prevent segment coalescing. Upstream additionally protects P2PDMA and bio-integrity cases.",
       "runtimeFollowUp": {
         "sha": "a2df575e69264ca8b5efb6f0cb242cfa7886cd7d",
-        "status": "Fix candidate; fresh build and CI pending",
+        "status": "Validated: supported kernel builds, full requested OpenVMM campaign and AMD/Intel direct-I/O regression cases pass",
         "rationale": "The historical bio_add_page coverage is present, but the newer direct-I/O iterator path bypasses it and retained a stricter same-pgmap stop condition. Reuse the compatible-pgmap predicate in iov_iter_extract_bvecs while retaining separate bvecs and the PCI P2PDMA provider constraint."
       },
       "upstream": [
@@ -3588,7 +3603,7 @@
         "block/blk.h",
         "lib/iov_iter.c"
       ],
-      "validation": "Kernel checkpatch: zero errors/warnings/checks. Prescribed compilation and full CI/runtime regression retest pending."
+      "validation": "Kernel checkpatch: zero errors/warnings/checks. Prescribed local x64 build and all three supported cloud build matrices pass without configuration-input changes. Full requested OpenVMM campaign and former AMD/Intel storage regression cases pass at code snapshot c4aa13848c3d9f2299d6f55844c8983ffe56c9eb."
     }
   ],
   "buildResults": [
@@ -4398,7 +4413,7 @@
       "05e9f8e6162edfbb93c97601cc75896dbecb9161"
     ],
     "currentStackEntries": 158,
-    "promotionPolicy": "MSFT-Merge/config.json identifies the logical product/underhill-main/7.3 packaging family. The user validation branch is separate from product promotion; its supplemental runtime fix requires fresh build and runtime validation."
+    "promotionPolicy": "MSFT-Merge/config.json identifies the logical product/underhill-main/7.3 packaging family. The user validation branch is separate from product promotion; the supplemental runtime fix passed fresh builds and scoped runtime validation, not complete production qualification."
   },
   "runtimeValidation": {
     "timestamp": "2026-11-23T10:05:50.286Z",
