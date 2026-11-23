@@ -1496,7 +1496,7 @@ config AMD_MEM_ENCRYPT
 	select INSTRUCTION_DECODER
 	select ARCH_HAS_CC_PLATFORM
 	select X86_MEM_ENCRYPT
-	select UNACCEPTED_MEMORY
+	select UNACCEPTED_MEMORY if EFI_STUB
 	select CRYPTO_LIB_AES_GCM
 	help
 	  Say yes to enable support for the encryption of system memory.
