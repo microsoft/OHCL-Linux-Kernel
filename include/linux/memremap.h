@@ -202,6 +202,21 @@ static inline bool is_pci_p2pdma_page(const struct page *page)
 		folio_is_pci_p2pdma(page_folio(page));
 }
 
+/*
+ * Check if pages from different pgmaps can coexist as separate bvec entries.
+ *
+ * The block DMA iterator caches the P2PDMA mapping state from the first
+ * segment, so P2PDMA pages must belong to the same pgmap. FS_DAX and GENERIC
+ * pages use dma_map_phys() like normal RAM and may use different pgmaps.
+ */
+static inline bool zone_device_pages_compatible(const struct page *a,
+						const struct page *b)
+{
+	if (is_pci_p2pdma_page(a) || is_pci_p2pdma_page(b))
+		return zone_device_pages_have_same_pgmap(a, b);
+	return true;
+}
+
 static inline bool folio_is_device_coherent(const struct folio *folio)
 {
 	return folio_is_zone_device(folio) &&
