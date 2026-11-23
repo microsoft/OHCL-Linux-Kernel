@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-11-19T06:42:43.992Z",
-  "status": "DRAFT - source-reconciled and standard x86/ARM64 build-tested; not boot/runtime/CVM validated",
+  "status": "DRAFT - standard x64, CVM-x64 (TDX/SEV-SNP) and ARM64 builds pass; no boot/runtime validation",
   "draftBranch": "draft/openhcl-7.3.4-oot-port",
   "baseTag": "v7.3.4",
   "baseCommit": "7595a62d45ee1a2297eafa5f2ef5d0a45142d84d",
@@ -125,7 +125,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/commit-log"
+        ],
+        "resolution": "Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     },
     {
       "order": 8,
@@ -138,7 +146,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/config.json"
+        ],
+        "resolution": "Restore the branch-identification schema and point it to the actual 7.3.4 draft branch; promotion must update this field to the final product branch.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     },
     {
       "order": 9,
@@ -151,7 +167,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/commit-log"
+        ],
+        "resolution": "Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     },
     {
       "order": 10,
@@ -2592,7 +2616,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/config.json"
+        ],
+        "resolution": "Restore the branch-identification schema and point it to the actual 7.3.4 draft branch; promotion must update this field to the final product branch.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     },
     {
       "order": 157,
@@ -3026,7 +3058,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/commit-log"
+        ],
+        "resolution": "Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     },
     {
       "order": 183,
@@ -3039,7 +3079,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/commit-log"
+        ],
+        "resolution": "Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     },
     {
       "order": 184,
@@ -3152,7 +3200,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/commit-log"
+        ],
+        "resolution": "Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     },
     {
       "order": 191,
@@ -3199,7 +3255,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/commit-log"
+        ],
+        "resolution": "Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     },
     {
       "order": 194,
@@ -3244,7 +3308,15 @@
       "originalCategory": "Build scripts / Microsoft-specific",
       "targetAssessment": "Not present",
       "upstreamEvidence": [],
-      "conflictEvidence": null
+      "conflictEvidence": null,
+      "followUp": {
+        "status": "Recreated for 7.3.4",
+        "files": [
+          "MSFT-Merge/commit-log"
+        ],
+        "resolution": "Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.",
+        "commitLookup": "git log -1 --format=%H -- MSFT-Merge/config.json MSFT-Merge/commit-log"
+      }
     }
   ],
   "sourceMerges": [
@@ -3552,8 +3624,762 @@
   ],
   "limitations": [
     "No boot, runtime, Hyper-V/OpenHCL integration, guest servicing, stress or performance tests.",
-    "Existing standard configs are used unchanged; CVM-only branches are not compiled where AMD_MEM_ENCRYPT/INTEL_TDX_GUEST/SEV_GUEST are disabled. No configuration edits were made to expand coverage.",
     "The supplied openhcl-kernel Nix snapshot consumes prebuilt 6.18.37.6-iommufd-cdev-v2 release assets. It is not modified and those separate iommufd-cdev branch changes are not part of this main-6.18 inventory.",
-    "Historical inherited whitespace in pipeline/template files is recorded, not silently rewritten."
-  ]
+    "Historical inherited whitespace in pipeline/template files is recorded, not silently rewritten.",
+    "All three supported configurations now compile, including TDX/SNP/SAVIC-enabled CVM-x64, but no hardware execution or boot tests have been run.",
+    "Generated 7.3.4 preemption defaults differ from 6.18; this was explicitly accepted for later configuration review."
+  ],
+  "configurationRefresh": {
+    "timestamp": "2026-11-23T09:05:15.485Z",
+    "sourceSeedTip": "05e9f8e6162edfbb93c97601cc75896dbecb9161",
+    "copiedOrVerifiedSourceConfigs": [
+      {
+        "path": "Microsoft/hcl-x64.config",
+        "sourceBlob": "38f21933eee6cd15ea744fc449306b1b51a6a22b",
+        "currentBlob": "db6619f75822c58f595c56c708b48b8b9e56b4bc"
+      },
+      {
+        "path": "Microsoft/hcl-arm64.config",
+        "sourceBlob": "34ecce6a806628ecf2b24c0828dd374ac9ac553b",
+        "currentBlob": "e77f57e385198b9651e1458fcf7ce1690ac962c5"
+      },
+      {
+        "path": "Microsoft/x64-cvm.config",
+        "sourceBlob": "fcd492b1ad5e75a5cfd75335083af6dcd0393a41",
+        "currentBlob": "b641813834c31e6c7f7d860045dea091a4e68882"
+      },
+      {
+        "path": "Microsoft/arm64-cvm.config",
+        "sourceBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "currentBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+      },
+      {
+        "path": "Microsoft/hcl-rootfs-perf.config",
+        "sourceBlob": "fe57433a01090faefb61f720a530e284be8523af",
+        "currentBlob": "fe57433a01090faefb61f720a530e284be8523af"
+      }
+    ],
+    "configCommit": "5c1bad5ad47a826eda1c0242d4a23fbaa13765e8",
+    "codeFix": {
+      "commit": "41bf5aa0dad325e843816f17003783eda15db8fb",
+      "subject": "x86/sev: select EFI unaccepted-memory support only with EFI_STUB",
+      "failure": "First CVM-x64 link failed: EFI-only UNACCEPTED_MEMORY was selected without EFI, producing undefined references to 'efi'.",
+      "resolution": "Condition the select on its actual EFI_STUB dependency; preserve the non-EFI source CVM selections."
+    },
+    "acceptedPreemptionPolicy": {
+      "source": "CONFIG_PREEMPT_NONE=y, CONFIG_PREEMPT_DYNAMIC=y",
+      "target": "CONFIG_PREEMPT=y, CONFIG_PREEMPT_DYNAMIC=y",
+      "userDecision": "proceed with defaults, we will review the config changes later",
+      "upstreamRestriction": "7dadeaa6e851e7d67733f3e24fc53ee107781d0f",
+      "warning": "This is a real default scheduling-policy change, not just symbol renaming. Upstream also rejects preempt=none on these lazy-capable architectures; no compatibility patch was applied."
+    },
+    "variantBuilds": [
+      {
+        "variant": "x64",
+        "timestamp": "2026-11-23T08:54:34.465Z",
+        "codeTip": "41bf5aa0dad325e843816f17003783eda15db8fb",
+        "command": "./Microsoft/build-hcl-kernel.sh -n",
+        "preparation": "Existing standard architecture configuration",
+        "buildLog": "build-1.log",
+        "exitCode": 0,
+        "warnings": [],
+        "effectiveConfig": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/variant-results/x64/kernel.config",
+        "configSha256": "b3763e5fe73af2666f7a39b99eb174b196b2c9ac18affdf05f2ff9df90462b1c",
+        "configSymbols": 1744,
+        "requiredSelections": {
+          "MSHV_VTL": "y",
+          "HYPERV_VTL_MODE": "y"
+        },
+        "binary": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/variant-results/x64/vmlinux",
+        "binarySha256": "c70e31b415f6734d6db819593dd7569cc20bcde4f3afd6db3958aa6329e0704b",
+        "binaryFormat": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, BuildID[sha1]=363386ed589657e93dd11205988076b163914c39, stripped",
+        "modulesOrderSha256": "a41431f26563b2b074db68b3096de6e4d063d9b2d7b556ffd204ac18a6010de7"
+      },
+      {
+        "variant": "cvm-x64",
+        "timestamp": "2026-11-23T08:51:57.834Z",
+        "codeTip": "41bf5aa0dad325e843816f17003783eda15db8fb",
+        "command": "./Microsoft/build-hcl-kernel.sh -n",
+        "preparation": "./Microsoft/merge-cvm-config.sh",
+        "buildLog": "build-2.log",
+        "exitCode": 0,
+        "warnings": [],
+        "effectiveConfig": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/variant-results/cvm-x64/kernel.config",
+        "configSha256": "c522da22e1f3d602d416131e6a34fb139cd130dfe5974d57d66f9f460fac8805",
+        "configSymbols": 1833,
+        "requiredSelections": {
+          "MSHV_VTL": "y",
+          "HYPERV_VTL_MODE": "y",
+          "INTEL_TDX_GUEST": "y",
+          "TDX_GUEST_DRIVER": "y",
+          "SEV_GUEST": "y",
+          "AMD_MEM_ENCRYPT": "y",
+          "AMD_SECURE_AVIC": "y",
+          "ACPI": "y"
+        },
+        "binary": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/variant-results/cvm-x64/vmlinux",
+        "binarySha256": "b01d02d88f2aa5c4f830dd7d2ba3c030f252ae02bccae05f6e30b496d5763eec",
+        "binaryFormat": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, BuildID[sha1]=5f9af82cc53c474d17b8acb25b42c219f14a7a8d, stripped",
+        "modulesOrderSha256": "a41431f26563b2b074db68b3096de6e4d063d9b2d7b556ffd204ac18a6010de7"
+      },
+      {
+        "variant": "arm64",
+        "timestamp": "2026-11-23T08:58:00.514Z",
+        "codeTip": "41bf5aa0dad325e843816f17003783eda15db8fb",
+        "command": "./Microsoft/build-hcl-kernel.sh arm64 -n",
+        "preparation": "Existing standard architecture configuration",
+        "buildLog": "build-1.log",
+        "exitCode": 0,
+        "warnings": [
+          "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/kernel/drivers/hv/mshv_vtl_main.c:700:12: warning: ‘mshv_create_apicid_to_cpuid_mapping’ defined but not used [-Wunused-function]"
+        ],
+        "effectiveConfig": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/variant-results/arm64/kernel.config",
+        "configSha256": "88c013aac589aced72018f4d5fda013327ef17cf6283197f3fabaa5dc93ae66f",
+        "configSymbols": 1689,
+        "requiredSelections": {
+          "MSHV_VTL": "y",
+          "HYPERV_VTL_MODE": "y"
+        },
+        "binary": "/home/namjain/openvmm/OHCL-Linux-Kernel.worktrees/draft-7.3.4-upgrade/variant-results/arm64/Image",
+        "binarySha256": "cad89ba2056d6a36afd4c81bc09a13a27c40a95ad103292b296d0d4d20298d11",
+        "binaryFormat": "Linux kernel ARM64 boot executable Image, little-endian, 4K pages",
+        "modulesOrderSha256": "a41431f26563b2b074db68b3096de6e4d063d9b2d7b556ffd204ac18a6010de7"
+      }
+    ],
+    "separateCvmFragment": "Microsoft/x64-cvm.config",
+    "cvmFragmentRoundTrip": "PASS - no symbol differences from the successfully compiled CVM configuration",
+    "sourceCvmFragmentSelections": "All explicitly requested source CVM values that remain defined are preserved",
+    "configurationDeltas": [
+      {
+        "arch": "x64",
+        "path": "Microsoft/hcl-x64.config",
+        "changed": [
+          {
+            "symbol": "CC_VERSION_TEXT",
+            "from": "\"gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0\"",
+            "to": "\"gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\""
+          },
+          {
+            "symbol": "RUSTC_VERSION",
+            "from": "109500",
+            "to": "109901"
+          },
+          {
+            "symbol": "RUSTC_LLVM_VERSION",
+            "from": "220102",
+            "to": "230101"
+          },
+          {
+            "symbol": "PREEMPT",
+            "from": "n",
+            "to": "y"
+          }
+        ],
+        "removed": [
+          "RUSTC_HAS_COERCE_POINTEE",
+          "GENERIC_TIME_VSYSCALL",
+          "CLOCKSOURCE_WATCHDOG_MAX_SKEW_US",
+          "PREEMPT_NONE",
+          "PREEMPT_VOLUNTARY",
+          "PARAVIRT_DEBUG",
+          "ARCH_SUPPORTS_AUTOFDO_CLANG",
+          "ARCH_SUPPORTS_PROPELLER_CLANG",
+          "SLUB_CPU_PARTIAL",
+          "RANDOM_KMALLOC_CACHES",
+          "HAVE_BOOTMEM_INFO_NODE",
+          "ARCH_ENABLE_MEMORY_HOTREMOVE",
+          "ARCH_ENABLE_THP_MIGRATION",
+          "READ_ONLY_THP_FOR_FS",
+          "ARCH_SUPPORTS_PT_RECLAIM",
+          "ATALK",
+          "HAMRADIO",
+          "CAIF",
+          "PCIE_BUS_TUNE_OFF",
+          "PCIE_BUS_DEFAULT",
+          "PCIE_BUS_SAFE",
+          "PCIE_BUS_PERFORMANCE",
+          "PCIE_BUS_PEER2PEER",
+          "PCI_PWRCTRL_SLOT",
+          "SERIAL_8250_DEPRECATED_OPTIONS",
+          "APPLICOM",
+          "MWAVE",
+          "PROC_SYSCTL",
+          "CRYPTO_AES_TI",
+          "CRYPTO_FCRYPT",
+          "CRYPTO_PCBC",
+          "CRYPTO_GHASH",
+          "CRYPTO_MICHAEL_MIC",
+          "CRYPTO_SM3_GENERIC",
+          "CRYPTO_ANSI_CPRNG",
+          "CRYPTO_DRBG_MENU",
+          "CRYPTO_DES3_EDE_X86_64",
+          "CRYPTO_NHPOLY1305_SSE2",
+          "CRYPTO_NHPOLY1305_AVX2",
+          "CRYPTO_POLYVAL_CLMUL_NI",
+          "CRYPTO_SM3_AVX_X86_64",
+          "CRYPTO_GHASH_CLMUL_NI_INTEL",
+          "RANDOM32_SELFTEST",
+          "HAVE_GENERIC_VDSO",
+          "DEBUG_FORCE_WEAK_PER_CPU"
+        ],
+        "added": [
+          {
+            "symbol": "RUSTC_LLVM_MAJOR_VERSION",
+            "value": "23"
+          },
+          {
+            "symbol": "RUSTC_HAS_SUSPICIOUS_RUNTIME_SYMBOL_DEFINITIONS",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_WANTS_CLOCKSOURCE_READ_INLINE",
+            "value": "y"
+          },
+          {
+            "symbol": "GENERIC_CLOCKEVENTS_COUPLED",
+            "value": "y"
+          },
+          {
+            "symbol": "GENERIC_CLOCKEVENTS_COUPLED_INLINE",
+            "value": "y"
+          },
+          {
+            "symbol": "HRTIMER_REARM_DEFERRED",
+            "value": "y"
+          },
+          {
+            "symbol": "HAS_SEPARATE_PREEMPT_RESCHED_BITS",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_HAS_PTE_PROTNONE",
+            "value": "y"
+          },
+          {
+            "symbol": "CC_MS_EXTENSIONS",
+            "value": "\"-fms-extensions\""
+          },
+          {
+            "symbol": "SCHED_CACHE",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_SUPPORTS_CMDLINE_FROM_BOOTCONFIG",
+            "value": "y"
+          },
+          {
+            "symbol": "CMDLINE_LOG_WRAP_IDEAL_LEN",
+            "value": "1021"
+          },
+          {
+            "symbol": "HAVE_FUTEX_ROBUST_UNLOCK",
+            "value": "y"
+          },
+          {
+            "symbol": "RUSTC_HAS_APXF",
+            "value": "y"
+          },
+          {
+            "symbol": "HAVE_KLP_BUILD",
+            "value": "y"
+          },
+          {
+            "symbol": "X86_REQUIRED_FEATURE_SYSFAST32",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_SUPPORTS_SYSCALL_USER_DISPATCH",
+            "value": "y"
+          },
+          {
+            "symbol": "SYSCALL_USER_DISPATCH",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_HAS_DELAY_TIMER",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_MEMORY_ORDER_TSO",
+            "value": "y"
+          },
+          {
+            "symbol": "HAVE_PV_STEAL_CLOCK_GEN",
+            "value": "y"
+          },
+          {
+            "symbol": "BLK_ERROR_INJECTION",
+            "value": "n"
+          },
+          {
+            "symbol": "KMALLOC_PARTITION_CACHES",
+            "value": "n"
+          },
+          {
+            "symbol": "NUMA_MIGRATION",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_HAS_PMD_SOFTLEAVES",
+            "value": "y"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_SHMEM_HUGE_NEVER",
+            "value": "y"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_SHMEM_HUGE_ALWAYS",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_SHMEM_HUGE_WITHIN_SIZE",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_SHMEM_HUGE_ADVISE",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_TMPFS_HUGE_NEVER",
+            "value": "y"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_TMPFS_HUGE_ALWAYS",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_TMPFS_HUGE_WITHIN_SIZE",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_TMPFS_HUGE_ADVISE",
+            "value": "n"
+          },
+          {
+            "symbol": "PCI_TSM",
+            "value": "n"
+          },
+          {
+            "symbol": "PCI_PWRCTRL_GENERIC",
+            "value": "n"
+          },
+          {
+            "symbol": "DRIVER_DEFERRED_PROBE_TIMEOUT",
+            "value": "10"
+          },
+          {
+            "symbol": "QCOM_PAS",
+            "value": "n"
+          },
+          {
+            "symbol": "QCOM_SCM",
+            "value": "n"
+          },
+          {
+            "symbol": "RPMB",
+            "value": "n"
+          },
+          {
+            "symbol": "MISC_RP1",
+            "value": "n"
+          },
+          {
+            "symbol": "INTEL_SSEI",
+            "value": "n"
+          },
+          {
+            "symbol": "SCSI_LEAPRAID",
+            "value": "n"
+          },
+          {
+            "symbol": "SERIAL_8250_MOXA_PCIE",
+            "value": "y"
+          },
+          {
+            "symbol": "GPIB",
+            "value": "n"
+          },
+          {
+            "symbol": "RAMDAX",
+            "value": "y"
+          },
+          {
+            "symbol": "MUX_CORE",
+            "value": "n"
+          },
+          {
+            "symbol": "CRYPTO_MLDSA",
+            "value": "n"
+          },
+          {
+            "symbol": "CRYPTO_SM3",
+            "value": "n"
+          },
+          {
+            "symbol": "CRYPTO_DRBG",
+            "value": "n"
+          },
+          {
+            "symbol": "GENERIC_BITREVERSE",
+            "value": "y"
+          },
+          {
+            "symbol": "SWIOTLB_DEFAULT_SIZE_MB",
+            "value": "64"
+          },
+          {
+            "symbol": "VDSO_DATASTORE",
+            "value": "y"
+          },
+          {
+            "symbol": "DEBUG_ATOMIC",
+            "value": "n"
+          },
+          {
+            "symbol": "HAVE_DYNAMIC_FTRACE_WITH_JMP",
+            "value": "y"
+          },
+          {
+            "symbol": "IO_URING_BPF",
+            "value": "y"
+          }
+        ]
+      },
+      {
+        "arch": "arm64",
+        "path": "Microsoft/hcl-arm64.config",
+        "changed": [
+          {
+            "symbol": "RUSTC_VERSION",
+            "from": "109500",
+            "to": "109901"
+          },
+          {
+            "symbol": "RUSTC_LLVM_VERSION",
+            "from": "220102",
+            "to": "230101"
+          },
+          {
+            "symbol": "PREEMPT",
+            "from": "n",
+            "to": "y"
+          }
+        ],
+        "removed": [
+          "RUSTC_HAS_COERCE_POINTEE",
+          "GENERIC_TIME_VSYSCALL",
+          "PREEMPT_NONE",
+          "PREEMPT_VOLUNTARY",
+          "ARCH_LAN969X",
+          "ARCH_SPARX5",
+          "ARM64_WORKAROUND_REPEAT_TLBI",
+          "ARM64_PAN",
+          "ARM64_LSE_ATOMICS",
+          "ARM64_USE_LSE_ATOMICS",
+          "SLUB_CPU_PARTIAL",
+          "RANDOM_KMALLOC_CACHES",
+          "ARCH_ENABLE_MEMORY_HOTREMOVE",
+          "ARCH_ENABLE_THP_MIGRATION",
+          "READ_ONLY_THP_FOR_FS",
+          "ATALK",
+          "HAMRADIO",
+          "CAIF",
+          "PCIE_BUS_TUNE_OFF",
+          "PCIE_BUS_DEFAULT",
+          "PCIE_BUS_SAFE",
+          "PCIE_BUS_PERFORMANCE",
+          "PCIE_BUS_PEER2PEER",
+          "PCI_PWRCTRL_SLOT",
+          "APPLICOM",
+          "PARTITION_PERCPU",
+          "PROC_SYSCTL",
+          "CRYPTO_AES_TI",
+          "CRYPTO_FCRYPT",
+          "CRYPTO_PCBC",
+          "CRYPTO_GHASH",
+          "CRYPTO_MICHAEL_MIC",
+          "CRYPTO_SM3_GENERIC",
+          "CRYPTO_ANSI_CPRNG",
+          "CRYPTO_DRBG_MENU",
+          "CRYPTO_NHPOLY1305_NEON",
+          "CRYPTO_SHA3_ARM64",
+          "CRYPTO_SM3_NEON",
+          "CRYPTO_SM3_ARM64_CE",
+          "CRYPTO_POLYVAL_ARM64_CE",
+          "CRYPTO_AES_ARM64",
+          "CRYPTO_AES_ARM64_CE",
+          "RANDOM32_SELFTEST",
+          "GLOB_SELFTEST",
+          "HAVE_GENERIC_VDSO",
+          "DEBUG_FORCE_WEAK_PER_CPU"
+        ],
+        "added": [
+          {
+            "symbol": "RUSTC_LLVM_MAJOR_VERSION",
+            "value": "23"
+          },
+          {
+            "symbol": "RUSTC_HAS_SUSPICIOUS_RUNTIME_SYMBOL_DEFINITIONS",
+            "value": "y"
+          },
+          {
+            "symbol": "HAS_SEPARATE_PREEMPT_RESCHED_BITS",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_HAS_PTE_PROTNONE",
+            "value": "y"
+          },
+          {
+            "symbol": "CC_MS_EXTENSIONS",
+            "value": "\"-fms-extensions\""
+          },
+          {
+            "symbol": "SCHED_CACHE",
+            "value": "y"
+          },
+          {
+            "symbol": "CMDLINE_LOG_WRAP_IDEAL_LEN",
+            "value": "1021"
+          },
+          {
+            "symbol": "ARCH_ASPEED",
+            "value": "n"
+          },
+          {
+            "symbol": "ARCH_BST",
+            "value": "n"
+          },
+          {
+            "symbol": "ARCH_MICROCHIP",
+            "value": "n"
+          },
+          {
+            "symbol": "ARM64_WORKAROUND_REPEAT_TLBI_SYNC",
+            "value": "y"
+          },
+          {
+            "symbol": "ARM64_WORKAROUND_BROKEN_AMU_CONSTCNT",
+            "value": "y"
+          },
+          {
+            "symbol": "ARM64_ERRATUM_3821522",
+            "value": "y"
+          },
+          {
+            "symbol": "ARM64_ERRATUM_4311569",
+            "value": "y"
+          },
+          {
+            "symbol": "HISILICON_ERRATUM_162100125",
+            "value": "y"
+          },
+          {
+            "symbol": "ARM64_WORKAROUND_DISABLE_CNP",
+            "value": "y"
+          },
+          {
+            "symbol": "NVIDIA_OLYMPUS_1027_ERRATUM",
+            "value": "y"
+          },
+          {
+            "symbol": "RENESAS_ERRATUM_GEN4GICITS1",
+            "value": "y"
+          },
+          {
+            "symbol": "ARM64_MPAM",
+            "value": "n"
+          },
+          {
+            "symbol": "AS_HAS_SME",
+            "value": "y"
+          },
+          {
+            "symbol": "HAVE_PV_STEAL_CLOCK_GEN",
+            "value": "y"
+          },
+          {
+            "symbol": "HAVE_EXIT_THREAD",
+            "value": "y"
+          },
+          {
+            "symbol": "BLK_ERROR_INJECTION",
+            "value": "n"
+          },
+          {
+            "symbol": "KMALLOC_PARTITION_CACHES",
+            "value": "n"
+          },
+          {
+            "symbol": "ARCH_HAS_PMD_SOFTLEAVES",
+            "value": "y"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_SHMEM_HUGE_NEVER",
+            "value": "y"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_SHMEM_HUGE_ALWAYS",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_SHMEM_HUGE_WITHIN_SIZE",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_SHMEM_HUGE_ADVISE",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_TMPFS_HUGE_NEVER",
+            "value": "y"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_TMPFS_HUGE_ALWAYS",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_TMPFS_HUGE_WITHIN_SIZE",
+            "value": "n"
+          },
+          {
+            "symbol": "TRANSPARENT_HUGEPAGE_TMPFS_HUGE_ADVISE",
+            "value": "n"
+          },
+          {
+            "symbol": "PT_RECLAIM",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_HAS_LAZY_MMU_MODE",
+            "value": "y"
+          },
+          {
+            "symbol": "PCI_TSM",
+            "value": "n"
+          },
+          {
+            "symbol": "PCI_PWRCTRL_GENERIC",
+            "value": "n"
+          },
+          {
+            "symbol": "DRIVER_DEFERRED_PROBE_TIMEOUT",
+            "value": "10"
+          },
+          {
+            "symbol": "CACHEMAINT_FOR_HOTPLUG",
+            "value": "n"
+          },
+          {
+            "symbol": "QCOM_PAS",
+            "value": "n"
+          },
+          {
+            "symbol": "QCOM_SCM",
+            "value": "n"
+          },
+          {
+            "symbol": "RPMB",
+            "value": "n"
+          },
+          {
+            "symbol": "MISC_RP1",
+            "value": "n"
+          },
+          {
+            "symbol": "SCSI_LEAPRAID",
+            "value": "n"
+          },
+          {
+            "symbol": "GPIO_BY_PINCTRL",
+            "value": "n"
+          },
+          {
+            "symbol": "GPIO_LINE_MUX",
+            "value": "n"
+          },
+          {
+            "symbol": "POWER_RESET_QEMU_VIRT_CTRL",
+            "value": "n"
+          },
+          {
+            "symbol": "GPIB",
+            "value": "n"
+          },
+          {
+            "symbol": "RAMDAX",
+            "value": "y"
+          },
+          {
+            "symbol": "MUX_CORE",
+            "value": "n"
+          },
+          {
+            "symbol": "CRYPTO_MLDSA",
+            "value": "n"
+          },
+          {
+            "symbol": "CRYPTO_SM3",
+            "value": "n"
+          },
+          {
+            "symbol": "CRYPTO_DRBG",
+            "value": "n"
+          },
+          {
+            "symbol": "CRC64_ARCH",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_HAS_BATCHED_DMA_SYNC",
+            "value": "y"
+          },
+          {
+            "symbol": "SWIOTLB_DEFAULT_SIZE_MB",
+            "value": "64"
+          },
+          {
+            "symbol": "VDSO_DATASTORE",
+            "value": "y"
+          },
+          {
+            "symbol": "ARCH_HAS_CPU_CACHE_INVALIDATE_MEMREGION",
+            "value": "y"
+          },
+          {
+            "symbol": "GENERIC_CPU_CACHE_MAINTENANCE",
+            "value": "y"
+          },
+          {
+            "symbol": "DEBUG_ATOMIC",
+            "value": "n"
+          },
+          {
+            "symbol": "IO_URING_BPF",
+            "value": "y"
+          }
+        ]
+      }
+    ],
+    "variantScope": "CI supports x64, cvm-x64 and arm64. arm64-cvm.config remains empty; hcl-rootfs-perf.config remains an initramfs manifest.",
+    "noRuntimeTests": true
+  },
+  "bookkeepingMigration": {
+    "targetBranch": "draft/openhcl-7.3.4-oot-port",
+    "branchMetadataFile": "MSFT-Merge/config.json",
+    "targetCommitLog": "MSFT-Merge/commit-log",
+    "recreatedSourceEntries": [
+      "8361d588b8ac811d4500411b49128317fc6f7425",
+      "843a0901de231d7e6ea891e2a57b97123a3c6e13",
+      "cf314821f371c21ffd0173f9870c77af5d5ddafd",
+      "ec12dfc955cce16c6c14e26cc13c87d935b6f26e",
+      "ef761e21b1c9841c4317fef4b8275bc36b098469",
+      "216b762d69d8435c0d47c5ab52dc96c704d007b7",
+      "8146a46b7440803f6aeceb98778f7ca0280c20db",
+      "9f7a9d9ace1df8dc1dcc7c14c96fc90bc5ad5b1c",
+      "05e9f8e6162edfbb93c97601cc75896dbecb9161"
+    ],
+    "currentStackEntries": 157,
+    "promotionPolicy": "The branch metadata names the actual local draft. Update it when promoting to a product branch; no remote branch or PR was created."
+  }
 }
