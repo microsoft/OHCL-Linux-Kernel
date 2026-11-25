@@ -1,0 +1,451 @@
+OpenHCL downstream commit stack for Linux 7.3.4
+Branch: user/namjain/openhcl-7.3.4-dev-validation-20261125
+Upstream base: 7595a62d45ee1a2297eafa5f2ef5d0a45142d84d (v7.3.4)
+Inventory cut-off: 36cdc76dcd421ea100be53b37aa3ed843408c473
+Order: oldest first; current destination IDs, not old 6.18 source IDs.
+Includes runtime patches, build/configuration integration, and follow-up fixes.
+Tracking-only commits are not extra runtime patches; find the current tracking
+commit with: git log -1 -- MSFT-Merge/config.json MSFT-Merge/commit-log
+
+Commit Hash     Date          Commit Message/[Author]
+-------------   ----------    --------------------------------------------------
+aa11e0330362   2023-04-18    Add pipelines for 6.6 kernel [Saurabh Sengar <ssengar@linux.microsoft.com>]
+57569b86475d   2023-04-18    Config and scripts for 6.6 [Saurabh Sengar <ssengar@linux.microsoft.com>]
+4a3400c2d52c   2023-04-26    Merged PR 8011958: Build and publish the next package, too [Roman Kiselev 🦇 <romank@microsoft.com>]
+62bf390caffb   2023-05-10    build-hcl-kernel.sh: Fix for local build [Saurabh Sengar <ssengar@linux.microsoft.com>]
+f9fa635f32c8   2023-09-04    build-hcl-kernel.sh: Fix for local kernel builds [Saurabh Sengar <ssengar@linux.microsoft.com>]
+9ffb3d7b9cf3   2024-01-09    Add ARM64 HCL kernel target and refactor HCL build script to build for multiple architectures. [Ben Hillis <benhill@ntdev.microsoft.com>]
+f692c37a9e5b   2023-08-09    Revert "x86/mtrr: Revert 90b926e68f50 ("x86/pat: Fix pat_x_mtrr_type() for MTRR disabled case")" [Nischala Yelchuri <niyelchu@linux.microsoft.com>]
+fdf03a119116   2024-01-22    arch/x86: Ensure apic ops are set in DT boot [Saurabh Sengar <ssengar@linux.microsoft.com>]
+6008a9749a89   2025-01-29    drivers: mshv: vtl: Add additional PML4 entries to vmmemmap [Saurabh Sengar <ssengar@linux.microsoft.com>]
+3ac4ae518f71   2024-01-22    drivers: mshv: vtl: No warning when a host doesn't provide reg page in VSM [Saurabh Sengar <ssengar@linux.microsoft.com>]
+8378219e26cc   2024-01-22    hv: mshv_vtl: Update function name to reflect work they do [Saurabh Sengar <ssengar@linux.microsoft.com>]
+2ec05c62aa10   2023-03-20    hyperv: mshv_vtl: Add tracepoints for VTL0 enter and exit [Boqun Feng <boqun.feng@gmail.com>]
+a037c52e086d   2023-03-27    x86: idle: Allows mshv_vtl to change the idle routine [Boqun Feng <boqun.feng@gmail.com>]
+4ca2bc8de098   2024-01-22    hv: mshv: vtl: sysfs for VTL transitions [Saurabh Sengar <ssengar@linux.microsoft.com>]
+a77d1f6aad01   2024-01-29    Enable automatic PR builds for underhill kernel [Nischala Yelchuri <niyelchu@linux.microsoft.com>]
+f19d5be482ed   2024-04-17    PCI: Add a mutex to protect the global list pci_domain_busn_res_list [Dexuan Cui <decui@microsoft.com>]
+58ba247ded85   2024-05-28    UH: fallback to older known working mariner 2.0 build container image [Allen Pais <apais@linux.microsoft.com>]
+27894ba16178   2024-05-17    drivers/vmbus: Enhance Interrupt Management [Roman Kisel🦇 <romank@microsoft.com>]
+62153e8708aa   2024-05-17    drivers/hv: Enable MSHV_VTL_MODE for arm64 [Roman Kisel🦇 <romank@microsoft.com>]
+2750a81df0a5   2024-07-29    Add script to merge kernel configurations based on architecture type [Allen Pais <apais@linux.microsoft.com>]
+a6b6584f9012   2024-07-30    Address review comments: [Allen Pais <apais@linux.microsoft.com>]
+8dde3b1aa2c0   2024-08-01    redirects the output of echo to stderr [Allen Pais <apais@linux.microsoft.com>]
+c5ef203c6bc2   2024-08-22    Add boilerplate SECURITY.md [Ben Hillis <benhill@ntdev.microsoft.com>]
+1c304af9edc5   2024-09-27    scripts: Rename and Update merge-config.sh Script for Clean Kernel Build [Allen Pais <apais@linux.microsoft.com>]
+cd1a494f2796   2024-09-27    script: Improve path handling and enforce correct execution directory [Allen Pais <apais@linux.microsoft.com>]
+d8d3aea15b83   2024-09-27    script: improve error reporting [Allen Pais <apais@linux.microsoft.com>]
+e18e4dccc0eb   2024-11-06    add hcl cvm kernel build support [Ubuntu <hargar@UbuntuVM-22.efytirfs5hsengjwslc1ligxab.xx.internal.cloudapp.net>]
+6a24e1179245   2024-12-05    .github: build, archive and generate release in pipeline (#25) [Ballasi <zersssin@gmail.com>]
+a370f55a27c9   2024-12-17    .github: trigger PR pipeline on specific branches (#27) [Ballasi <tballasi@linux.microsoft.com>]
+7b318299f9df   2024-12-20    .github: move release notes [Thomas Ballasi <tballasi@linux.microsoft.com>]
+09ec61e995fd   2023-02-16    x86/mm/64: Free the gap between BSS_MAIN and BSS_DECRYPTED. [Jared White <jaredwhite@microsoft.com>]
+1ceaf17af6c7   2025-02-10    arm64/hyperv: Enable VTL Boot Support [Roman Kisel <romank@microsoft.com>]
+0a6770693a54   2025-12-01    arch,mshv_vtl: Add arm64 support for OpenHCL [Naman Jain <namjain@linux.microsoft.com>]
+8560a9e20e2a   2025-12-02    copilation fail fixes [Naman Jain <namjain@linux.microsoft.com>]
+d5699e7c54ef   2025-12-02    Port restructure code which also has some new changes [Naman Jain <namjain@linux.microsoft.com>]
+d205ff64ee5e   2024-06-05    hyperv/arm64: Use PSCI to start processors. [Roman Kisel🦇 <romank@microsoft.com>]
+250e1f4ce800   2025-12-04    some changes to fix compilation [Naman Jain <namjain@linux.microsoft.com>]
+82c628f75e33   2025-12-04    Fix x86 compilation errors [Naman Jain <namjain@linux.microsoft.com>]
+fc460da0ef03   2024-05-29    drivers/hv: Account for various page sizes on ARM64 [Roman Kisel🦇 <romank@microsoft.com>]
+feae6a812661   2025-02-11    vfio/pci: Add ioctl to keep VF alive [Saurabh Sengar <ssengar@linux.microsoft.com>]
+21d89240f19c   2025-01-27    .github: enable perf build on pull requests (#29) [Ballasi <tballasi@linux.microsoft.com>]
+3918e9712fc5   2025-05-02    repo: Update gitignores for this repo and clean the old configs away [Roman Kisel <romank@microsoft.com>]
+07723a290c4a   2025-05-07    CI: Update branch trigger so GitHub validation runs on hcl-dev branches [Ben Hillis <benhill@ntdev.microsoft.com>]
+a90779e84a39   2025-05-14    ci: upload artifacts even if not publishing a release [John Starks <jostarks@microsoft.com>]
+9db16064b71d   2024-10-23    kernel: add boot_cpus command line parameter [John Starks <jostarks@microsoft.com>]
+3add8e591a8e   2025-04-24    drivers/hv: don't fail to get the VTL [Ben Hillis <benhill@ntdev.microsoft.com>]
+b57c0eb0af94   2024-05-29    mshv_vtl: add sidecar kernel support [John Starks <jostarks@microsoft.com>]
+1f467a038289   2025-02-03    drivers: hv: mshv_vtl: introduce ioctl for kicking a remote cpu [Chris Oo <cho@microsoft.com>]
+8f5382b54629   2025-05-29    drivers/hv/mshv_vtl: fix wait on sidecar CPU online [John Starks <jostarks@microsoft.com>]
+3552644357a2   2025-05-30    drivers/hv/mshv_vtl: fix wait condition again [John Starks <jostarks@microsoft.com>]
+8ba318689200   2025-12-08    config: Port and build configs for LTS upgrade to 6.18 kernel [Naman Jain <namjain@linux.microsoft.com>]
+e59b563ce897   2024-01-22    hv: mshv: vtl: Make VTL0 entering in idle loop [Saurabh Sengar <ssengar@linux.microsoft.com>]
+60d7f0ab86b1   2023-07-16    hv: mshv: vtl: Use INTERRUPTIBLE when VTL2 thread switching to idle [Boqun Feng <boqun.feng@gmail.com>]
+8b7635bf529b   2023-07-18    hv: mshv: vtl: Respect mshv_vtl_run::cancel in mshv_vtl_idle() [Boqun Feng <boqun.feng@gmail.com>]
+ac99da7d576a   2024-01-22    hv: mshv: vtl: Allows user space to choose idle policy [Saurabh Sengar <ssengar@linux.microsoft.com>]
+2b698648d01c   2025-02-10    arm64/hyperv, kernel: Support Idle State Functions [Roman Kisel <romank@microsoft.com>]
+e4ff23af2c11   2024-06-30    drivers/hv/mshv_vtl_main.c: handle DECRYPTED_MASK for CVMs [Dexuan Cui <decui@microsoft.com>]
+a8477c0c9bcf   2024-09-18    x86/sev: Not use write-protected mapping in the __sme_early_enc_dec() [Tianyu Lan <tiala@microsoft.com>]
+4a26a51abf17   2024-06-26    uio: CVM: Add the pgprot_decrypted for UIO_MEM_IOVA in mmap [Dexuan Cui <decui@microsoft.com>]
+553bded79536   2024-05-20    x86/tdx: Support vmalloc() for tdx_enc_status_changed() [Dexuan Cui <decui@microsoft.com>]
+8a5576426a4c   2024-06-25    Drivers: hv: vmbus: Allow more VMBus devices for a CVM UH kernel [Dexuan Cui <decui@microsoft.com>]
+97cf93907882   2026-01-23    drivers/hv: Add support for mshv_vtl on TDX [Tianyu Lan <tiala@microsoft.com>]
+ce80de865ae9   2024-05-17    coco/tdx: reflect faulting va back to usermode [Chris Oo <cho@microsoft.com>]
+51189ff7f5b8   2026-01-26    drivers/hv/mshv_vtl_main.c: Fixed the crash in mshv_vtl_switch_to_vtl0_irqoff for TDX [Dexuan Cui <decui@microsoft.com>]
+cf9d91addd4b   2024-09-11    x86: Enable x2apic function [Tianyu Lan <tiala@microsoft.com>]
+c1660cee7aaa   2024-09-11    x86/sev: expose Hyper-V CPUID to SEV-SNP guest [Tianyu Lan <tiala@microsoft.com>]
+c8243357d837   2025-02-12    x86/sev: Use hvcall to convert apic id to vpid [Tianyu Lan <tiala@microsoft.com>]
+fe33cfe0cf2d   2025-05-14    drivers: hv: vtl: Don't allow register ioctl on HCVMs [Roman Kisel <romank@microsoft.com>]
+077714f78270   2026-01-28    hyperv/mshv_vtl: Add SEV SNP guest support [Tianyu Lan <tiala@microsoft.com>]
+92d72491c16a   2024-10-04    mshv: Sort VTL IOCTLs, add comments [Roman Kisel🦇 <romank@linux.microsoft.com>]
+4b4f32eb9819   2025-02-12    mshv_vtl: Allow specifying target_vtl [Roman Kisel🦇 <romank@linux.microsoft.com>]
+f5c8bcaaebf6   2024-10-04    mshv_vtl: Correctly set Guest VSM VMSA page (VTL1) [Roman Kisel🦇 <romank@linux.microsoft.com>]
+48e55219a039   2025-02-12    mshv_vtl/tdx: Let the user mode control the RCX on guest entry [Roman Kisel <romank@microsoft.com>]
+f5d1ad40aca2   2024-10-01    mshv_vtl/tdx: preserve TSC_AUX across VP.ENTER [Chris Oo <cho@microsoft.com>]
+135a2882fb9d   2026-03-10    drivers/hv: add tdx support for handling wbinvd [Chris Oo <cho@microsoft.com>]
+2aecc2ade0c3   2024-12-17    mshv_vtl/tdx: Handle some APIC functionality in kernel [Jared White <jaredwhite@microsoft.com>]
+f13ef810e9bc   2025-03-17    Compile fix and AMD boot up panic [Hardik Garg <hargar@microsoft.com>]
+bc56f5819cfa   2025-02-13    OOT! x86/of: Downgrade the error on the missing IO-APIC unconditionally (#44) [Roman Kisel 🦇 <55709385+romank-msft@users.noreply.github.com>]
+c34eb8b77b8a   2025-02-13    OOT! x86: pci: Downgrade "PCI devices with unassigned 32-bit BARs" error (#43) [Roman Kisel 🦇 <55709385+romank-msft@users.noreply.github.com>]
+9bc2fb9c3850   2025-02-13    OOT! arch, x86: Make side channel messages warnings (#41) [Roman Kisel 🦇 <55709385+romank-msft@users.noreply.github.com>]
+e1abbf064c37   2025-02-18    OOT! x86: dt: Add a mising new line (#46) [Roman Kisel 🦇 <55709385+romank-msft@users.noreply.github.com>]
+ffa16d515fdc   2025-02-18    OOT! x86: pci: Downgrade "PCI: Fatal: No config space access" error (#42) [Roman Kisel 🦇 <55709385+romank-msft@users.noreply.github.com>]
+256d36749649   2025-04-04    mshv_vtl/tdx: Remove hardcoding of VP.ENTER value in RAX (#35) [Ramesh Thomas <ramesh.thomas@intel.com>]
+01852e602ab3   2025-04-04    hv: mshv: vtl: Use the percpu in/out pages as the hypercall's arguments (#52) [Dexuan Cui <decui@microsoft.com>]
+2c42ccaabcee   2025-01-31    mshv_vtl/tdx: Add assembly function for TDG.VP.ENTER [Ramesh Thomas <ramesh.thomas@intel.com>]
+cd3883369edd   2026-03-06    mshv driver: Compile and CVM related fixes [Tianyu Lan <tiala@microsoft.com>]
+e28ae8ab26de   2026-02-06    Remove unused local variables in hv_common_cpu_die() [Dexuan Cui <decui@microsoft.com>]
+3f9d24862a59   2026-02-06    TDX: remove __mshv_vtl_ioctl_check_extension(), which is not used yet [Dexuan Cui <decui@microsoft.com>]
+b34a82f35d48   2026-02-06    TDX: Add the missing HV_X64_REGISTER_XFEM support [Dexuan Cui <decui@microsoft.com>]
+96701c0325e8   2026-02-06    TDX: Fix indentation issues in mshv_vtl_ioctl_get_regs() [Dexuan Cui <decui@microsoft.com>]
+9d570937cae1   2025-10-13    mshv_vtl/tdx: Add member to tdx vp context for TDX timer service [Isaku Yamahata <isaku.yamahata@intel.com>]
+50c771e25f4a   2025-10-13    mshv_vtl/tdx: Factor out tdg_vp_wr() wrapper [Isaku Yamahata <isaku.yamahata@intel.com>]
+f61a4d096946   2025-10-13    mshv_vtl/tdx: Set TSC deadline if userspace requests [Isaku Yamahata <isaku.yamahata@intel.com>]
+4a5c979556e3   2025-11-21    mshv_vtl/tdx: Skip duplicated TDG.VP.WR(TSC deadline) [Isaku Yamahata <isaku.yamahata@intel.com>]
+fb4f0849c341   2025-10-15    mshv_vtl/tdx: Arm per-cpu timer to wake up from L0 HLT emulation [Isaku Yamahata <isaku.yamahata@intel.com>]
+5aeeac5666ec   2025-11-20    mshv_vtl/tdx: Eliminate duplicate tdg.vp.wr(TSC deadline = disarm) [Isaku Yamahata <isaku.yamahata@intel.com>]
+2462fdbab8a6   2025-10-20    drivers: hv: mshv_vtl: Advertise TDX timer service extension [Isaku Yamahata <isaku.yamahata@intel.com>]
+66b573263d34   2025-10-15    mshv_vtl/tdx: Fix arm64 build [Isaku Yamahata <isaku.yamahata@intel.com>]
+286b89b6b751   2025-11-14    hcl-x64.config: Set CONFIG_ACPI=y [Ricardo Neri <ricardo.neri-calderon@linux.intel.com>]
+2a03c56878e0   2026-02-25    snp: return early in print_s5_reset_status_mmio() to avoid a triple fault [Dexuan Cui <decui@microsoft.com>]
+813125aa7948   2026-03-02    x86/AMD: Disable INVLPGB capability to avoid GP fault [Tianyu Lan <tiala@microsoft.com>]
+59056aebc0f9   2026-02-26    vtl: Fixes for compilation errors and warnings [Naman Jain <namjain@linux.microsoft.com>]
+50fc066cc56e   2025-05-30    hv: mshv_vtl: Optimize computation of the proxy interrupt bit [Ricardo Neri <ricardo.neri-calderon@linux.intel.com>]
+42ef25430dbf   2025-10-02    mshv_vtl/tdx: Add a helper function to get CPU number from APIC ID [Ricardo Neri <ricardo.neri-calderon@linux.intel.com>]
+4db65cbf09f5   2025-02-19    hv: mshv_vtl: Add a helper function to assert single proxy interrupts [Ricardo Neri <ricardo.neri-calderon@linux.intel.com>]
+1392b08af49f   2025-02-18    hv: mshv_vtl: Introduce the MAP_REDIRECTED_DEVICE_INTERRUPT IOCTL [Ricardo Neri <ricardo.neri-calderon@linux.intel.com>]
+70638f75e517   2025-04-22    hv: mshv_vtl: Create a thin irq_domain for redirected proxy interrupts [Ricardo Neri <ricardo.neri-calderon@linux.intel.com>]
+9e0fc37b0f15   2025-10-03    hv: mshv_vtl: Redirect a proxy interrupt [Ricardo Neri <ricardo.neri-calderon@linux.intel.com>]
+47258c8ea477   2025-10-30    hv: mshv_vtl: Handle unmapping of redirected interrupts [Ricardo Neri <ricardo.neri-calderon@linux.intel.com>]
+06e203ed1b4a   2026-01-30    drivers: hv: mshv_vtl: Implement restore partition time IOCTL [Brian Perkins <brian.perkins@microsoft.com>]
+b204155c97ed   2025-02-12    Drivers: hv: enable the VP assist page for the root partition [Roman Kisel <romank@microsoft.com>]
+efedd5a1ce74   2025-04-12    mshv_vtl/tdx: Optimize L1 MSR save/restore around VP_ENTER [Ramesh Thomas <ramesh.thomas@intel.com>]
+38c8d9835475   2025-05-13    drivers/hv: fix mshv_vtl MSR_TSC_AUX context switch [John Starks <jostarks@microsoft.com>]
+f8a827c2f0ee   2025-05-13    drivers/hv: mshv_vtl: faster MSR context switching [John Starks <jostarks@microsoft.com>]
+b1056b5a3b9c   2025-04-22    hv: mshv: vtl: Allow aarch64 to use the Hyper-V VTL register page when available. (#53) [Brian Perkins <brian.perkins@microsoft.com>]
+2f27da61081b   2025-04-04    OOT! drivers: hv: vtl: Don't impose VSM configuration on the user mode (#47) [Roman Kisel 🦇 <55709385+romank-msft@users.noreply.github.com>]
+619a17f69ad2   2026-03-19    hv: mshv: vtl: Fix ARM VTL0 guest fails to boot up [Naman Jain <namjain@linux.microsoft.com>]
+5c8b56cc2cfc   2026-03-24    move ACPI config changes to CVM cfg [Hardik Garg <hargar@microsoft.com>]
+588416fa99ca   2025-06-04    Drivers: hv: mshv_vtl: Speed up PVALIDATE and RPMADJUST to meet perf targets [Roman Kisel <romank@linux.microsoft.com>]
+53e35b71de44   2025-06-13    Drivers: hv: mshv_vtl: Don't error out on non-SNP where local maps aren't used [Roman Kisel <romank@linux.microsoft.com>]
+1b2f03b101a5   2026-03-29    Drivers: hv: mshv_vtl: Use pgtable_l5_enabled() to determine VA start address [Tianyu Lan <tiala@microsoft.com>]
+e5b859d01bd9   2026-04-03    Drivers: hv: mshv_vtl: Fix TDX VTL0 boot [Dexuan Cui <decui@microsoft.com>]
+23f78d5ab19c   2026-04-08    config-cleanup: disable new 6.18 configs enabled by default [Hardik Garg <hargar@microsoft.com>]
+a6f7b37533b5   2025-09-01    x86/Hyper-V: Add Hyper-V specific hvcall to set backing page [Tianyu Lan <tiala@microsoft.com>]
+999e44971d90   2026-03-19    drivers: hv: mshv_vtl: Support for Secure AVIC [Roman Kisel <romank@linux.microsoft.com>]
+3b9fd6663ddf   2026-05-12    config: enabling madvise syscalls for user mode deallocations (v6.18) [Daniel Paliulis <dpaliulis@microsoft.com>]
+ae87e9e8f00f   2026-06-02    arm64/hyperv: Add Device Tree Support [Roman Kisel <romank@microsoft.com>]
+e1ac52c90436   2026-02-05    Microsoft: Add Nix infrastructure for reproducible builds [Naman Jain <namjain@linux.microsoft.com>]
+70ad1ce19b51   2026-02-05    Microsoft: Add Nix build script with reproducible environment [Naman Jain <namjain@linux.microsoft.com>]
+66aad7663f30   2026-02-05    Microsoft: Update build-hcl-kernel.sh for reproducible builds [Naman Jain <namjain@linux.microsoft.com>]
+dbd15e3b90dd   2026-02-05    Microsoft: Add CI pipeline build script [Naman Jain <namjain@linux.microsoft.com>]
+e7628f4dcfbb   2026-05-26    ci: make kernel CI reproducible [Naman Jain <namjain@linux.microsoft.com>]
+f62ea48f6230   2026-06-03    ci: run dual reproducibility builds and compare outputs [Naman Jain <namjain@linux.microsoft.com>]
+b945bd3ce5bd   2026-05-19    Drivers: hv: mshv_vtl: use folio-aware inserters for huge VTL0 mappings [Naman Jain <namjain@linux.microsoft.com>]
+8a698c0d5325   2026-06-03    Drivers: hv: mshv_vtl: fix GUP into VTL0 mappings on the 4K fault path [Naman Jain <namjain@linux.microsoft.com>]
+57d59de4dd11   2026-06-09    Drivers: hv: mshv_vtl: fix vmemmap race in low pgmap resolver [Naman Jain <namjain@linux.microsoft.com>]
+aab3228cd47f   2026-06-10    Drivers: hv: mshv_vtl: remove duplicate misc_deregister() in module exit [Naman Jain <namjain@linux.microsoft.com>]
+20c398644754   2026-06-29    x86/hyperv: Fix compilation warning by removing unused label [Naman Jain <namjain@linux.microsoft.com>]
+b19bf0142ab3   2026-06-29    Microsoft: Update config changes with LTS [Naman Jain <namjain@linux.microsoft.com>]
+13631aee9a02   2026-07-06    Microsoft: build reproducible kernel in-place without a temp copy [Naman Jain <namjain@linux.microsoft.com>]
+2ded639a0557   2026-06-26    drivers: hv: better management of HLT/IDLE states Tracking of current VTL0 state via offload_flags need to be kept up to date in order to properly handle VTL2 idle behavior. [Brian Perkins <brian.perkins@microsoft.com>]
+36e91cd24f1d   2026-06-12    x86/tdx: Add TDG.MR.KEY.GET ABI support [Kuppuswamy Sathyanarayanan <sathyanarayanan.kuppuswamy@linux.intel.com>]
+8b3a2e77267b   2026-07-30    drivers/hv/mshv_vtl: fix fabricated sidecar VP run completions [John Starks <jostarks@microsoft.com>]
+cb9c00fc9495   2026-08-07    drivers: hv: SNP perf fixes Share the VMSA key with userspace to allow decoding register values. Return to VTL0 if the only operation was a kernel handled interrupt. Don't resend IPI to a processor for interrupt processing. [Brian Perkins <brian.perkins@microsoft.com>]
+52297d2cc3d6   2026-08-07    drivers: hv: SNP fast-path for stimer0 operations [Brian Perkins <brian.perkins@microsoft.com>]
+e1fdf716b658   2026-08-14    x86/apic/savic: ipi needs to convert apicid to cpuid [Brian Perkins <brian.perkins@microsoft.com>]
+12599f08d178   2026-08-14    x86/apic/savic: get GPA for SAVIC page using per_cpu_ptr_to_phys [Brian Perkins <brian.perkins@microsoft.com>]
+4a2873b1f5d0   2026-08-20    x86/tdx: Release private memory before private->shared conversion [Dexuan Cui <decui@microsoft.com>]
+4c1f83bf47f5   2026-08-18    Drivers: hv: mshv_vtl: restore 2M VTL0 low mappings to bound PageTables [Naman Jain <namjain@linux.microsoft.com>]
+0284a7fb71f1   2026-08-31    x86/init: Initialize wall clock in get_rtc_noop() [Naman Jain <namjain@linux.microsoft.com>]
+847bb87f559f   2026-10-27    Drivers: hv: mshv_vtl: Remove SNP VP assist page dependency [Jenna Goddard <jennagoddard@microsoft.com>]
+9de984cbd7cc   2026-11-19    Microsoft: restore the source-tip x64 configuration [Naman Jain <namjain@linux.microsoft.com>]
+244e37910f6b   2026-11-19    x86/mm: guard decrypted BSS gap freeing [Naman Jain <namjain@linux.microsoft.com>]
+21a7b1195b83   2026-11-23    Microsoft: refresh the 7.3.4 OpenHCL configurations [Naman Jain <namjain@linux.microsoft.com>]
+36cdc76dcd42   2026-11-23    iov_iter: allow compatible device pgmaps in extracted bvecs [Naman Jain <namjain@linux.microsoft.com>]
+
+Original source identity for the replayed entries
+------------------------------------------------
+aa11e0330362 <- 011a7a1bf407  Add pipelines for 6.6 kernel
+57569b86475d <- 6f3f95088572  Config and scripts for 6.6
+4a3400c2d52c <- a14e01831bbc  Merged PR 8011958: Build and publish the next package, too
+62bf390caffb <- b8e425dce7b7  build-hcl-kernel.sh: Fix for local build
+f9fa635f32c8 <- e6f5be67be0a  build-hcl-kernel.sh: Fix for local kernel builds
+9ffb3d7b9cf3 <- 2d05c8d5dae0  Add ARM64 HCL kernel target and refactor HCL build script to build for multiple architectures.
+f692c37a9e5b <- c67dc910ecf7  Revert "x86/mtrr: Revert 90b926e68f50 ("x86/pat: Fix pat_x_mtrr_type() for MTRR disabled case")"
+fdf03a119116 <- ead7f469d223  arch/x86: Ensure apic ops are set in DT boot
+6008a9749a89 <- 53d7ab8045e8  drivers: mshv: vtl: Add additional PML4 entries to vmmemmap
+3ac4ae518f71 <- 3cfb92c844ac  drivers: mshv: vtl: No warning when a host doesn't provide reg page in VSM
+8378219e26cc <- f69f579f48f2  hv: mshv_vtl: Update function name to reflect work they do
+2ec05c62aa10 <- d1294dabf906  hyperv: mshv_vtl: Add tracepoints for VTL0 enter and exit
+a037c52e086d <- 12f408052110  x86: idle: Allows mshv_vtl to change the idle routine
+4ca2bc8de098 <- b0a7d9b28efc  hv: mshv: vtl: sysfs for VTL transitions
+a77d1f6aad01 <- 1fd9982179f2  Enable automatic PR builds for underhill kernel
+f19d5be482ed <- 6fd11a76911a  PCI: Add a mutex to protect the global list pci_domain_busn_res_list
+58ba247ded85 <- 654fca2409aa  UH: fallback to older known working mariner 2.0 build container image
+27894ba16178 <- 3dcb6050cf8b  drivers/vmbus: Enhance Interrupt Management
+62153e8708aa <- e3d9aa18101a  drivers/hv: Enable MSHV_VTL_MODE for arm64
+2750a81df0a5 <- 9eb6a3a73568  Add script to merge kernel configurations based on architecture type
+a6b6584f9012 <- 63c571dc1cde  Address review comments:
+8dde3b1aa2c0 <- 9878dac3ddb5  redirects the output of echo to stderr
+c5ef203c6bc2 <- e7456049f6c6  Add boilerplate SECURITY.md
+1c304af9edc5 <- 127e1cbf1553  scripts: Rename and Update merge-config.sh Script for Clean Kernel Build
+cd1a494f2796 <- 5c49c471a551  script: Improve path handling and enforce correct execution directory
+d8d3aea15b83 <- d3c89c9bbb6c  script: improve error reporting
+e18e4dccc0eb <- ace911c39030  add hcl cvm kernel build support
+6a24e1179245 <- 1ad5f862eec7  .github: build, archive and generate release in pipeline (#25)
+a370f55a27c9 <- baf3686d957b  .github: trigger PR pipeline on specific branches (#27)
+7b318299f9df <- e5bf75cb2300  .github: move release notes
+09ec61e995fd <- b8a2af9d9e74  x86/mm/64: Free the gap between BSS_MAIN and BSS_DECRYPTED.
+1ceaf17af6c7 <- 1290e84125a9  arm64/hyperv: Enable VTL Boot Support
+0a6770693a54 <- 704610b76b7d  arch,mshv_vtl: Add arm64 support for OpenHCL
+8560a9e20e2a <- 69a10166fe5d  copilation fail fixes
+d5699e7c54ef <- 36e458c8789c  Port restructure code which also has some new changes
+d205ff64ee5e <- f701d02a32b1  hyperv/arm64: Use PSCI to start processors.
+250e1f4ce800 <- ab82bc72cd85  some changes to fix compilation
+82c628f75e33 <- f1bc8fdb27b1  Fix x86 compilation errors
+fc460da0ef03 <- 372f4cf954a0  drivers/hv: Account for various page sizes on ARM64
+feae6a812661 <- fad7af4fe3c6  vfio/pci: Add ioctl to keep VF alive
+21d89240f19c <- 306f5b3f02f7  .github: enable perf build on pull requests (#29)
+3918e9712fc5 <- 168e07e65579  repo: Update gitignores for this repo and clean the old configs away
+07723a290c4a <- de9ee2537b28  CI: Update branch trigger so GitHub validation runs on hcl-dev branches
+a90779e84a39 <- 46a3cf10b4ca  ci: upload artifacts even if not publishing a release
+9db16064b71d <- 4a6bc4893b6d  kernel: add boot_cpus command line parameter
+3add8e591a8e <- c06be6e8dcf1  drivers/hv: don't fail to get the VTL
+b57c0eb0af94 <- 28d8e9e15a97  mshv_vtl: add sidecar kernel support
+1f467a038289 <- 33dce7c7914e  drivers: hv: mshv_vtl: introduce ioctl for kicking a remote cpu
+8f5382b54629 <- ea837929c9c3  drivers/hv/mshv_vtl: fix wait on sidecar CPU online
+3552644357a2 <- 7093ddcf83a5  drivers/hv/mshv_vtl: fix wait condition again
+8ba318689200 <- 60254123c8bb  config: Port and build configs for LTS upgrade to 6.18 kernel
+e59b563ce897 <- d8218dca833d  hv: mshv: vtl: Make VTL0 entering in idle loop
+60d7f0ab86b1 <- 4b4b59cfb2ce  hv: mshv: vtl: Use INTERRUPTIBLE when VTL2 thread switching to idle
+8b7635bf529b <- e5e719aeabf4  hv: mshv: vtl: Respect mshv_vtl_run::cancel in mshv_vtl_idle()
+ac99da7d576a <- 75e4d46421b5  hv: mshv: vtl: Allows user space to choose idle policy
+2b698648d01c <- 208e0319fb23  arm64/hyperv, kernel: Support Idle State Functions
+e4ff23af2c11 <- 5d6e38d73035  drivers/hv/mshv_vtl_main.c: handle DECRYPTED_MASK for CVMs
+a8477c0c9bcf <- a50beb84a32d  x86/sev: Not use write-protected mapping in the __sme_early_enc_dec()
+4a26a51abf17 <- 2ac729a638c8  uio: CVM: Add the pgprot_decrypted for UIO_MEM_IOVA in mmap
+553bded79536 <- 9e54cc22ca30  x86/tdx: Support vmalloc() for tdx_enc_status_changed()
+8a5576426a4c <- 97a5f9f8a921  Drivers: hv: vmbus: Allow more VMBus devices for a CVM UH kernel
+97cf93907882 <- b42ec4f8e604  drivers/hv: Add support for mshv_vtl on TDX
+ce80de865ae9 <- 3c829fa218d1  coco/tdx: reflect faulting va back to usermode
+51189ff7f5b8 <- 731f5b6b5fa9  drivers/hv/mshv_vtl_main.c: Fixed the crash in mshv_vtl_switch_to_vtl0_irqoff for TDX
+cf9d91addd4b <- 857c4aa20f2a  x86: Enable x2apic function
+c1660cee7aaa <- 321d13456bb4  x86/sev: expose Hyper-V CPUID to SEV-SNP guest
+c8243357d837 <- c1b86311e7d7  x86/sev: Use hvcall to convert apic id to vpid
+fe33cfe0cf2d <- ffe85da7260c  drivers: hv: vtl: Don't allow register ioctl on HCVMs
+077714f78270 <- be32e6590b6f  hyperv/mshv_vtl: Add SEV SNP guest support
+92d72491c16a <- f5d757617edc  mshv: Sort VTL IOCTLs, add comments
+4b4f32eb9819 <- b3e401c7c309  mshv_vtl: Allow specifying target_vtl
+f5c8bcaaebf6 <- 38a94c42cd5a  mshv_vtl: Correctly set Guest VSM VMSA page (VTL1)
+48e55219a039 <- bd3b7f60fb9f  mshv_vtl/tdx: Let the user mode control the RCX on guest entry
+f5d1ad40aca2 <- 59dce7daa206  mshv_vtl/tdx: preserve TSC_AUX across VP.ENTER
+135a2882fb9d <- 9044342d2cc6  drivers/hv: add tdx support for handling wbinvd
+2aecc2ade0c3 <- 06eb1e39a16b  mshv_vtl/tdx: Handle some APIC functionality in kernel
+f13ef810e9bc <- aa9af2158b5f  Compile fix and AMD boot up panic
+bc56f5819cfa <- 5bdbc5c6ca92  OOT! x86/of: Downgrade the error on the missing IO-APIC unconditionally (#44)
+c34eb8b77b8a <- d7c81a95b1e5  OOT! x86: pci: Downgrade "PCI devices with unassigned 32-bit BARs" error (#43)
+9bc2fb9c3850 <- 107df3239a66  OOT! arch, x86: Make side channel messages warnings (#41)
+e1abbf064c37 <- d6fabfa06ba9  OOT! x86: dt: Add a mising new line (#46)
+ffa16d515fdc <- bd2e8eeeeac1  OOT! x86: pci: Downgrade "PCI: Fatal: No config space access" error (#42)
+256d36749649 <- 9dfe3afd10ae  mshv_vtl/tdx: Remove hardcoding of VP.ENTER value in RAX (#35)
+01852e602ab3 <- f7e53e0438c2  hv: mshv: vtl: Use the percpu in/out pages as the hypercall's arguments (#52)
+2c42ccaabcee <- fc682c0c6f64  mshv_vtl/tdx: Add assembly function for TDG.VP.ENTER
+cd3883369edd <- 710d843d253c  mshv driver: Compile and CVM related fixes
+e28ae8ab26de <- 1ce14f6ef00f  Remove unused local variables in hv_common_cpu_die()
+3f9d24862a59 <- cc62ebc94722  TDX: remove __mshv_vtl_ioctl_check_extension(), which is not used yet
+b34a82f35d48 <- 550cca7908a0  TDX: Add the missing HV_X64_REGISTER_XFEM support
+96701c0325e8 <- 217200ae8612  TDX: Fix indentation issues in mshv_vtl_ioctl_get_regs()
+9d570937cae1 <- e36f682d56a6  mshv_vtl/tdx: Add member to tdx vp context for TDX timer service
+50c771e25f4a <- 09f4834e1eec  mshv_vtl/tdx: Factor out tdg_vp_wr() wrapper
+f61a4d096946 <- 19cf4729a09d  mshv_vtl/tdx: Set TSC deadline if userspace requests
+4a5c979556e3 <- a1026f95816f  mshv_vtl/tdx: Skip duplicated TDG.VP.WR(TSC deadline)
+fb4f0849c341 <- 39a35aa4fc30  mshv_vtl/tdx: Arm per-cpu timer to wake up from L0 HLT emulation
+5aeeac5666ec <- e19d8fef58d1  mshv_vtl/tdx: Eliminate duplicate tdg.vp.wr(TSC deadline = disarm)
+2462fdbab8a6 <- 9f6896465326  drivers: hv: mshv_vtl: Advertise TDX timer service extension
+66b573263d34 <- c141febc950b  mshv_vtl/tdx: Fix arm64 build
+286b89b6b751 <- e7f743e23fd2  hcl-x64.config: Set CONFIG_ACPI=y
+2a03c56878e0 <- 8b199aa147fd  snp: return early in print_s5_reset_status_mmio() to avoid a triple fault
+813125aa7948 <- b03c312a92e8  x86/AMD: Disable INVLPGB capability to avoid GP fault
+59056aebc0f9 <- 1ada4de76a9f  vtl: Fixes for compilation errors and warnings
+50fc066cc56e <- e586b9306b88  hv: mshv_vtl: Optimize computation of the proxy interrupt bit
+42ef25430dbf <- b6551de68948  mshv_vtl/tdx: Add a helper function to get CPU number from APIC ID
+4db65cbf09f5 <- 8b0622d07533  hv: mshv_vtl: Add a helper function to assert single proxy interrupts
+1392b08af49f <- 2292c441cbc2  hv: mshv_vtl: Introduce the MAP_REDIRECTED_DEVICE_INTERRUPT IOCTL
+70638f75e517 <- 4a023c4a4ef1  hv: mshv_vtl: Create a thin irq_domain for redirected proxy interrupts
+9e0fc37b0f15 <- 630453d09baa  hv: mshv_vtl: Redirect a proxy interrupt
+47258c8ea477 <- ff32bf05136b  hv: mshv_vtl: Handle unmapping of redirected interrupts
+06e203ed1b4a <- 48aafd15d162  drivers: hv: mshv_vtl: Implement restore partition time IOCTL
+b204155c97ed <- fb9ac0011067  Drivers: hv: enable the VP assist page for the root partition
+efedd5a1ce74 <- a03cc15298bf  mshv_vtl/tdx: Optimize L1 MSR save/restore around VP_ENTER
+38c8d9835475 <- 19ba1f5e99ca  drivers/hv: fix mshv_vtl MSR_TSC_AUX context switch
+f8a827c2f0ee <- 8e1f97bb0aea  drivers/hv: mshv_vtl: faster MSR context switching
+b1056b5a3b9c <- cff21e6cb023  hv: mshv: vtl: Allow aarch64 to use the Hyper-V VTL register page when available. (#53)
+2f27da61081b <- a4c9c42d5b99  OOT! drivers: hv: vtl: Don't impose VSM configuration on the user mode (#47)
+619a17f69ad2 <- 00d95ddb1b73  hv: mshv: vtl: Fix ARM VTL0 guest fails to boot up
+5c8b56cc2cfc <- 58df4b26ec7b  move ACPI config changes to CVM cfg
+588416fa99ca <- ba22c04263ed  Drivers: hv: mshv_vtl: Speed up PVALIDATE and RPMADJUST to meet perf targets
+53e35b71de44 <- c5aa9ddbd127  Drivers: hv: mshv_vtl: Don't error out on non-SNP where local maps aren't used
+1b2f03b101a5 <- 09c8209a4d50  Drivers: hv: mshv_vtl: Use pgtable_l5_enabled() to determine VA start address
+e5b859d01bd9 <- a10e99745874  Drivers: hv: mshv_vtl: Fix TDX VTL0 boot
+23f78d5ab19c <- 05c4b409fddb  config-cleanup: disable new 6.18 configs enabled by default
+a6f7b37533b5 <- 74d154e9863a  x86/Hyper-V: Add Hyper-V specific hvcall to set backing page
+999e44971d90 <- 4d255b35da37  drivers: hv: mshv_vtl: Support for Secure AVIC
+3b9fd6663ddf <- 8af63f3ee176  config: enabling madvise syscalls for user mode deallocations (v6.18)
+ae87e9e8f00f <- 377a1f3001db  arm64/hyperv: Add Device Tree Support
+e1ac52c90436 <- e62a24992f0c  Microsoft: Add Nix infrastructure for reproducible builds
+70ad1ce19b51 <- de8a0bf23d53  Microsoft: Add Nix build script with reproducible environment
+66aad7663f30 <- 2cf1b5f634b0  Microsoft: Update build-hcl-kernel.sh for reproducible builds
+dbd15e3b90dd <- 2aaf1ae1925d  Microsoft: Add CI pipeline build script
+e7628f4dcfbb <- 6ba90a766221  ci: make kernel CI reproducible
+f62ea48f6230 <- 842705e7c07f  ci: run dual reproducibility builds and compare outputs
+b945bd3ce5bd <- 775741a3f858  Drivers: hv: mshv_vtl: use folio-aware inserters for huge VTL0 mappings
+8a698c0d5325 <- c79bbfd2a889  Drivers: hv: mshv_vtl: fix GUP into VTL0 mappings on the 4K fault path
+57d59de4dd11 <- 6b585527d2a5  Drivers: hv: mshv_vtl: fix vmemmap race in low pgmap resolver
+aab3228cd47f <- fd75aff0c566  Drivers: hv: mshv_vtl: remove duplicate misc_deregister() in module exit
+20c398644754 <- ece6b7929a15  x86/hyperv: Fix compilation warning by removing unused label
+b19bf0142ab3 <- a3f5289c698e  Microsoft: Update config changes with LTS
+13631aee9a02 <- 4bc1f9ae57f8  Microsoft: build reproducible kernel in-place without a temp copy
+2ded639a0557 <- ad9d7efe49c1  drivers: hv: better management of HLT/IDLE states Tracking of current VTL0 state via offload_flags need to be kept up to date in order to properly handle VTL2 idle behavior.
+36e91cd24f1d <- 17e5bc6b912c  x86/tdx: Add TDG.MR.KEY.GET ABI support
+8b3a2e77267b <- f5c38dc6c1ce  drivers/hv/mshv_vtl: fix fabricated sidecar VP run completions
+cb9c00fc9495 <- 951e1f6d1567  drivers: hv: SNP perf fixes Share the VMSA key with userspace to allow decoding register values. Return to VTL0 if the only operation was a kernel handled interrupt. Don't resend IPI to a processor for interrupt processing.
+52297d2cc3d6 <- 44cd5250ae22  drivers: hv: SNP fast-path for stimer0 operations
+e1fdf716b658 <- cd5ba8810623  x86/apic/savic: ipi needs to convert apicid to cpuid
+12599f08d178 <- c630cc37901b  x86/apic/savic: get GPA for SAVIC page using per_cpu_ptr_to_phys
+4a2873b1f5d0 <- 4b8508170a0d  x86/tdx: Release private memory before private->shared conversion
+4c1f83bf47f5 <- 944498152d6f  Drivers: hv: mshv_vtl: restore 2M VTL0 low mappings to bound PageTables
+0284a7fb71f1 <- c64edce78dfe  x86/init: Initialize wall clock in get_rtc_noop()
+847bb87f559f <- 1314bb81233d  Drivers: hv: mshv_vtl: Remove SNP VP assist page dependency
+
+Source changes already covered by upstream 7.3.4 - do not replay
+---------------------------------------------------------------
+d2ff4347f7f8  static_call: allow using STATIC_CALL_TRAMP_STR() from assembly
+    Upstream equivalent(s): 796ef5a7fe86
+    Policy: Full upstream patch-id matches. Assembly-safe static-call headers remain in the target.
+21615a592174  Drivers: hv: Export some symbols for mshv_vtl
+    Upstream equivalent(s): cffe9f58de1e
+    Policy: Added/deleted edit payload matches upstream exactly (context differs). vmbus_isr/hv_context exports needed by mshv_vtl remain.
+4521f6d6c5d0  Drivers: hv: Introduce mshv_vtl driver
+    Upstream equivalent(s): 7bfe3b8ea6e3
+    Policy: The upstream driver introduction has the same 11-file/1861-line change. Payload differences are renamed synic_* -> hyp_synic_* fields and Makefile whitespace, not missing core functionality. Later downstream ARM64/CVM/sidecar extensions are NOT implied present.
+e38fb0109b74  PCI: hv: Use async probing to reduce boot time
+    Upstream equivalent(s): c37fc4deee00
+    Policy: Upstream c37fc4deee00 enables the same asynchronous vPCI probing through driver.probe_type. Unlike the old OOT patch it does not remove pci_lock_rescan_remove() protection in root-bus creation. Port neither the old lock removal nor the old patch wholesale.
+d4272d5af393  vfio/pci: hack to fix broken 64 bit detection on x86-64
+    Upstream equivalent(s): 2b938e3db335, b44a06bd28f2
+    Policy: The header-local CONFIG_64BIT ioread64_pci/iowrite64_pci hack is not upstream. Upstream enables common 64-bit I/O helpers and removes conditional ioread64/iowrite64 generation from the VFIO implementation; 64-bit accessors are generated unconditionally.
+f6c55e5bec93  x86/build: Only align ENTRY_TEXT to PMD_SIZE on x86 if PTI or SRSO is enabled.
+    Upstream equivalent(s): f6cff820877f
+    Policy: Upstream f6cff820877f implements the same conditional PMD alignment but uses the current CONFIG_MITIGATION_PAGE_TABLE_ISOLATION symbol, rather than the old CONFIG_PAGE_TABLE_ISOLATION symbol in the downstream patch.
+14692f113c50  x86/topology: Add a missing attribute dependency
+    Upstream equivalent(s): bdf5eb306c4d
+    Policy: The exact linux/cache.h include fix is folded into a larger upstream topology fix that also forward-declares struct cpuinfo_x86. Reverse-check passes against target.
+41a0ecc3b8fc  x86/acpi: Add functions to setup and access the wakeup mailbox
+    Upstream equivalent(s): a746607df24b
+    Policy: Full patch-id matches; ACPI setup/access mailbox helpers are present.
+85fae03c3625  dt-bindings: reserved-memory: Wakeup Mailbox for Intel processors
+    Upstream equivalent(s): b7c8992aea5e
+    Policy: Full patch-id and reverse-check match the upstream reserved-memory binding.
+cb2f976a148b  x86/dt: Parse the Wakeup Mailbox for Intel processors
+    Upstream equivalent(s): 12d58799c195
+    Policy: Full patch-id and reverse-check match; DeviceTree mailbox parsing is present.
+c8531b6a68ab  x86/hyperv/vtl: Set real_mode_header in hv_vtl_init_platform()
+    Upstream equivalent(s): 7e4c083ece42
+    Policy: Same upstream initialization fix, adjusted for different pre-existing conditions: the non-TDX platform branch initializes real_mode_header.
+a70993c4be2e  x86/realmode: Make the location of the trampoline configurable
+    Upstream equivalent(s): a7ac1ea1f063
+    Policy: Full patch-id and reverse-check match; configurable realmode_limit is present.
+97aade95727a  x86/hyperv/vtl: Setup the 64-bit trampoline for TDX guests
+    Upstream equivalent(s): aa7719039bd9
+    Policy: Full patch-id matches; TDX uses the firmware 64-bit trampoline with a 4GB allocation limit.
+01eb0161c36c  x86/acpi: Add a helper get the address of the wakeup mailbox
+    Upstream equivalent(s): 12584a89c917
+    Policy: Full patch-id and reverse-check match the upstream mailbox physical-address accessor.
+8a819735866c  x86/hyperv/vtl: Mark the wakeup mailbox page as private
+    Upstream equivalent(s): 80200341197a
+    Policy: Added/deleted payload is identical; only patch context differs. The wakeup mailbox is mapped private through the platform callback.
+2fe512a6d44e  x86/hyperv/vtl: Use the wakeup mailbox to boot secondary CPUs
+    Upstream equivalent(s): 7a035678fc2b
+    Policy: The upstream wakeup-mailbox implementation keeps the firmware-selected wakeup callback for TDX by skipping the VTL hypercall callback. The downstream diff changed a pre-existing SNP/TDX condition and corrected an APIC-id/cpu-id argument. Target already passes cpu, and uses the upstream TDX-only callback condition; do not overwrite it with the older mixed condition.
+00da52607c0e  Drivers: hv: mshv_vtl: Fix vmemmap_shift exceeding MAX_FOLIO_ORDER
+    Upstream equivalent(s): 404cd6bffe17
+    Policy: Same MAX_FOLIO_ORDER clamp and PTR_ERR fix are upstream. Upstream uses min() rather than min_t() and adds an explanatory UAPI comment; the algorithm is the same.
+27dd06c3a358  block: bio: Allow zone device pages from different pgmaps in separate bvecs
+    Upstream equivalent(s): 13920e4b7b78, 41c665aae2b5
+    Policy: Two upstream block fixes cover this downstream change with a stronger implementation: zone_device_pages_compatible() permits compatible pgmaps in separate bvecs, while same-pgmap guards prevent segment coalescing. Upstream additionally protects P2PDMA and bio-integrity cases.
+dbdf85ccfe1b  drivers: hv: Allow vmbus message synic interrupt injected from Hyper-V
+    Upstream equivalent(s): 3e1b611515d2
+    Policy: Full patch-id matches the upstream Hyper-V message interrupt injection change.
+194ef613daea  x86/hyperv: Allow Hyper-V to inject STIMER0 interrupts
+    Upstream equivalent(s): 5e52db91d112
+    Policy: Added/deleted payload is identical (context differs). STIMER0 vector injection is explicitly allowed in target hv_cpu_init().
+ef73a328c0cb  x86/hyperv: Don't use hv apic driver when Secure AVIC is available
+    Upstream equivalent(s): f34f5e576f5e
+    Policy: The exact Secure AVIC guard is upstream; the downstream patch additionally included a header already available upstream.
+704e6a0d30a1  x86/hyperv: Don't use auto-eoi when Secure AVIC is available
+    Upstream equivalent(s): c52c957e41e7
+    Policy: Full patch-id matches; Secure AVIC disables Hyper-V auto-EOI.
+f52d415b1164  Drivers: hv: hv_common: use meaningful errnos for hypercall statuses
+    Upstream equivalent(s): e1fc6e70f36e
+    Policy: Added/deleted errno-table payload is identical. ACCESS_DENIED and PROPERTY_VALUE_OUT_OF_RANGE retain meaningful Linux errno mappings.
+6b4692f829cf  Drivers: hv: vmbus: add VTL2 redirect connection ID
+    Upstream equivalent(s): 92d059312802
+    Policy: Full patch-id and reverse-check match the upstream replacement connection-ID fix. No backport is needed on 7.3.4.
+
+Retired / canceled / equivalent source changes
+----------------------------------------------
+995392d1b714  Drivers: hv: Add connection id support
+    Policy: Retired connection-ID implementation/revert: repository policy prohibits replay. Replacement 92d059312802 is already upstream in v7.3.4.
+7fcb83b1e7aa  Fix definition of HV_EVENT_FLAGS_LONG_COUNT to always be the count of the number of 64-bit entries in HV_EVENT_FLAGS.
+    Policy: Expression-only refactor: 256 and 0x100 constants and 256/sizeof(ulong) flag count are already numerically equivalent. No functional delta to port.
+31a427ddeaf1  vfio/pci: Continue to refactor vfio_pci_core_do_io_rw
+    Policy: VFIO refactor was explicitly removed by source stable merge d4db39a7c6df. Preserve upstream width-aware I/O loop.
+26b55f737ce5  x86/hyperv: Use Hyper-V reset page to boot tdx APs
+    Policy: Canceled reset-page TDX AP-start original/revert pair. Preserve upstream firmware wakeup-mailbox implementation instead.
+d89b26ca0639  x86/sev: Get cc blob information via boot param
+    Policy: Canceled cc-blob boot-parameter original/revert pair; no net source-tip delta to carry.
+580d5553ae99  Revert "x86/hyperv: Use Hyper-V reset page to boot tdx APs"
+    Policy: Canceled reset-page TDX AP-start original/revert pair. Preserve upstream firmware wakeup-mailbox implementation instead.
+0c0a8586c326  Drivers: hv: mshv_vtl: Speed up PVALIDATE and RPMADJUST to meet perf targets
+    Policy: Canceled first local-map implementation/reverts. Apply final reintroduced ba22c04263ed/c5aa9ddbd127 series later in the original order.
+4084d0824cf0  Drivers: hv: mshv_vtl: Don't error out on non-SNP where local maps aren't used
+    Policy: Canceled first local-map implementation/reverts. Apply final reintroduced ba22c04263ed/c5aa9ddbd127 series later in the original order.
+74b9d5490368  Revert "Drivers: hv: mshv_vtl: Don't error out on non-SNP where local maps aren't used"
+    Policy: Canceled first local-map implementation/reverts. Apply final reintroduced ba22c04263ed/c5aa9ddbd127 series later in the original order.
+c18d3602e5c0  Revert "Drivers: hv: mshv_vtl: Speed up PVALIDATE and RPMADJUST to meet perf targets"
+    Policy: Canceled first local-map implementation/reverts. Apply final reintroduced ba22c04263ed/c5aa9ddbd127 series later in the original order.
+69c31fcbbf70  Revert "x86/sev: Get cc blob information via boot param"
+    Policy: Canceled cc-blob boot-parameter original/revert pair; no net source-tip delta to carry.
+1fad9da94612  Revert "Drivers: hv: Add connection id support"
+    Policy: Retired connection-ID implementation/revert: repository policy prohibits replay. Replacement 92d059312802 is already upstream in v7.3.4.
+
+Bookkeeping functionality migrated to this target
+-------------------------------------------------
+8361d588b8ac  misc/UH: introduce commit-log file
+    Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.
+843a0901de23  Add a new .json file to identify main and release branches
+    Restore the branch-identification schema and point it to the actual 7.3.4 draft branch; promotion must update this field to the final product branch.
+cf314821f371  commit-log: update list of oot patches.
+    Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.
+ec12dfc955cc  update branch name to 6.18
+    Restore the branch-identification schema and point it to the actual 7.3.4 draft branch; promotion must update this field to the final product branch.
+ef761e21b1c9  MSFT-Merge: update OOT commit list
+    Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.
+216b762d69d8  add the new OOT commits
+    Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.
+8146a46b7440  MSFT-Merge: update OOT commit list
+    Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.
+9f7a9d9ace1d  MSFT-Merge: retire superseded connection ID patch
+    Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.
+05e9f8e6162e  update OOT commits list
+    Restore OOT tracking with current 7.3.4 destination commit IDs in dependency/application order, upstream-covered source references, and retired/reverted replay policies; do not copy stale 6.18 hashes as the active stack.
+
+Upgrade policy
+--------------
+Never replay source 995392d1b714 or its revert 1fad9da94612.
+Replacement upstream 92d059312802 is already in this base.
+Do not replay dropped VFIO refactor 31a427ddeaf1.
+Do not duplicate upstream patches listed above.
+Do not lose useful metadata solely because its historical subject names 6.18.
