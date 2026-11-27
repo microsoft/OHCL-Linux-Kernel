@@ -1615,7 +1615,7 @@ static int restore_partition_time_with_cpus_stopped(void *data)
 	input->reserved = 0;
 	input->reference_time_in_100_ns = partition_time->reference_time_in_100_ns;
 	input->tsc = partition_time->tsc;
-	status = hv_do_hypercall(MSHV_RESTORE_PARTITION_TIME, input, NULL);
+	status = hv_do_hypercall(HVCALL_RESTORE_PARTITION_TIME, input, NULL);
 	if (!hv_result_success(status)) {
 		pr_err("HVCALL_RESTORE_PARTITION_TIME failed with %#llx\n", status);
 		result = -EINVAL;
@@ -1631,19 +1631,12 @@ static int restore_partition_time_with_cpus_stopped(void *data)
 
 static int mshv_restore_partition_time(void __user *arg)
 {
-	unsigned long irq_flags;
 	struct mshv_partition_time partition_time;
-	int ret;
 
 	if (copy_from_user(&partition_time, arg, sizeof(partition_time)))
 		return -EFAULT;
 
-	/* Stop other CPUs, using the current one to restore partition time. */
-	local_irq_save(irq_flags);
-	ret = stop_machine(restore_partition_time_with_cpus_stopped, &partition_time,
-			cpumask_of(smp_processor_id()));
-	local_irq_restore(irq_flags);
-	return ret;
+	return stop_machine(restore_partition_time_with_cpus_stopped, &partition_time, NULL);
 }
 #endif
 
