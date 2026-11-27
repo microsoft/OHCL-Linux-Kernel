@@ -2550,12 +2550,14 @@ static int create_root_hv_pci_bus(struct hv_pcibus_device *hbus)
 	if (error)
 		return error;
 
-	pci_lock_rescan_remove();
+	/*
+	 * The caller holds hbus->state_lock, which serializes root-bus
+	 * creation with hv_eject_device_work() and pci_devices_present_work().
+	 */
 	hv_pci_assign_numa_node(hbus);
 	pci_bus_assign_resources(bridge->bus);
 	hv_pci_assign_slots(hbus);
 	pci_bus_add_devices(bridge->bus);
-	pci_unlock_rescan_remove();
 	hbus->state = hv_pcibus_installed;
 	return 0;
 }
