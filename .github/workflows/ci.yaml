@@ -253,7 +253,7 @@ jobs:
           fi
           make $makeargs \
             NO_ZLIB=1 NO_LIBELF=1 NO_LIBCRYPTO=1 NO_LIBPYTHON=1 NO_JEVENTS=1 NO_LIBTRACEEVENT=1 \
-            LDFLAGS=-static -C tools DESTDIR="$PWD/perf-"${{ matrix.arch }}"" perf_install
+            NO_RUST=1 LDFLAGS=-static -C tools DESTDIR="$PWD/perf-"${{ matrix.arch }}"" perf_install
 
           $strip perf-"${{ matrix.arch }}"/bin/*
 
@@ -329,6 +329,7 @@ jobs:
         with:
           body_path: ${{ github.workspace }}/MSFT-Merge/release-notes.md
           draft: false
+          make_latest: 'false'
           files: |
             Microsoft.OHCL.Kernel.*.tar.gz
           token: ${{ secrets.RELEASE_TOKEN }}
